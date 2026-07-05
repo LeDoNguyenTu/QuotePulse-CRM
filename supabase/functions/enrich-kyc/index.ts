@@ -110,32 +110,33 @@ Deno.serve(async (req) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Bing-Web-Search-v7-compatible query by default. Point SEARCH_API_URL at a
- * different provider and adapt the parsing below if you use SerpAPI/Brave/etc.
+ * Serper.dev — returns Google's organic search results. POST { q } with an
+ * `X-API-KEY` header; the response has an `organic[]` array of
+ * { title, link, snippet }. Override SEARCH_API_URL only if you proxy Serper.
+ * To switch providers, adapt the request + the mapping below.
  * Rate limiting: one request per enrichment call (the UI gates per company).
  */
 async function webSearch(query: string, errors: string[]): Promise<SearchResult[]> {
   const key = Deno.env.get('SEARCH_API_KEY');
-  const url = Deno.env.get('SEARCH_API_URL') ?? 'https://api.bing.microsoft.com/v7.0/search';
+  const url = Deno.env.get('SEARCH_API_URL') ?? 'https://google.serper.dev/search';
   if (!key) {
     errors.push('SEARCH_API_KEY not set — skipping web search.');
     return [];
   }
-  const u = new URL(url);
-  u.searchParams.set('q', query);
-  u.searchParams.set('count', '10');
 
-  const res = await fetch(u.toString(), {
-    headers: { 'Ocp-Apim-Subscription-Key': key },
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: query, num: 10 }),
   });
   if (!res.ok) throw new Error(`search ${res.status}: ${await res.text()}`);
   const body = (await res.json()) as {
-    webPages?: { value?: { name: string; url: string; snippet: string }[] };
+    organic?: { title: string; link: string; snippet?: string }[];
   };
-  return (body.webPages?.value ?? []).map((v) => ({
-    name: v.name,
-    url: v.url,
-    snippet: v.snippet,
+  return (body.organic ?? []).map((v) => ({
+    name: v.title,
+    url: v.link,
+    snippet: v.snippet ?? '',
   }));
 }
 

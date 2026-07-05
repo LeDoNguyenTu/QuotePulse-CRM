@@ -47,7 +47,7 @@ Full folder map is in the plan; key directories: `src/` (SPA) and `supabase/` (m
 - An **Azure AD** app registration (for Microsoft Graph)
 - A **HubSpot Private App** token
 - An **NVIDIA Build** API key (build.nvidia.com)
-- A web-search API key (e.g. Bing Web Search v7) — optional; KYC degrades gracefully without it
+- A [Serper.dev](https://serper.dev) API key for KYC web search (real Google results; 2,500 free credits) — optional; KYC degrades gracefully without it
 
 ---
 
@@ -92,9 +92,12 @@ supabase secrets set \
   AZURE_CLIENT_SECRET=xxxx \
   AZURE_TENANT_ID=common \
   AZURE_REDIRECT_URI=https://YOUR-APP.vercel.app/ms-auth-callback \
-  SEARCH_API_URL=https://api.bing.microsoft.com/v7.0/search \
-  SEARCH_API_KEY=xxxx
+  SEARCH_API_KEY=xxxx           # Serper.dev API key (KYC web search)
 ```
+
+> `SEARCH_API_URL` is optional — it defaults to `https://google.serper.dev/search`.
+> Only set it if you proxy Serper or swap providers (you'd also adapt the
+> `webSearch()` parser in `enrich-kyc`).
 
 > `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically into
 > deployed Edge Functions by Supabase. For **local** `functions serve`, put them

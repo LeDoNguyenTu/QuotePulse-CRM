@@ -3,18 +3,38 @@
 // refresh token in the caller's user_settings row.
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
-import { exchangeCode, emailFromIdToken } from '../_shared/ms.ts';
+import { exchangeCode, emailFromIdToken, verifyState } from '../_shared/ms.ts';
 
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   try {
-    const userId = await getUserId(req);
-    const { code, redirect_uri } = (await req.json()) as {
+    const { code, redirect_uri, state } = (await req.json()) as {
       code?: string;
       redirect_uri?: string;
+      state?: string;
     };
     if (!code) return errorResponse('code is required', 400);
+
+    // Identify the user. Prefer the verified session JWT; if the browser session
+    // isn't available on the callback origin (e.g. the OAuth redirect landed on a
+    // different Vercel domain than where the user logged in), fall back to the
+    // HMAC-signed user id that ms-auth-start stamped into the OAuth `state`.
+    // verifyState rejects any tampered/forged/expired state, so a client cannot
+    // bind Microsoft tokens onto another user's settings row.
+    let userId: string | null = null;
+    try {
+      userId = await getUserId(req);
+    } catch {
+      // no usable session on this origin — fall back to the signed state below
+    }
+    if (!userId) userId = await verifyState(state);
+    if (!userId) {
+      return errorResponse(
+        'Could not identify the signed-in user (no session and no valid state).',
+        401
+      );
+    }
 
     const redirectUri = redirect_uri ?? Deno.env.get('AZURE_REDIRECT_URI');
     if (!redirectUri) return errorResponse('AZURE_REDIRECT_URI not configured', 500);

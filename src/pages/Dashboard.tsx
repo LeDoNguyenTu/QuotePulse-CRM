@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useCompanies, useCreateCompany, type CompanyFilters } from '../hooks/useCompanies';
+import {
+  useCompanies,
+  useCreateCompany,
+  useSoftDeleteCompanies,
+  type CompanyFilters,
+} from '../hooks/useCompanies';
 import { SearchBar } from '../components/SearchBar';
 import { Filters } from '../components/Filters';
 import { CompaniesTable } from '../components/CompaniesTable';
@@ -21,6 +26,7 @@ export function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
 
+  const softDelete = useSoftDeleteCompanies();
   const { data, isLoading, error } = useCompanies(filters);
   const rows = data?.rows ?? [];
   const total = data?.count ?? 0;
@@ -74,6 +80,26 @@ export function Dashboard() {
     }
   }
 
+  async function handleDelete() {
+    const n = selected.size;
+    if (n === 0) return;
+    if (
+      !window.confirm(
+        `Move ${n} ${n === 1 ? 'company' : 'companies'} to the recycle bin? ` +
+          `You can restore them within ${30} days from the Recycle bin.`
+      )
+    )
+      return;
+    setBanner(null);
+    try {
+      await softDelete.mutateAsync([...selected]);
+      setSelected(new Set());
+      setBanner(`Moved ${n} ${n === 1 ? 'company' : 'companies'} to the recycle bin.`);
+    } catch (e) {
+      setBanner(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function handleImportAll() {
     setImporting(true);
     setBanner(null);
@@ -103,6 +129,13 @@ export function Dashboard() {
           </button>
           <button className="btn-secondary" onClick={handleExport} disabled={exporting}>
             {exporting ? 'Exporting…' : 'Export current view'}
+          </button>
+          <button
+            className="btn-secondary text-red-600 disabled:text-slate-400"
+            onClick={handleDelete}
+            disabled={selected.size === 0 || softDelete.isPending}
+          >
+            {softDelete.isPending ? 'Deleting…' : `Delete (${selected.size})`}
           </button>
           <button
             className="btn-primary"

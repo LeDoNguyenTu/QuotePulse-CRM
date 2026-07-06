@@ -81,3 +81,89 @@ export function useCreateCompany() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['companies'] }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Recycle bin (soft delete). Deleting a company sets companies.deleted_at so it
+// leaves the dashboard but can be restored; a pg_cron job (plus the on-open
+// fallback purge below) hard-deletes anything trashed longer than 30 days.
+// ---------------------------------------------------------------------------
+
+export const TRASH_TTL_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function invalidateCompanyLists(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['companies'] });
+  qc.invalidateQueries({ queryKey: ['trashed-companies'] });
+}
+
+export function useTrashedCompanies() {
+  return useQuery<Company[]>({
+    queryKey: ['trashed-companies'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Company[];
+    },
+  });
+}
+
+export function useSoftDeleteCompanies() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase
+        .from('companies')
+        .update({ deleted_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => invalidateCompanyLists(qc),
+  });
+}
+
+export function useRestoreCompanies() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase
+        .from('companies')
+        .update({ deleted_at: null })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => invalidateCompanyLists(qc),
+  });
+}
+
+export function useHardDeleteCompanies() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from('companies').delete().in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['trashed-companies'] }),
+  });
+}
+
+// Fallback for when pg_cron isn't enabled: purge companies trashed > 30 days
+// ago. Safe to fire when the recycle bin opens (RLS lets authenticated delete).
+export function usePurgeExpiredTrash() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const cutoff = new Date(Date.now() - TRASH_TTL_DAYS * DAY_MS).toISOString();
+      const { error } = await supabase
+        .from('companies')
+        .delete()
+        .not('deleted_at', 'is', null)
+        .lt('deleted_at', cutoff);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['trashed-companies'] }),
+  });
+}

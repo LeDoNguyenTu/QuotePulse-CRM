@@ -88,10 +88,11 @@ export const functions = {
       redirect_uri: import.meta.env.VITE_MS_REDIRECT_URI,
     }),
 
-  msAuthCallback: (code: string, redirect_uri: string) =>
+  msAuthCallback: (code: string, redirect_uri: string, state?: string) =>
     invoke<{ ok: boolean; email: string | null }>('ms-auth-callback', {
       code,
       redirect_uri,
+      state,
     }),
 
   processEmailQueue: () => invoke<QueueProgress>('process-email-queue', {}),

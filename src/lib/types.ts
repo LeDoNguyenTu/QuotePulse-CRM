@@ -21,6 +21,7 @@ export interface Company {
   website: string | null;
   hubspot_company_id: string | null;
   source_priority: SourcePriority;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }

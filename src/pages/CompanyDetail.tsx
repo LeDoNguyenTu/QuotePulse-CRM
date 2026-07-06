@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useCompany,
   useCompanyAttachments,
-  useCompanyContacts,
   useCompanyDeals,
   useCompanyEmailSends,
   useCompanyKyc,
@@ -12,6 +11,7 @@ import {
 import { functions } from '../lib/functions';
 import { KycPanel } from '../components/KycPanel';
 import { AttachmentList } from '../components/AttachmentList';
+import { CompanyEditModal, ContactsEditor } from '../components/CustomerEditor';
 import { Modal } from '../components/Modal';
 import { EmptyState, ErrorState, PriorityBadge, Spinner, StatusBadge } from '../components/ui';
 import type { EmailSend } from '../lib/types';
@@ -24,6 +24,7 @@ export function CompanyDetail() {
   const [tab, setTab] = useState<Tab>('hubspot');
   const [importing, setImporting] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data: company, isLoading, error } = useCompany(id);
 
@@ -74,10 +75,21 @@ export function CompanyDetail() {
             )}
           </div>
         </div>
-        <button className="btn-secondary" onClick={importThis} disabled={importing}>
-          {importing ? 'Importing…' : 'Run HubSpot import/update'}
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setEditOpen(true)}>
+            Edit details
+          </button>
+          <button className="btn-secondary" onClick={importThis} disabled={importing}>
+            {importing ? 'Importing…' : 'Run HubSpot import/update'}
+          </button>
+        </div>
       </div>
+
+      <CompanyEditModal
+        company={company}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+      />
 
       {banner && (
         <div className="rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800">
@@ -110,7 +122,6 @@ export function CompanyDetail() {
 
 function HubspotTab({ companyId }: { companyId: string }) {
   const deals = useCompanyDeals(companyId);
-  const contacts = useCompanyContacts(companyId);
   const attachments = useCompanyAttachments(companyId);
 
   return (
@@ -157,26 +168,7 @@ function HubspotTab({ companyId }: { companyId: string }) {
         )}
       </section>
 
-      <section>
-        <h2 className="mb-2 font-semibold">Contacts</h2>
-        {contacts.data && contacts.data.length > 0 ? (
-          <div className="card divide-y divide-slate-100">
-            {contacts.data.map((c) => (
-              <div key={c.id} className="flex flex-wrap gap-x-4 px-3 py-2 text-sm">
-                <span className="font-medium">{c.full_name ?? '—'}</span>
-                <span className="text-slate-500">{c.email ?? ''}</span>
-                <span className="text-slate-500">{c.phone ?? ''}</span>
-                <span className="text-slate-400">{c.role_title ?? ''}</span>
-                <span className="ml-auto rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                  {c.source}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState>No contacts yet.</EmptyState>
-        )}
-      </section>
+      <ContactsEditor companyId={companyId} />
 
       <section>
         <h2 className="mb-2 font-semibold">Attachments</h2>

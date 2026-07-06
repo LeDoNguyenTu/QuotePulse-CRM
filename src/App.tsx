@@ -9,6 +9,7 @@ import { Dashboard } from './pages/Dashboard';
 import { CompanyDetail } from './pages/CompanyDetail';
 import { Templates } from './pages/Templates';
 import { Settings } from './pages/Settings';
+import { Trash } from './pages/Trash';
 import { MsAuthCallback } from './pages/MsAuthCallback';
 
 export default function App() {
@@ -46,6 +47,16 @@ export default function App() {
             <ProtectedRoute>
               <Layout>
                 <Templates />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trash"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <Trash />
               </Layout>
             </ProtectedRoute>
           }

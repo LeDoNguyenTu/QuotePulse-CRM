@@ -48,11 +48,23 @@ Deno.serve(async (req) => {
     const data: KycData = { contacts: [], other_links: [] };
 
     // 1) Web search (best-effort — skipped gracefully if no key configured).
+    //    Two queries: general discovery + a LinkedIn-targeted one, so name-only
+    //    companies (no known website) still get a website + LinkedIn page.
     let results: SearchResult[] = [];
-    try {
-      results = await webSearch(`${name} official website contact`, errors);
-    } catch (e) {
-      errors.push(`search: ${e instanceof Error ? e.message : e}`);
+    if (!Deno.env.get('SEARCH_API_KEY')) {
+      errors.push(
+        'SEARCH_API_KEY not set — skipping web search (KYC can only use an already-known website).'
+      );
+    } else {
+      try {
+        const [general, linkedin] = await Promise.all([
+          webSearch(`${name} official website contact`),
+          webSearch(`${name} LinkedIn company`),
+        ]);
+        results = [...general, ...linkedin];
+      } catch (e) {
+        errors.push(`search: ${e instanceof Error ? e.message : e}`);
+      }
     }
 
     // 2) Classify results into website / linkedin / other links.
@@ -95,8 +107,9 @@ Deno.serve(async (req) => {
     );
     if (upErr) throw upErr;
 
-    // 5) Optionally persist discovered contacts (source = google/linkedin).
-    await saveContacts(admin, company_id, data);
+    // 5) Persist discovered contacts (source = google) so the company becomes
+    //    emailable. Errors now surface in the response instead of being swallowed.
+    await saveContacts(admin, company_id, data, errors);
 
     return json({ ok: true, company_id, enriched_data: data, errors });
   } catch (e) {
@@ -116,13 +129,10 @@ Deno.serve(async (req) => {
  * To switch providers, adapt the request + the mapping below.
  * Rate limiting: one request per enrichment call (the UI gates per company).
  */
-async function webSearch(query: string, errors: string[]): Promise<SearchResult[]> {
+async function webSearch(query: string): Promise<SearchResult[]> {
   const key = Deno.env.get('SEARCH_API_KEY');
+  if (!key) return [];
   const url = Deno.env.get('SEARCH_API_URL') ?? 'https://google.serper.dev/search';
-  if (!key) {
-    errors.push('SEARCH_API_KEY not set — skipping web search.');
-    return [];
-  }
 
   const res = await fetch(url, {
     method: 'POST',
@@ -157,6 +167,8 @@ async function scrapeSite(website: string): Promise<{
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -166,38 +178,80 @@ async function scrapeSite(website: string): Promise<{
     .filter((p) => p.replace(/\D/g, '').length >= 8)
     .slice(0, 3);
 
-  const metaDesc = html.match(
-    /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i
-  );
-  const about = metaDesc?.[1] ?? text.slice(0, 240);
-
-  const addrMatch = text.match(
-    /\d{1,5}\s+[A-Za-z0-9.\s]+(?:Street|St|Road|Rd|Ave|Avenue|Lane|Ln|Drive|Dr|Blvd|Way)\b[^.]*/
-  );
-
-  const contacts: KycContact[] = emails.map((email, i) => ({
-    email,
-    phone: phones[i],
-  }));
+  const contacts: KycContact[] = emails.map((email, i) => ({ email, phone: phones[i] }));
   if (contacts.length === 0 && phones.length) contacts.push({ phone: phones[0] });
 
-  return { about, address: addrMatch?.[0]?.trim(), contacts };
+  return { about: extractAbout(html, text), address: extractAddress(text), contacts };
 }
 
-async function saveContacts(admin: SupabaseClient, companyId: string, data: KycData) {
+// Navigation/menu boilerplate that commonly leaks into scraped page text.
+const NAV_NOISE_RE =
+  /\b(skip to (?:main )?content|hit enter to search or esc to close|close search|close menu|open menu|toggle navigation|back to top|read more|learn more)\b/gi;
+
+/** Prefer a clean meta/OG description; fall back to de-noised visible text. */
+function extractAbout(html: string, text: string): string | undefined {
+  const og = html.match(
+    /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i
+  );
+  const meta = html.match(
+    /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i
+  );
+  const raw = (og?.[1] ?? meta?.[1] ?? text)
+    .replace(NAV_NOISE_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return raw ? raw.slice(0, 240).trim() : undefined;
+}
+
+/** Pull an address near an ADDRESS label, else a street/postal pattern; capped. */
+function extractAddress(text: string): string | undefined {
+  const labeled = text.match(
+    /\bADDRESS\b[:\s]*([^]{5,120}?)(?=\b(?:TEL|TELEPHONE|PHONE|MOBILE|FAX|EMAIL|E-?MAIL)\b|$)/i
+  );
+  let addr = labeled?.[1];
+  if (!addr) {
+    const street = text.match(
+      /\d{1,5}[\sA-Za-z0-9.,#\-]{3,80}?(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Blvd|Way|Building|Centre|Center|Tower|Singapore)\b[\sA-Za-z0-9.,#\-]{0,40}/i
+    );
+    addr = street?.[0];
+  }
+  addr = addr?.replace(/\s+/g, ' ').trim();
+  if (!addr) return undefined;
+  return addr.length > 120 ? `${addr.slice(0, 120).trim()}…` : addr;
+}
+
+async function saveContacts(
+  admin: SupabaseClient,
+  companyId: string,
+  data: KycData,
+  errors: string[]
+) {
   for (const c of data.contacts) {
     if (!c.email && !c.phone) continue;
-    await admin.from('contacts').upsert(
-      {
-        company_id: companyId,
-        full_name: c.name ?? null,
-        email: c.email ?? null,
-        phone: c.phone ?? null,
-        role_title: c.role ?? null,
-        source: 'google',
-      },
-      { onConflict: 'company_id,email', ignoreDuplicates: true }
-    );
+    // Dedupe by email. The contacts unique index is functional — (company_id,
+    // lower(email)) — which the old onConflict:'company_id,email' target did NOT
+    // match, so every upsert silently failed and no contact was ever saved.
+    if (c.email) {
+      const { data: existing } = await admin
+        .from('contacts')
+        .select('id')
+        .eq('company_id', companyId)
+        .ilike('email', c.email)
+        .maybeSingle();
+      if (existing) continue;
+    }
+    const { error } = await admin.from('contacts').insert({
+      company_id: companyId,
+      full_name: c.name ?? null,
+      email: c.email ?? null,
+      phone: c.phone ?? null,
+      role_title: c.role ?? null,
+      source: 'google',
+    });
+    // 23505 = unique violation (race / same email) — safe to ignore; surface the rest.
+    if (error && error.code !== '23505') {
+      errors.push(`save contact ${c.email ?? c.phone}: ${error.message}`);
+    }
   }
 }
 
@@ -209,16 +263,27 @@ function safeHost(url: string): string | null {
   }
 }
 
+const AGGREGATOR_RE =
+  /(facebook|instagram|twitter|x\.com|youtube|wikipedia|yelp|indeed|linkedin|crunchbase|bloomberg|glassdoor|zoominfo|dnb\.com|yellowpages)/;
+
 function looksLikeOfficialSite(
   host: string,
   name: string,
   knownWebsite: string | null
 ): boolean {
-  if (knownWebsite && host.includes(safeHost(knownWebsite) ?? '###')) return true;
-  const token = name.toLowerCase().split(/\s+/)[0]?.replace(/[^a-z0-9]/g, '');
-  if (token && token.length >= 3 && host.includes(token)) return true;
-  // Exclude common aggregators from being treated as the official site.
-  return !/(facebook|instagram|twitter|x\.com|youtube|wikipedia|yelp|indeed)/.test(host)
-    ? host.split('.').length <= 3
-    : false;
+  // Never treat directories / social profiles as the official site.
+  if (AGGREGATOR_RE.test(host)) return false;
+  // Trust the host of a website we already know for this company.
+  if (knownWebsite) {
+    const known = safeHost(knownWebsite);
+    if (known && host.includes(known)) return true;
+  }
+  // Otherwise require the host to contain one of the company's name tokens
+  // (e.g. "3pa" → 3pa.sg) — no more "any short host wins" guessing.
+  const tokens = name
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, '')
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+  return tokens.some((t) => host.includes(t));
 }

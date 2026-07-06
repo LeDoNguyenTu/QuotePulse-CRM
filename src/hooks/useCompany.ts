@@ -6,6 +6,7 @@ import type {
   Contact,
   Deal,
   EmailSend,
+  KycEnrichedData,
   KycProfile,
 } from '../lib/types';
 
@@ -202,6 +203,32 @@ export function useDeleteContact(companyId: string | undefined) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['company-contacts', companyId] });
+      qc.invalidateQueries({ queryKey: ['companies'] });
+    },
+  });
+}
+
+// Manual corrections to an enriched KYC profile (website, LinkedIn, address,
+// about, links, discovered contacts). RLS lets the workspace update kyc_profiles.
+export interface KycEdit {
+  primary_website?: string | null;
+  linkedin_company_url?: string | null;
+  other_links?: string[];
+  enriched_data?: KycEnrichedData;
+}
+
+export function useUpdateKyc(companyId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: KycEdit) => {
+      const { error } = await supabase
+        .from('kyc_profiles')
+        .update(input)
+        .eq('company_id', companyId!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company-kyc', companyId] });
       qc.invalidateQueries({ queryKey: ['companies'] });
     },
   });

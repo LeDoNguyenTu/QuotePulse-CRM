@@ -4,8 +4,17 @@
 import { supabase } from './supabase';
 
 async function invoke<T>(name: string, body?: unknown): Promise<T> {
+  // On a cold page load (notably the OAuth redirect landing on /ms-auth-callback)
+  // supabase-js may not have propagated the restored session to the functions
+  // client yet, so it would send only the anon key and the Edge Function's
+  // getUserId() would reject with "Invalid or expired session". Await session
+  // recovery and attach the user's access token explicitly.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const { data, error } = await supabase.functions.invoke<T>(name, {
     body: body ?? {},
+    headers: session ? { Authorization: `Bearer ${session.access_token}` } : undefined,
   });
   if (error) {
     // supabase-js wraps non-2xx as FunctionsHttpError; surface any JSON message.

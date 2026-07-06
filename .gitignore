@@ -19,6 +19,9 @@ supabase/.branches
 supabase/.temp
 supabase/.env
 
+# tool artifacts
+.playwright-mcp/
+
 # editor / os
 .vscode/*
 !.vscode/extensions.json

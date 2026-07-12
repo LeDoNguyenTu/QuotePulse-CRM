@@ -1,15 +1,24 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { ErrorState } from '../components/ui';
+
+const SIGNED_OUT_REASONS: Record<string, string> = {
+  timeout: 'You were signed out after 2 hours of inactivity.',
+  expired: 'Your session expired. Please sign in again.',
+};
 
 export function Login() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const notice = SIGNED_OUT_REASONS[params.get('reason') ?? ''];
+  const verified = params.get('verified') === '1';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,6 +36,16 @@ export function Login() {
 
   return (
     <AuthShell title="Sign in">
+      {verified && (
+        <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">
+          Email verified. You can sign in now.
+        </p>
+      )}
+      {notice && (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">
+          {notice}
+        </p>
+      )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="label">Email</label>

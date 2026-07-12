@@ -1,38 +1,75 @@
 // Edge Function: hubspot-ingest
 // Pulls HubSpot CRM data into Supabase in priority order:
-//   1) recycled/archived deals  2) deleted accounts + notes  3) active deals
+//   1) recycled/archived deals  2) deleted accounts  3) active deals
 // Cleans deal names into canonical companies and links deals/contacts/attachments.
+//
+// Three things this function used to get wrong, all of which looked like
+// "nothing happens when I click import":
+//   * it sent the raw Settings token as a bearer token — but a HubSpot personal
+//     access key is a refresh credential, not a bearer token (see _shared/hubspot.ts)
+//   * it asked for associations=…,notes,quotes; HubSpot 403s the ENTIRE deals
+//     request if any one association is out of scope, killing both deal passes
+//   * it stopped after 200 deals of an oldest-first listing, so a portal with
+//     more than 200 deals could never reach a newly created one
+// It also swallowed every error and still returned HTTP 200 {ok:true}.
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseAdmin.ts';
 import { cleanDealName } from '../_shared/dealName.ts';
 import {
   HubSpotClient,
+  HubSpotApiError,
   extractContactsFromText,
   type HsObject,
 } from '../_shared/hubspot.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
-// Bounded per-run to stay inside the Edge Function wall-time budget and free tier.
-const MAX_DEALS_PER_PRIORITY = 200;
+const TIME_BUDGET_MS = 110_000; // stay inside the ~150s Edge wall-time limit
+const PAGE_SIZE = 100;
+const MAX_OBJECTS_PER_RUN = 5000; // safety valve
 
 const DEAL_PROPS = ['dealname', 'dealstage', 'pipeline', 'amount', 'hs_lastmodifieddate'];
 const COMPANY_PROPS = ['name', 'domain', 'industry', 'website'];
 const CONTACT_PROPS = ['firstname', 'lastname', 'email', 'phone', 'jobtitle'];
 const NOTE_PROPS = ['hs_note_body', 'hs_attachment_ids'];
 
+const ASSOC_FULL = ['companies', 'contacts', 'notes', 'quotes'];
+const ASSOC_NO_EXTRAS = ['companies', 'contacts'];
+const ASSOC_MINIMAL = ['companies'];
+
 interface Counts {
   companies: number;
   deals: number;
   contacts: number;
   attachments: number;
+  skipped_trashed: number;
+}
+
+interface Ctx {
+  hs: HubSpotClient;
+  admin: SupabaseClient;
+  userId: string;
+  counts: Counts;
+  errors: string[];
+  warnings: string[];
+  assoc: string[];
+  filesAllowed: boolean;
+  deadline: number;
+  processed: number;
 }
 
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
 
-  const counts: Counts = { companies: 0, deals: 0, contacts: 0, attachments: 0 };
+  const counts: Counts = {
+    companies: 0,
+    deals: 0,
+    contacts: 0,
+    attachments: 0,
+    skipped_trashed: 0,
+  };
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   try {
     const userId = await getUserId(req);
@@ -43,27 +80,64 @@ Deno.serve(async (req) => {
       return errorResponse('No HubSpot token found. Add it in Settings first.', 400);
     }
 
-    const hs = new HubSpotClient(token);
-    const body = await safeJson(req);
-    const onlyCompanyId: string | undefined = body?.company_id;
+    // Resolves a private-app token as-is, or exchanges a personal access key.
+    // Throws a quotable error rather than letting a 401 vanish into errors[].
+    let hs: HubSpotClient;
+    try {
+      hs = await HubSpotClient.connect(token);
+    } catch (e) {
+      return errorResponse(e instanceof Error ? e.message : String(e), 400);
+    }
 
-    // Priority 1: recycled / archived deals.
-    await ingestDeals(hs, admin, { archived: true, priority: 'recycled', counts, errors });
+    const ctx: Ctx = {
+      hs,
+      admin,
+      userId,
+      counts,
+      errors,
+      warnings,
+      assoc: await negotiateAssociations(hs, warnings),
+      filesAllowed: true,
+      deadline: Date.now() + TIME_BUDGET_MS,
+      processed: 0,
+    };
 
-    // Priority 2: deleted accounts (archived companies) + their notes.
-    await ingestArchivedCompanies(hs, admin, { counts, errors });
+    // Priority 1: recycled / archived deals. Archived records are not covered by
+    // the Search API, so this stream always pages (the recycle bin is bounded).
+    await sweepDeals(ctx, { archived: true, priority: 'recycled', stream: 'deals:recycled' });
 
-    // Priority 3: current / active deals.
-    await ingestDeals(hs, admin, { archived: false, priority: 'current', counts, errors });
+    // Priority 2: deleted accounts (archived companies).
+    await sweepArchivedCompanies(ctx);
 
-    // If a specific company was requested we still ran a full sweep above (the
-    // cheapest correct behaviour for a scaffold); note it for the caller.
-    if (onlyCompanyId) errors.push(`Ran full sync (per-company delta not implemented).`);
+    // Priority 3: current / active deals — resumable backfill, then incremental.
+    await sweepDeals(ctx, { archived: false, priority: 'current', stream: 'deals:current' });
 
-    return json({ ok: true, counts, errors });
+    const done = Date.now() < ctx.deadline && ctx.processed < MAX_OBJECTS_PER_RUN;
+    if (!done) {
+      warnings.push(
+        'Import paused at the time limit and will resume where it left off — run it again to continue.'
+      );
+    }
+
+    const importedNothing =
+      counts.companies === 0 && counts.deals === 0 && counts.contacts === 0;
+
+    // Do NOT report success when every call failed. The old version returned
+    // ok:true here, so a total auth failure rendered as "import complete: 0 companies".
+    if (importedNothing && errors.length > 0) {
+      return json({ ok: false, counts, errors, warnings, done: false }, 502);
+    }
+
+    return json({ ok: true, counts, errors, warnings, done });
   } catch (e) {
     return json(
-      { ok: false, counts, errors: [...errors, e instanceof Error ? e.message : String(e)] },
+      {
+        ok: false,
+        counts,
+        warnings,
+        errors: [...errors, e instanceof Error ? e.message : String(e)],
+        done: false,
+      },
       500
     );
   }
@@ -71,44 +145,196 @@ Deno.serve(async (req) => {
 
 // ---------------------------------------------------------------------------
 
-async function ingestDeals(
+/**
+ * HubSpot rejects the whole request with 403 if ANY requested association type is
+ * outside the token's scopes — so one missing scope (notes, quotes) silently kills
+ * the entire deals import. Probe once and fall back to what the token can actually
+ * see, telling the user exactly which scope is missing.
+ */
+async function negotiateAssociations(
   hs: HubSpotClient,
-  admin: SupabaseClient,
-  opts: {
-    archived: boolean;
-    priority: 'recycled' | 'current';
-    counts: Counts;
-    errors: string[];
-  }
-) {
-  let processed = 0;
-  try {
-    for await (const deal of hs.paginate('deals', {
-      archived: opts.archived,
-      properties: DEAL_PROPS,
-      associations: ['companies', 'contacts', 'notes', 'quotes'],
-    })) {
-      if (processed >= MAX_DEALS_PER_PRIORITY) break;
-      processed++;
-      try {
-        await processDeal(hs, admin, deal, opts.priority, opts.counts, opts.errors);
-      } catch (e) {
-        opts.errors.push(`deal ${deal.id}: ${e instanceof Error ? e.message : e}`);
-      }
+  warnings: string[]
+): Promise<string[]> {
+  const attempts: { assoc: string[]; note?: string }[] = [
+    { assoc: ASSOC_FULL },
+    {
+      assoc: ASSOC_NO_EXTRAS,
+      note:
+        'HubSpot token lacks crm.objects.notes.read and/or crm.objects.quotes.read — ' +
+        'importing companies, deals and contacts only. Notes, quotes and their attachments are skipped.',
+    },
+    {
+      assoc: ASSOC_MINIMAL,
+      note:
+        'HubSpot token also lacks crm.objects.contacts.read — importing companies and deals only.',
+    },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      await hs.probeAssociations('deals', attempt.assoc);
+      if (attempt.note) warnings.push(attempt.note);
+      return attempt.assoc;
+    } catch (e) {
+      if (e instanceof HubSpotApiError && e.status === 403) continue;
+      throw e; // 401 / 5xx / network — a real failure, not a scope problem
     }
+  }
+  throw new HubSpotApiError(
+    403,
+    '/crm/v3/objects/deals',
+    'The HubSpot token cannot read deals at all. Grant crm.objects.deals.read.'
+  );
+}
+
+async function sweepDeals(
+  ctx: Ctx,
+  opts: { archived: boolean; priority: 'recycled' | 'current'; stream: string }
+) {
+  try {
+    const state = await loadSyncState(ctx.admin, ctx.userId, opts.stream);
+
+    // Incremental: only deals modified since the last completed sweep. Not
+    // available for archived records (the Search API ignores them).
+    if (!opts.archived && state.phase === 'incremental' && state.last_synced_at) {
+      const startedAt = new Date().toISOString();
+      let after: string | undefined;
+      do {
+        if (outOfBudget(ctx)) return;
+        const pageRes = await ctx.hs.searchModifiedSince(
+          'deals',
+          state.last_synced_at,
+          DEAL_PROPS,
+          after
+        );
+        for (const hit of pageRes.results) {
+          if (outOfBudget(ctx)) return;
+          try {
+            // Search doesn't return associations — hydrate each changed deal.
+            const deal = await ctx.hs.getOne('deals', hit.id, DEAL_PROPS, ctx.assoc);
+            await processDeal(ctx, deal, opts.priority);
+          } catch (e) {
+            ctx.errors.push(`deal ${hit.id}: ${msg(e)}`);
+          }
+          ctx.processed++;
+        }
+        after = pageRes.after;
+      } while (after);
+
+      await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
+        phase: 'incremental',
+        page_cursor: null,
+        last_synced_at: startedAt,
+      });
+      return;
+    }
+
+    // Backfill: page through everything, persisting the cursor so the next run
+    // RESUMES instead of restarting from the oldest deal.
+    let cursor = state.page_cursor ?? undefined;
+    const startedAt = new Date().toISOString();
+
+    for (;;) {
+      if (outOfBudget(ctx)) {
+        await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
+          phase: 'backfill',
+          page_cursor: cursor ?? null,
+          last_synced_at: state.last_synced_at,
+        });
+        return;
+      }
+
+      const pageRes = await ctx.hs.page('deals', {
+        archived: opts.archived,
+        properties: DEAL_PROPS,
+        associations: ctx.assoc,
+        limit: PAGE_SIZE,
+        after: cursor,
+      });
+
+      for (const deal of pageRes.results) {
+        if (outOfBudget(ctx)) break;
+        try {
+          await processDeal(ctx, deal, opts.priority);
+        } catch (e) {
+          ctx.errors.push(`deal ${deal.id}: ${msg(e)}`);
+        }
+        ctx.processed++;
+      }
+
+      cursor = pageRes.after;
+      if (!cursor) break; // sweep complete
+    }
+
+    // Archived streams have no incremental mode — keep re-sweeping them (the
+    // recycle bin is small). Active deals graduate to incremental.
+    await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
+      phase: opts.archived ? 'backfill' : 'incremental',
+      page_cursor: null,
+      last_synced_at: startedAt,
+    });
   } catch (e) {
-    opts.errors.push(`deals(${opts.priority}): ${e instanceof Error ? e.message : e}`);
+    ctx.errors.push(`deals(${opts.priority}): ${msg(e)}`);
   }
 }
 
-async function processDeal(
-  hs: HubSpotClient,
-  admin: SupabaseClient,
-  deal: HsObject,
-  priority: 'recycled' | 'current',
-  counts: Counts,
-  errors: string[]
-) {
+async function sweepArchivedCompanies(ctx: Ctx) {
+  const stream = 'companies:deleted';
+  try {
+    const state = await loadSyncState(ctx.admin, ctx.userId, stream);
+    let cursor = state.page_cursor ?? undefined;
+
+    for (;;) {
+      if (outOfBudget(ctx)) {
+        await saveSyncState(ctx.admin, ctx.userId, stream, {
+          phase: 'backfill',
+          page_cursor: cursor ?? null,
+          last_synced_at: state.last_synced_at,
+        });
+        return;
+      }
+
+      const pageRes = await ctx.hs.page('companies', {
+        archived: true,
+        properties: COMPANY_PROPS,
+        limit: PAGE_SIZE,
+        after: cursor,
+      });
+
+      for (const co of pageRes.results) {
+        if (outOfBudget(ctx)) break;
+        const name = co.properties.name ?? 'Unknown';
+        try {
+          const id = await upsertCompany(ctx, {
+            name_clean: cleanDealName(name) || name,
+            name_raw: name,
+            industry: co.properties.industry ?? null,
+            website: co.properties.website ?? co.properties.domain ?? null,
+            hubspot_company_id: co.id,
+            source_priority: 'deleted',
+          });
+          if (id) ctx.counts.companies++;
+        } catch (e) {
+          ctx.errors.push(`archived company ${co.id}: ${msg(e)}`);
+        }
+        ctx.processed++;
+      }
+
+      cursor = pageRes.after;
+      if (!cursor) break;
+    }
+
+    await saveSyncState(ctx.admin, ctx.userId, stream, {
+      phase: 'backfill',
+      page_cursor: null,
+      last_synced_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    ctx.errors.push(`archived companies: ${msg(e)}`);
+  }
+}
+
+async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'current') {
   const rawName = deal.properties.dealname ?? '';
   const cleaned = cleanDealName(rawName) || rawName || 'Unknown';
 
@@ -120,15 +346,15 @@ async function processDeal(
   if (assocCompany) {
     hubspotCompanyId = assocCompany.id;
     try {
-      const co = await hs.getOne('companies', assocCompany.id, COMPANY_PROPS);
+      const co = await ctx.hs.getOne('companies', assocCompany.id, COMPANY_PROPS);
       industry = co.properties.industry ?? null;
       website = co.properties.website ?? co.properties.domain ?? null;
     } catch (e) {
-      errors.push(`company ${assocCompany.id}: ${e instanceof Error ? e.message : e}`);
+      ctx.errors.push(`company ${assocCompany.id}: ${msg(e)}`);
     }
   }
 
-  const companyId = await upsertCompany(admin, {
+  const companyId = await upsertCompany(ctx, {
     name_clean: cleaned,
     name_raw: rawName,
     industry,
@@ -136,11 +362,13 @@ async function processDeal(
     hubspot_company_id: hubspotCompanyId,
     source_priority: priority,
   });
-  counts.companies++;
+  // upsertCompany returns null when the company sits in the user's recycle bin.
+  if (!companyId) return;
+  ctx.counts.companies++;
 
-  // Upsert the deal.
-  const { error: dealErr } = await admin.from('deals').upsert(
+  const { error: dealErr } = await ctx.admin.from('deals').upsert(
     {
+      owner_id: ctx.userId,
       hubspot_deal_id: deal.id,
       company_id: companyId,
       deal_name_raw: rawName,
@@ -150,22 +378,22 @@ async function processDeal(
       is_archived: !!deal.archived || priority === 'recycled',
       archived_at: deal.archivedAt ?? null,
     },
-    { onConflict: 'hubspot_deal_id' }
+    { onConflict: 'owner_id,hubspot_deal_id' }
   );
   if (dealErr) throw dealErr;
-  counts.deals++;
+  ctx.counts.deals++;
 
-  const dealRowId = await getDealRowId(admin, deal.id);
+  const dealRowId = await getDealRowId(ctx, deal.id);
 
   // Associated contacts.
   for (const c of deal.associations?.contacts?.results ?? []) {
     try {
-      const contact = await hs.getOne('contacts', c.id, CONTACT_PROPS);
+      const contact = await ctx.hs.getOne('contacts', c.id, CONTACT_PROPS);
       const full = [contact.properties.firstname, contact.properties.lastname]
         .filter(Boolean)
         .join(' ')
         .trim();
-      await upsertContact(admin, {
+      const added = await saveContact(ctx, {
         company_id: companyId,
         full_name: full || null,
         email: contact.properties.email ?? null,
@@ -173,20 +401,20 @@ async function processDeal(
         role_title: contact.properties.jobtitle ?? null,
         source: 'hubspot_contact',
       });
-      counts.contacts++;
+      if (added) ctx.counts.contacts++;
     } catch (e) {
-      errors.push(`contact ${c.id}: ${e instanceof Error ? e.message : e}`);
+      ctx.errors.push(`contact ${c.id}: ${msg(e)}`);
     }
   }
 
-  // Associated notes -> parse for contacts + attachment ids (recycled priority).
+  // Associated notes -> parse for contacts + attachment ids.
   for (const n of deal.associations?.notes?.results ?? []) {
     try {
-      const note = await hs.getOne('notes', n.id, NOTE_PROPS);
+      const note = await ctx.hs.getOne('notes', n.id, NOTE_PROPS);
       const bodyText = note.properties.hs_note_body ?? '';
       for (const ex of extractContactsFromText(bodyText)) {
         if (!ex.email && !ex.phone) continue;
-        await upsertContact(admin, {
+        const added = await saveContact(ctx, {
           company_id: companyId,
           full_name: ex.full_name ?? null,
           email: ex.email ?? null,
@@ -194,79 +422,56 @@ async function processDeal(
           role_title: ex.role_title ?? null,
           source: 'note_section',
         });
-        counts.contacts++;
+        if (added) ctx.counts.contacts++;
       }
-      // Note attachments (file ids) -> resolve URLs best-effort.
+
       const attachIds = (note.properties.hs_attachment_ids ?? '')
         .split(';')
         .map((s) => s.trim())
         .filter(Boolean);
       for (const fileId of attachIds) {
-        const meta = await resolveFile(hs, fileId, errors);
-        await upsertAttachment(admin, {
+        const meta = await resolveFile(ctx, fileId);
+        const added = await saveAttachment(ctx, {
           deal_id: dealRowId,
           hubspot_attachment_id: fileId,
           file_name: meta?.name ?? `file-${fileId}`,
           file_url: meta?.url ?? null,
           source_type: isQuoteName(meta?.name) ? 'quote' : 'generic',
         });
-        counts.attachments++;
+        if (added) ctx.counts.attachments++;
       }
     } catch (e) {
-      errors.push(`note ${n.id}: ${e instanceof Error ? e.message : e}`);
+      ctx.errors.push(`note ${n.id}: ${msg(e)}`);
     }
   }
 
   // Associated quotes -> store as quote attachments.
   for (const q of deal.associations?.quotes?.results ?? []) {
     try {
-      await upsertAttachment(admin, {
+      const added = await saveAttachment(ctx, {
         deal_id: dealRowId,
         hubspot_attachment_id: q.id,
         file_name: `quote-${q.id}.pdf`,
         file_url: null, // quote PDF link requires the Quotes public-link API
         source_type: 'quote',
       });
-      counts.attachments++;
+      if (added) ctx.counts.attachments++;
     } catch (e) {
-      errors.push(`quote ${q.id}: ${e instanceof Error ? e.message : e}`);
+      ctx.errors.push(`quote ${q.id}: ${msg(e)}`);
     }
-  }
-}
-
-async function ingestArchivedCompanies(
-  hs: HubSpotClient,
-  admin: SupabaseClient,
-  opts: { counts: Counts; errors: string[] }
-) {
-  let processed = 0;
-  try {
-    for await (const co of hs.paginate('companies', {
-      archived: true,
-      properties: COMPANY_PROPS,
-    })) {
-      if (processed >= MAX_DEALS_PER_PRIORITY) break;
-      processed++;
-      const name = co.properties.name ?? 'Unknown';
-      await upsertCompany(admin, {
-        name_clean: cleanDealName(name) || name,
-        name_raw: name,
-        industry: co.properties.industry ?? null,
-        website: co.properties.website ?? co.properties.domain ?? null,
-        hubspot_company_id: co.id,
-        source_priority: 'deleted',
-      });
-      opts.counts.companies++;
-    }
-  } catch (e) {
-    opts.errors.push(`archived companies: ${e instanceof Error ? e.message : e}`);
   }
 }
 
 // --- DB helpers ------------------------------------------------------------
 
+/**
+ * Find-or-create by lower(name_clean) WITHIN THIS OWNER. Returns null when the
+ * company is in the user's recycle bin: re-importing it would otherwise recreate
+ * a row that company_dashboard hides (deleted_at is not null), i.e. an invisible
+ * zombie that also blocks creating a fresh one via the unique name index.
+ */
 async function upsertCompany(
-  admin: SupabaseClient,
+  ctx: Ctx,
   input: {
     name_clean: string;
     name_raw: string;
@@ -275,47 +480,60 @@ async function upsertCompany(
     hubspot_company_id: string | null;
     source_priority: 'recycled' | 'deleted' | 'current';
   }
-): Promise<string> {
-  // Match on lower(name_clean) — the canonical key. Find-or-create + merge.
-  const { data: existing } = await admin
+): Promise<string | null> {
+  const { data: existing } = await ctx.admin
     .from('companies')
-    .select('id, industry, website, hubspot_company_id')
-    .ilike('name_clean', input.name_clean)
+    .select('id, industry, website, hubspot_company_id, deleted_at')
+    .eq('owner_id', ctx.userId)
+    .ilike('name_clean', escapeLike(input.name_clean))
     .maybeSingle();
 
   if (existing) {
-    await admin
+    if (existing.deleted_at) {
+      ctx.counts.skipped_trashed++;
+      return null;
+    }
+    await ctx.admin
       .from('companies')
       .update({
         industry: input.industry ?? existing.industry,
         website: input.website ?? existing.website,
         hubspot_company_id: input.hubspot_company_id ?? existing.hubspot_company_id,
       })
-      .eq('id', existing.id);
+      .eq('id', existing.id)
+      .eq('owner_id', ctx.userId);
     return existing.id as string;
   }
 
-  const { data, error } = await admin
+  const { data, error } = await ctx.admin
     .from('companies')
-    .insert(input)
+    .insert({ ...input, owner_id: ctx.userId })
     .select('id')
     .single();
   if (error) throw error;
   return data!.id as string;
 }
 
-async function getDealRowId(admin: SupabaseClient, hubspotDealId: string): Promise<string> {
-  const { data, error } = await admin
+async function getDealRowId(ctx: Ctx, hubspotDealId: string): Promise<string> {
+  const { data, error } = await ctx.admin
     .from('deals')
     .select('id')
+    .eq('owner_id', ctx.userId)
     .eq('hubspot_deal_id', hubspotDealId)
     .single();
   if (error) throw error;
   return data!.id as string;
 }
 
-async function upsertContact(
-  admin: SupabaseClient,
+/**
+ * Dedupe-then-insert. The contacts unique index is FUNCTIONAL and PARTIAL —
+ * (company_id, lower(email)) where email is not null — which `onConflict` cannot
+ * target: Postgres raises 42P10, whose message does not contain "duplicate", so
+ * the old `.includes('duplicate')` guard let it through as a hard error and every
+ * HubSpot contact was silently dropped. See CLAUDE.md "Gotchas".
+ */
+async function saveContact(
+  ctx: Ctx,
   input: {
     company_id: string;
     full_name: string | null;
@@ -324,20 +542,33 @@ async function upsertContact(
     role_title: string | null;
     source: string;
   }
-) {
+): Promise<boolean> {
+  if (!input.email && !input.phone) return false;
+
   if (input.email) {
-    // Rely on the (company_id, lower(email)) unique index.
-    const { error } = await admin
+    const { data: dup } = await ctx.admin
       .from('contacts')
-      .upsert(input, { onConflict: 'company_id,email', ignoreDuplicates: true });
-    if (error && !`${error.message}`.includes('duplicate')) throw error;
-  } else {
-    await admin.from('contacts').insert(input);
+      .select('id')
+      .eq('company_id', input.company_id)
+      .ilike('email', escapeLike(input.email))
+      .maybeSingle();
+    if (dup) return false;
   }
+
+  const { error } = await ctx.admin
+    .from('contacts')
+    .insert({ ...input, owner_id: ctx.userId });
+  if (error) {
+    if (error.code === '23505') return false; // concurrent insert of the same email
+    ctx.errors.push(`save contact ${input.email ?? input.phone}: ${error.message}`);
+    return false;
+  }
+  return true;
 }
 
-async function upsertAttachment(
-  admin: SupabaseClient,
+/** Same 42P10 problem: attachments' unique index is partial on hubspot_attachment_id. */
+async function saveAttachment(
+  ctx: Ctx,
   input: {
     deal_id: string;
     hubspot_attachment_id: string;
@@ -345,24 +576,101 @@ async function upsertAttachment(
     file_url: string | null;
     source_type: 'quote' | 'generic';
   }
-) {
-  const { error } = await admin
+): Promise<boolean> {
+  const { data: dup } = await ctx.admin
     .from('attachments')
-    .upsert(input, { onConflict: 'hubspot_attachment_id', ignoreDuplicates: false });
-  if (error) throw error;
+    .select('id')
+    .eq('owner_id', ctx.userId)
+    .eq('hubspot_attachment_id', input.hubspot_attachment_id)
+    .maybeSingle();
+
+  if (dup) {
+    await ctx.admin
+      .from('attachments')
+      .update({ file_name: input.file_name, file_url: input.file_url, source_type: input.source_type })
+      .eq('id', dup.id);
+    return false;
+  }
+
+  const { error } = await ctx.admin
+    .from('attachments')
+    .insert({ ...input, owner_id: ctx.userId });
+  if (error) {
+    if (error.code === '23505') return false;
+    ctx.errors.push(`save attachment ${input.hubspot_attachment_id}: ${error.message}`);
+    return false;
+  }
+  return true;
+}
+
+// --- sync_state ------------------------------------------------------------
+
+interface SyncState {
+  phase: 'backfill' | 'incremental';
+  page_cursor: string | null;
+  last_synced_at: string | null;
+}
+
+async function loadSyncState(
+  admin: SupabaseClient,
+  userId: string,
+  stream: string
+): Promise<SyncState> {
+  const { data } = await admin
+    .from('sync_state')
+    .select('phase, page_cursor, last_synced_at')
+    .eq('owner_id', userId)
+    .eq('object_type', stream)
+    .maybeSingle();
+  return {
+    phase: (data?.phase as SyncState['phase']) ?? 'backfill',
+    page_cursor: data?.page_cursor ?? null,
+    last_synced_at: data?.last_synced_at ?? null,
+  };
+}
+
+async function saveSyncState(
+  admin: SupabaseClient,
+  userId: string,
+  stream: string,
+  state: SyncState
+) {
+  await admin.from('sync_state').upsert(
+    { owner_id: userId, object_type: stream, ...state },
+    { onConflict: 'owner_id,object_type' }
+  );
+}
+
+// --- misc ------------------------------------------------------------------
+
+function outOfBudget(ctx: Ctx): boolean {
+  return Date.now() >= ctx.deadline || ctx.processed >= MAX_OBJECTS_PER_RUN;
 }
 
 async function resolveFile(
-  hs: HubSpotClient,
-  fileId: string,
-  errors: string[]
+  ctx: Ctx,
+  fileId: string
 ): Promise<{ name: string; url: string } | null> {
+  if (!ctx.filesAllowed) return null;
   try {
-    return await hs.getFileMeta(fileId);
+    return await ctx.hs.getFileMeta(fileId);
   } catch (e) {
-    errors.push(`file ${fileId}: ${e instanceof Error ? e.message : e}`);
+    if (e instanceof HubSpotApiError && e.status === 403) {
+      // Report the missing scope once, then stop hammering the Files API.
+      ctx.filesAllowed = false;
+      ctx.warnings.push(
+        'HubSpot token lacks the Files read scope — attachment file names and download URLs are unavailable.'
+      );
+      return null;
+    }
+    ctx.errors.push(`file ${fileId}: ${msg(e)}`);
     return null;
   }
+}
+
+/** `%` and `_` are wildcards in ilike; an unescaped company name can match many rows. */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (m) => `\\${m}`);
 }
 
 function isQuoteName(name?: string): boolean {
@@ -370,10 +678,6 @@ function isQuoteName(name?: string): boolean {
   return /quote|myob|invoice/i.test(name) && /\.pdf$/i.test(name);
 }
 
-async function safeJson(req: Request): Promise<{ company_id?: string } | null> {
-  try {
-    return await req.json();
-  } catch {
-    return null;
-  }
+function msg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

@@ -64,10 +64,13 @@ Deno.serve(async (req) => {
 
     let sentLast24h = await countSentLast24h(admin, userId);
 
+    // owner filter is mandatory: the admin client bypasses RLS, so without it
+    // this drains OTHER users' queues and sends their mail from this mailbox.
     const { data: queued, error: qErr } = await admin
       .from('email_sends')
       .select('*')
       .eq('status', 'queued')
+      .eq('created_by', userId)
       .order('created_at', { ascending: true })
       .limit(BATCH_FETCH);
     if (qErr) throw qErr;
@@ -76,7 +79,9 @@ Deno.serve(async (req) => {
       // Stop if we're out of time; the client will call us again.
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
-      // Daily cap → block the rest of the queue with a clear message.
+      // Daily cap → block the rest of THIS user's queue with a clear message.
+      // Without the created_by filter, one user hitting their cap blocks
+      // everyone else's queued mail too.
       if (sentLast24h >= dailyLimit) {
         const { count } = await admin
           .from('email_sends')
@@ -85,6 +90,7 @@ Deno.serve(async (req) => {
             error_message: `Daily send limit (${dailyLimit}) reached.`,
           })
           .eq('status', 'queued')
+          .eq('created_by', userId)
           .select('id', { count: 'exact', head: true });
         blocked += count ?? 0;
         break;
@@ -93,7 +99,7 @@ Deno.serve(async (req) => {
       processed++;
       try {
         // Resolve render vars from the linked company + contact.
-        const vars = await resolveVars(admin, row.company_id, row.to_email);
+        const vars = await resolveVars(admin, userId, row.company_id, row.to_email);
         const subject = renderTemplate(row.subject ?? '', vars);
         const bodyText = renderTemplate(row.body_rendered ?? '', vars);
 
@@ -133,7 +139,7 @@ Deno.serve(async (req) => {
       if (Date.now() - start < TIME_BUDGET_MS) await sleep(cooldownMs);
     }
 
-    const remaining = await countQueued(admin);
+    const remaining = await countQueued(admin, userId);
 
     return json({
       ok: true,
@@ -166,6 +172,7 @@ Deno.serve(async (req) => {
 
 async function resolveVars(
   admin: SupabaseClient,
+  userId: string,
   companyId: string | null,
   toEmail: string
 ): Promise<Record<string, string | null>> {
@@ -178,6 +185,7 @@ async function resolveVars(
       .from('companies')
       .select('name_clean, industry')
       .eq('id', companyId)
+      .eq('owner_id', userId)
       .maybeSingle();
     company_name = company?.name_clean ?? null;
     industry = company?.industry ?? null;
@@ -186,6 +194,7 @@ async function resolveVars(
       .from('contacts')
       .select('full_name')
       .eq('company_id', companyId)
+      .eq('owner_id', userId)
       .ilike('email', toEmail)
       .maybeSingle();
     contact_name = contact?.full_name ?? null;
@@ -204,10 +213,11 @@ async function countSentLast24h(admin: SupabaseClient, userId: string): Promise<
   return count ?? 0;
 }
 
-async function countQueued(admin: SupabaseClient): Promise<number> {
+async function countQueued(admin: SupabaseClient, userId: string): Promise<number> {
   const { count } = await admin
     .from('email_sends')
     .select('id', { count: 'exact', head: true })
-    .eq('status', 'queued');
+    .eq('status', 'queued')
+    .eq('created_by', userId);
   return count ?? 0;
 }

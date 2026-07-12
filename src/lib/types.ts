@@ -100,15 +100,28 @@ export interface KycContact {
   email?: string;
   phone?: string;
   role?: string;
+  /** Page the contact was found on (site contact page, LinkedIn, …). */
+  source_url?: string;
+}
+
+/** Where a single enriched field came from, so a wrong value is traceable. */
+export interface KycFieldSource {
+  field: string;
+  value: string;
+  url: string;
 }
 
 export interface KycEnrichedData {
   website?: string;
   linkedin?: string;
+  facebook?: string;
+  phone?: string;
+  industry?: string;
   contacts?: KycContact[];
   about?: string;
   address?: string;
   other_links?: string[];
+  sources?: KycFieldSource[];
   [key: string]: unknown;
 }
 

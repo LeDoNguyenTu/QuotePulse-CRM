@@ -11,6 +11,7 @@ import { Templates } from './pages/Templates';
 import { Settings } from './pages/Settings';
 import { Trash } from './pages/Trash';
 import { MsAuthCallback } from './pages/MsAuthCallback';
+import { AuthCallback } from './pages/AuthCallback';
 
 export default function App() {
   return (
@@ -20,6 +21,8 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/ms-auth-callback" element={<MsAuthCallback />} />
+        {/* Landing page for Supabase auth emails (signup confirmation, etc). */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         <Route
           path="/"

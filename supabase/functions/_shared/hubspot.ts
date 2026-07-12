@@ -15,12 +15,96 @@ export interface HsPage {
   paging?: { next?: { after: string } };
 }
 
+/** Carries the HTTP status so callers can tell 401 (bad token) from 403 (missing scope). */
+export class HubSpotApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly path: string,
+    readonly body: string
+  ) {
+    super(`HubSpot ${status} ${path}: ${body.slice(0, 400)}`);
+    this.name = 'HubSpotApiError';
+  }
+}
+
+export type TokenKind = 'private_app' | 'personal_access_key';
+
+/**
+ * HubSpot has two credential shapes and only ONE of them is a bearer token:
+ *
+ *   * Private App access token — plain text, `pat-na1-…`. Used directly as
+ *     `Authorization: Bearer`. Requires admin rights to create.
+ *
+ *   * Personal Access Key — base64 protobuf, starts `CiR…`. This is the HubSpot
+ *     *CLI* credential (`hs auth`). It is a REFRESH credential, NOT a bearer
+ *     token: sending it to /crm/v3/* returns 401 no matter which scopes are
+ *     ticked on it. It must first be exchanged for a short-lived access token,
+ *     which is what the CLI does internally.
+ *
+ * Pasting a personal access key into the Settings field and getting silent
+ * "0 companies imported" was the original bug this function exists to fix.
+ */
+export async function resolveAccessToken(
+  rawToken: string
+): Promise<{ accessToken: string; kind: TokenKind }> {
+  const token = rawToken.trim();
+  if (!token) throw new Error('HubSpot token is empty.');
+
+  if (token.startsWith('pat-')) {
+    return { accessToken: token, kind: 'private_app' };
+  }
+
+  const res = await fetch(`${BASE}/localdevauth/v1/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ encodedOAuthRefreshToken: token }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const raw = await res.text();
+
+  if (!res.ok) {
+    throw new Error(
+      `HubSpot rejected this credential (${res.status}). It does not look like a valid ` +
+        `Private App access token (which starts with "pat-") and it could not be exchanged ` +
+        `as a personal access key. Regenerate the key in HubSpot, or paste a Private App ` +
+        `token if your admin can provide one. HubSpot said: ${raw.slice(0, 300)}`
+    );
+  }
+
+  let body: { accessToken?: string; oauthAccessToken?: string };
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `HubSpot token exchange returned non-JSON (${res.status}): ${raw.slice(0, 200)}`
+    );
+  }
+
+  // Field name differs across HubSpot CLI lib versions.
+  const accessToken = body.accessToken ?? body.oauthAccessToken;
+  if (!accessToken) {
+    throw new Error(
+      `HubSpot token exchange succeeded but returned no access token: ${raw.slice(0, 200)}`
+    );
+  }
+  return { accessToken, kind: 'personal_access_key' };
+}
+
 export class HubSpotClient {
-  constructor(private token: string) {}
+  private constructor(
+    private accessToken: string,
+    readonly tokenKind: TokenKind
+  ) {}
+
+  /** Resolves whichever credential the user pasted into a usable bearer token. */
+  static async connect(rawToken: string): Promise<HubSpotClient> {
+    const { accessToken, kind } = await resolveAccessToken(rawToken);
+    return new HubSpotClient(accessToken, kind);
+  }
 
   private headers() {
     return {
-      Authorization: `Bearer ${this.token}`,
+      Authorization: `Bearer ${this.accessToken}`,
       'Content-Type': 'application/json',
     };
   }
@@ -37,48 +121,99 @@ export class HubSpotClient {
         await sleep(Math.min(retry, 10) * 1000);
         continue;
       }
-      if (!res.ok) {
-        throw new Error(`HubSpot ${res.status} ${path}: ${await res.text()}`);
-      }
+      if (!res.ok) throw new HubSpotApiError(res.status, path, await res.text());
       return (await res.json()) as HsPage;
     }
     throw new Error(`HubSpot rate-limited after retries: ${path}`);
   }
 
   /**
-   * Page through an object type. `archived=true` targets the recycle bin.
-   * `associations` pulls linked object ids inline (e.g. companies, contacts).
+   * Cheap 1-row request used to find out whether the token's scopes allow a given
+   * association set. HubSpot rejects the WHOLE request with 403 if any requested
+   * association type is out of scope, so this has to be probed rather than
+   * discovered per-deal.
    */
-  async *paginate(
+  async probeAssociations(
+    objectType: 'deals' | 'companies',
+    associations: string[],
+    archived = false
+  ): Promise<void> {
+    await this.get(`/crm/v3/objects/${objectType}`, {
+      limit: '1',
+      archived: String(archived),
+      ...(associations.length ? { associations: associations.join(',') } : {}),
+    });
+  }
+
+  /** One page of an object type. Returns the results plus the next cursor. */
+  async page(
     objectType: 'deals' | 'contacts' | 'companies' | 'notes' | 'quotes',
     opts: {
       archived?: boolean;
       properties?: string[];
       associations?: string[];
       limit?: number;
+      after?: string;
     } = {}
-  ): AsyncGenerator<HsObject> {
-    let after: string | undefined;
-    do {
-      const params: Record<string, string> = {
-        limit: String(opts.limit ?? 100),
-        archived: String(!!opts.archived),
-      };
-      if (opts.properties?.length) params.properties = opts.properties.join(',');
-      if (opts.associations?.length) params.associations = opts.associations.join(',');
-      if (after) params.after = after;
+  ): Promise<{ results: HsObject[]; after?: string }> {
+    const params: Record<string, string> = {
+      limit: String(opts.limit ?? 100),
+      archived: String(!!opts.archived),
+    };
+    if (opts.properties?.length) params.properties = opts.properties.join(',');
+    if (opts.associations?.length) params.associations = opts.associations.join(',');
+    if (opts.after) params.after = opts.after;
 
-      const page = await this.get(`/crm/v3/objects/${objectType}`, params);
-      for (const obj of page.results) yield obj;
-      after = page.paging?.next?.after;
-    } while (after);
+    const res = await this.get(`/crm/v3/objects/${objectType}`, params);
+    return { results: res.results, after: res.paging?.next?.after };
   }
 
-  /** Files API: resolve a file id to its name + signed URL (best-effort). */
-  async getFileMeta(fileId: string): Promise<{ name: string; url: string } | null> {
-    const res = await fetch(`${BASE}/files/v3/files/${fileId}`, {
+  /**
+   * Search API — the only way to fetch "changed since X". Note it does NOT return
+   * associations and does NOT cover archived records, so callers hydrate each hit
+   * with getOne() and keep archived streams on the paging path.
+   */
+  async searchModifiedSince(
+    objectType: 'deals' | 'companies',
+    sinceIso: string,
+    properties: string[],
+    after?: string
+  ): Promise<{ results: HsObject[]; after?: string }> {
+    const res = await fetch(`${BASE}/crm/v3/objects/${objectType}/search`, {
+      method: 'POST',
       headers: this.headers(),
+      body: JSON.stringify({
+        filterGroups: [
+          {
+            filters: [
+              {
+                propertyName: 'hs_lastmodifieddate',
+                operator: 'GT',
+                value: String(new Date(sinceIso).getTime()), // HubSpot wants epoch ms
+              },
+            ],
+          },
+        ],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
+        properties,
+        limit: 100,
+        ...(after ? { after } : {}),
+      }),
     });
+    if (!res.ok) {
+      throw new HubSpotApiError(res.status, `/crm/v3/objects/${objectType}/search`, await res.text());
+    }
+    const page = (await res.json()) as HsPage;
+    return { results: page.results, after: page.paging?.next?.after };
+  }
+
+  /** Files API: resolve a file id to its name + signed URL. Throws on 403 so the
+   *  caller can report "missing files scope" once instead of per attachment. */
+  async getFileMeta(fileId: string): Promise<{ name: string; url: string } | null> {
+    const res = await fetch(`${BASE}/files/v3/files/${fileId}`, { headers: this.headers() });
+    if (res.status === 403) {
+      throw new HubSpotApiError(403, `/files/v3/files/${fileId}`, await res.text());
+    }
     if (!res.ok) return null;
     const f = (await res.json()) as { name?: string; url?: string };
     return { name: f.name ?? `file-${fileId}`, url: f.url ?? '' };
@@ -97,7 +232,9 @@ export class HubSpotClient {
     const url = new URL(`${BASE}/crm/v3/objects/${objectType}/${id}`);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     const res = await fetch(url.toString(), { headers: this.headers() });
-    if (!res.ok) throw new Error(`HubSpot getOne ${objectType}/${id}: ${res.status}`);
+    if (!res.ok) {
+      throw new HubSpotApiError(res.status, `/crm/v3/objects/${objectType}/${id}`, await res.text());
+    }
     return (await res.json()) as HsObject;
   }
 }

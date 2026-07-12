@@ -46,6 +46,9 @@ export function useEmailQueue() {
       throw new Error('None of the selected companies have a primary contact email.');
     }
 
+    // created_by is filled by the column default auth.uid() (0005_tenancy.sql).
+    // It used to stay NULL until send time, which is what let one user's queue
+    // be drained by another user's mailbox.
     const { error: insErr } = await supabase.from('email_sends').insert(rows);
     if (insErr) throw insErr;
     return rows.length;
@@ -73,6 +76,8 @@ export function useEmailQueue() {
   return { enqueue, drain, running, progress, error, MIN_COOLDOWN };
 }
 
+// RLS (created_by = auth.uid()) scopes this to the caller, so it now agrees with
+// the server-side daily-cap count. Before 0005 it counted every user's sends.
 export async function countSentLast24h(): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { count, error } = await supabase

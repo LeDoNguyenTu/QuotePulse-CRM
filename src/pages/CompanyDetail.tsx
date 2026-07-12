@@ -34,12 +34,17 @@ export function CompanyDetail() {
     setBanner(null);
     try {
       const res = await functions.hubspotIngest({ company_id: id });
+      const problems = [...(res.warnings ?? []), ...(res.errors ?? [])];
       setBanner(
-        `Updated: ${res.counts.deals} deals, ${res.counts.contacts} contacts, ${res.counts.attachments} attachments.`
+        `Updated: ${res.counts.deals} deals, ${res.counts.contacts} contacts, ${res.counts.attachments} attachments.` +
+          // Show the real reason rather than a warning count — a HubSpot auth or
+          // scope failure used to be invisible here.
+          (problems.length ? `\n${problems.join('\n')}` : '')
       );
       ['company-deals', 'company-contacts', 'company-attachments'].forEach((k) =>
         qc.invalidateQueries({ queryKey: [k, id] })
       );
+      qc.invalidateQueries({ queryKey: ['company', id] });
     } catch (e) {
       setBanner(e instanceof Error ? e.message : String(e));
     } finally {
@@ -92,7 +97,7 @@ export function CompanyDetail() {
       />
 
       {banner && (
-        <div className="rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800">
+        <div className="whitespace-pre-line rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800">
           {banner}
         </div>
       )}

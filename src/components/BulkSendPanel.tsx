@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { CompanyDashboardRow } from '../lib/types';
 import { useTemplates } from '../hooks/useTemplates';
 import { useSettings } from '../hooks/useSettings';
@@ -206,6 +207,16 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
           </div>
         )}
 
+        {!settings?.ms_refresh_token && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">
+            No Microsoft mailbox connected — connect one in{' '}
+            <Link className="underline" to="/settings">
+              Settings
+            </Link>{' '}
+            to send.
+          </p>
+        )}
+
         <div className="flex justify-end gap-2">
           <button className="btn-secondary" onClick={onClose} disabled={running}>
             Close
@@ -213,7 +224,13 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
           <button
             className="btn-primary"
             onClick={handleSend}
-            disabled={running || !templateId || recipients.length === 0}
+            disabled={
+              running ||
+              !templateId ||
+              recipients.length === 0 ||
+              // Sending without a mailbox used to be reachable and only failed on click.
+              !settings?.ms_refresh_token
+            }
           >
             {running ? 'Sending…' : `Queue & send ${recipients.length}`}
           </button>

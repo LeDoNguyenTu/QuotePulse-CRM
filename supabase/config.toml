@@ -20,8 +20,17 @@ port = 54323
 
 [auth]
 enabled = true
+# NOTE: this configures the LOCAL stack only. The hosted project's Site URL and
+# redirect allow-list live in the Supabase dashboard (Authentication -> URL
+# Configuration) and are NOT in this repo. The hosted default is
+# http://localhost:3000, which is why production verification emails linked to a
+# dead page — set it to the Vercel domain there.
 site_url = "http://localhost:5173"
-additional_redirect_urls = ["http://localhost:5173", "http://localhost:5173/ms-auth-callback"]
+additional_redirect_urls = [
+  "http://localhost:5173",
+  "http://localhost:5173/auth/callback",
+  "http://localhost:5173/ms-auth-callback",
+]
 jwt_expiry = 3600
 enable_signup = true
 

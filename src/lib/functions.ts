@@ -39,8 +39,14 @@ export interface IngestResult {
     deals: number;
     contacts: number;
     attachments: number;
+    skipped_trashed: number;
   };
+  /** Hard failures (auth, HubSpot 5xx, DB writes). Always show these. */
   errors: string[];
+  /** Recoverable/degraded conditions, e.g. a missing HubSpot scope. */
+  warnings: string[];
+  /** false when the run hit its wall-time budget; invoke again to resume. */
+  done: boolean;
 }
 
 export interface EnrichResult {

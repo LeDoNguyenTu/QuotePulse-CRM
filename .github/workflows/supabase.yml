@@ -1,0 +1,55 @@
+name: Deploy Supabase
+
+# Vercel already auto-deploys the frontend on every push. The database and Edge
+# Functions did NOT — they had to be pushed by hand, which is how migration 0004
+# ended up sitting unapplied in production while the frontend that depended on it
+# shipped (the recycle bin was broken live for weeks).
+#
+# This makes "push to GitHub and everything redeploys" actually true.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_ACCESS_TOKEN  — https://supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_REF   — qgcooulzzbjebwczjgis
+#   SUPABASE_DB_PASSWORD   — the database password (Project Settings -> Database)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/supabase.yml'
+  workflow_dispatch: # allow a manual re-run from the Actions tab
+
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$PROJECT_REF"
+
+      - name: Apply migrations
+        run: supabase db push
+
+      - name: Deploy Edge Functions
+        run: |
+          set -euo pipefail
+          for fn in hubspot-ingest enrich-kyc parse-quote ms-auth-start ms-auth-callback process-email-queue export-xlsx; do
+            echo "::group::deploy $fn"
+            supabase functions deploy "$fn" --project-ref "$PROJECT_REF"
+            echo "::endgroup::"
+          done

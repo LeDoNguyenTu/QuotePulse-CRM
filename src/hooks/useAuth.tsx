@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -8,18 +9,33 @@ import {
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { useIdleTimeout } from './useIdleTimeout';
+
+interface SignUpResult {
+  /** false when Supabase requires the user to confirm their email first. */
+  signedIn: boolean;
+}
 
 interface AuthContextValue {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  /** True in the last minute before the idle timeout fires. */
+  idleWarning: boolean;
+  staySignedIn: () => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+/** Where Supabase should send the user after they click a link in an email. */
+export function authCallbackUrl(): string {
+  return `${window.location.origin}/auth/callback`;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -36,18 +52,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const handleIdleTimeout = useCallback(async () => {
+    await supabase.auth.signOut();
+    // Full navigation so every cached query is dropped along with the session.
+    window.location.assign('/login?reason=timeout');
+  }, []);
+
+  const { warning, staySignedIn } = useIdleTimeout({
+    enabled: !!session,
+    onTimeout: handleIdleTimeout,
+  });
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
       user: session?.user ?? null,
       loading,
+      idleWarning: warning,
+      staySignedIn,
       async signIn(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       },
       async signUp(email, password) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // Without emailRedirectTo, Supabase falls back to the project's Site URL,
+        // which defaults to http://localhost:3000 — that is why the confirmation
+        // link opened a dead page. Note the Site URL / redirect allow-list still
+        // has to permit this origin (Supabase dashboard -> Auth -> URL config).
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: authCallbackUrl() },
+        });
         if (error) throw error;
+        return { signedIn: !!data.session };
       },
       async signOut() {
         await supabase.auth.signOut();
@@ -58,8 +96,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (error) throw error;
       },
+      async resendVerification(email) {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email,
+          options: { emailRedirectTo: authCallbackUrl() },
+        });
+        if (error) throw error;
+      },
     }),
-    [session, loading]
+    [session, loading, warning, staySignedIn]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

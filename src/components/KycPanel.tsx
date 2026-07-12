@@ -87,14 +87,29 @@ export function KycPanel({ companyId, kyc }: KycPanelProps) {
 
       {kyc && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Website">
+          <Field label="Website" source={sourceFor(data, 'website')}>
             <Link href={kyc.primary_website} />
           </Field>
-          <Field label="LinkedIn">
+          <Field label="LinkedIn" source={sourceFor(data, 'linkedin')}>
             <Link href={kyc.linkedin_company_url} />
           </Field>
-          <Field label="Address">{data?.address ?? '—'}</Field>
-          <Field label="About">{data?.about ?? '—'}</Field>
+          <Field label="Facebook" source={sourceFor(data, 'facebook')}>
+            <Link href={data?.facebook} />
+          </Field>
+          <Field label="Phone" source={sourceFor(data, 'phone')}>
+            {data?.phone ?? '—'}
+          </Field>
+          <Field label="Address" source={sourceFor(data, 'address')}>
+            {data?.address ?? '—'}
+          </Field>
+          <Field label="Industry" source={sourceFor(data, 'industry')}>
+            {data?.industry ?? '—'}
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="About" source={sourceFor(data, 'about')}>
+              {data?.about ?? '—'}
+            </Field>
+          </div>
           <div className="sm:col-span-2">
             <div className="label">Public contacts</div>
             {data?.contacts && data.contacts.length > 0 ? (
@@ -108,6 +123,17 @@ export function KycPanel({ companyId, kyc }: KycPanelProps) {
                     {c.role ? <span className="text-slate-500">— {c.role}</span> : null}
                     {c.email ? <span className="text-slate-500">· {c.email}</span> : null}
                     {c.phone ? <span className="text-slate-500">· {c.phone}</span> : null}
+                    {c.source_url ? (
+                      <a
+                        href={c.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-slate-400 hover:underline"
+                        title={c.source_url}
+                      >
+                        source
+                      </a>
+                    ) : null}
                     {(c.email || c.phone) && (
                       <button
                         className="ml-auto text-xs text-brand-600 hover:underline disabled:opacity-50"
@@ -170,6 +196,9 @@ function KycEditModal({
 
   const [website, setWebsite] = useState('');
   const [linkedin, setLinkedin] = useState('');
+  const [facebook, setFacebook] = useState('');
+  const [phone, setPhone] = useState('');
+  const [industry, setIndustry] = useState('');
   const [address, setAddress] = useState('');
   const [about, setAbout] = useState('');
   const [otherLinks, setOtherLinks] = useState('');
@@ -181,6 +210,9 @@ function KycEditModal({
     const d = kyc.enriched_data ?? {};
     setWebsite(kyc.primary_website ?? d.website ?? '');
     setLinkedin(kyc.linkedin_company_url ?? d.linkedin ?? '');
+    setFacebook(d.facebook ?? '');
+    setPhone(d.phone ?? '');
+    setIndustry(d.industry ?? '');
     setAddress(d.address ?? '');
     setAbout(d.about ?? '');
     setOtherLinks((kyc.other_links ?? d.other_links ?? []).join('\n'));
@@ -210,6 +242,9 @@ function KycEditModal({
       ...(kyc.enriched_data ?? {}),
       website: website.trim() || undefined,
       linkedin: linkedin.trim() || undefined,
+      facebook: facebook.trim() || undefined,
+      phone: phone.trim() || undefined,
+      industry: industry.trim() || undefined,
       address: address.trim() || undefined,
       about: about.trim() || undefined,
       other_links: links,
@@ -242,6 +277,26 @@ function KycEditModal({
               className="input"
               value={linkedin}
               onChange={(e) => setLinkedin(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Facebook</label>
+            <input
+              className="input"
+              value={facebook}
+              onChange={(e) => setFacebook(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">Phone</label>
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label">Industry</label>
+            <input
+              className="input"
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
             />
           </div>
         </div>
@@ -359,12 +414,53 @@ function StatusPill({ status }: { status: Status }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/** The URL a value was taken from, e.g. "google:maps" or the page that was scraped. */
+function sourceFor(data: KycEnrichedData | null | undefined, field: string): string | undefined {
+  return data?.sources?.find((s) => s.field === field)?.url;
+}
+
+function Field({
+  label,
+  source,
+  children,
+}: {
+  label: string;
+  source?: string;
+  children: ReactNode;
+}) {
   return (
     <div>
-      <div className="label">{label}</div>
+      <div className="flex items-baseline gap-2">
+        <div className="label">{label}</div>
+        {source && <SourceTag url={source} />}
+      </div>
       <div className="text-sm text-slate-700">{children}</div>
     </div>
+  );
+}
+
+/** Shows where a field came from so a wrong value can be traced (and corrected). */
+function SourceTag({ url }: { url: string }) {
+  const label = url.startsWith('google:')
+    ? url.replace('google:', 'Google ')
+    : url === 'crm'
+      ? 'CRM'
+      : (() => {
+          try {
+            return new URL(url).hostname.replace(/^www\./, '');
+          } catch {
+            return url;
+          }
+        })();
+
+  const isLink = /^https?:\/\//.test(url);
+  const cls = 'text-[10px] uppercase tracking-wide text-slate-400';
+  return isLink ? (
+    <a href={url} target="_blank" rel="noreferrer" className={`${cls} hover:underline`} title={url}>
+      {label}
+    </a>
+  ) : (
+    <span className={cls}>{label}</span>
   );
 }
 

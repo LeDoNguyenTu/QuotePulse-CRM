@@ -17,11 +17,13 @@ Deno.serve(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
   try {
-    await getUserId(req); // authz
+    const userId = await getUserId(req);
     const admin = getAdminClient();
     const filters = ((await safeJson(req)) ?? {}) as Filters;
 
-    let query = admin.from('company_dashboard').select('*');
+    // The admin client uses the service role, which bypasses RLS — the owner
+    // filter must be explicit here or this exports every user's companies.
+    let query = admin.from('company_dashboard').select('*').eq('owner_id', userId);
     if (filters.search?.trim()) {
       const term = `%${filters.search.trim()}%`;
       query = query.or(

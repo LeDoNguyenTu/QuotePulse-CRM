@@ -40,11 +40,13 @@ Deno.serve(async (req) => {
     let attachment: { id: string; file_url: string | null; deal_id: string | null } | null =
       null;
     if (body.attachment_id) {
+      // Service role bypasses RLS — scope by owner explicitly.
       const { data, error } = await admin
         .from('attachments')
         .select('id, file_url, deal_id')
         .eq('id', body.attachment_id)
-        .single();
+        .eq('owner_id', userId)
+        .maybeSingle();
       if (error || !data) return errorResponse('Attachment not found', 404);
       attachment = data;
     }
@@ -72,7 +74,8 @@ Deno.serve(async (req) => {
       await admin
         .from('attachments')
         .update({ parsed: true, parsed_summary: summary, source_type: 'quote' })
-        .eq('id', attachment.id);
+        .eq('id', attachment.id)
+        .eq('owner_id', userId);
 
       // Optionally enrich the linked company's contact from the quote.
       if ((summary.email || summary.phone) && attachment.deal_id) {
@@ -80,18 +83,36 @@ Deno.serve(async (req) => {
           .from('deals')
           .select('company_id')
           .eq('id', attachment.deal_id)
-          .single();
+          .eq('owner_id', userId)
+          .maybeSingle();
         if (deal?.company_id) {
-          await admin.from('contacts').upsert(
-            {
+          // Dedupe-then-insert. The contacts unique index is FUNCTIONAL —
+          // (company_id, lower(email)) where email is not null — which
+          // onConflict cannot target: Postgres raises 42P10 and the write is
+          // lost. See CLAUDE.md "Gotchas".
+          let exists = false;
+          if (summary.email) {
+            const { data: dup } = await admin
+              .from('contacts')
+              .select('id')
+              .eq('company_id', deal.company_id)
+              .ilike('email', summary.email)
+              .maybeSingle();
+            exists = !!dup;
+          }
+          if (!exists) {
+            const { error: cErr } = await admin.from('contacts').insert({
+              owner_id: userId,
               company_id: deal.company_id,
               full_name: summary.contact_name ?? null,
               email: summary.email ?? null,
               phone: summary.phone ?? null,
               source: 'quote_pdf',
-            },
-            { onConflict: 'company_id,email', ignoreDuplicates: true }
-          );
+            });
+            if (cErr && cErr.code !== '23505') {
+              errors.push(`save contact: ${cErr.message}`);
+            }
+          }
         }
       }
     }

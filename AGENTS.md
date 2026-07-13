@@ -83,7 +83,17 @@ explicitly on every write and filter `.eq('owner_id', userId)` on every read.**
 7. Don't let Edge Functions return `ok: true` on failure. `hubspot-ingest` used to swallow every
    error into an `errors[]` array and still return HTTP 200, so a total auth failure rendered as
    *"import complete: 0 companies (2 warnings)"*. Surface `errors[]` in the UI.
-8. **HubSpot attachments are PRIVATE files with no durable URL.** `GET /files/v3/files/{id}`
+8. **Deal names are `PRODUCT - CUSTOMER`, and the customer comes SECOND.**
+   `ADOBE (REN) - THE PR PEOPLE PTE LTD (AB005226)` — the company is *THE PR PEOPLE*; ADOBE is
+   the software they are buying and `(AB005226)` is an account code. The original cleaner kept
+   the text *before* the dash, and since companies dedupe on `lower(name_clean)`, every customer
+   buying the same product collapsed into one row: **374 deals under "Adsk", 344 under "Adobe"**,
+   and KYC researched Adobe instead of the client. `_shared/dealName.ts` → `parseDealName()` now
+   picks the segment carrying a legal suffix (PTE LTD, LLC…), else the segment after the product.
+   Re-importing does **not** repair this — the sweep is incremental and skips unchanged deals —
+   so `hubspot-ingest` takes `{mode:'rebuild'}`, which re-derives companies from the deals already
+   in Postgres and drops the leftover vendor rows into the recycle bin ("Fix company names").
+9. **HubSpot attachments are PRIVATE files with no durable URL.** `GET /files/v3/files/{id}`
    returns a `url` that only works for `PUBLIC_*` files; everything attached to a note or a
    quote is private, so `attachments.file_url` is legitimately **null**. Bytes come from
    `GET /files/v3/files/{id}/signed-url`, which expires in minutes — so `parse-quote` mints one
@@ -91,7 +101,7 @@ explicitly on every write and filter `.eq('owner_id', userId)` on every read.**
    files at all (the id is a *quote* id): their PDF is the `hs_pdf_download_link` property.
    All of this needs the **`files`** scope, which is *not* on the current personal access key —
    without it the import stores placeholder names (`file-<id>`) and OCR cannot download.
-9. **Migration files MUST be named `<14-digit-timestamp>_<name>.sql`.** The CLI derives the
+10. **Migration files MUST be named `<14-digit-timestamp>_<name>.sql`.** The CLI derives the
    version from the leading digits, and the remote history table already holds timestamp
    versions (`0001–0003` were applied via the dashboard/MCP, which records a timestamp). Plain
    `0004_foo.sql` makes `supabase db push` fail with *"Remote migration versions not found in

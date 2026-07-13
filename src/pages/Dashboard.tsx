@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useCompanies,
@@ -6,7 +6,7 @@ import {
   useSoftDeleteCompanies,
   type CompanyFilters,
 } from '../hooks/useCompanies';
-import type { IngestResult } from '../lib/functions';
+import type { ImportProgress, IngestResult, RebuildResult } from '../lib/functions';
 import { SearchBar } from '../components/SearchBar';
 import { Filters } from '../components/Filters';
 import { CompaniesTable } from '../components/CompaniesTable';
@@ -28,6 +28,9 @@ export function Dashboard() {
   const [importing, setImporting] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [importReport, setImportReport] = useState<IngestResult | null>(null);
+  const [live, setLive] = useState<LiveImport | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const cancelRef = useRef(false);
 
   const qc = useQueryClient();
   const softDelete = useSoftDeleteCompanies();
@@ -108,10 +111,11 @@ export function Dashboard() {
     setImporting(true);
     setBanner(null);
     setImportReport(null);
+    cancelRef.current = false;
 
-    // The Edge Function is bounded by a wall-time budget and resumes from a
-    // persisted cursor, so drive it until it reports done (same pattern as the
-    // email queue worker).
+    // Each invocation of the Edge Function is one ~30s slice of work; it persists
+    // its cursor and reports how far along it is, so we drive it in a loop and
+    // repaint the progress bar after every slice.
     const total: IngestResult = {
       ok: true,
       counts: { companies: 0, deals: 0, contacts: 0, attachments: 0, skipped_trashed: 0 },
@@ -119,13 +123,15 @@ export function Dashboard() {
       warnings: [],
       done: false,
     };
+    const startedAt = Date.now();
+    setLive({ counts: { ...total.counts }, progress: null, startedAt, step: 0 });
 
     try {
-      for (let i = 0; i < 20; i++) {
+      for (let step = 1; step <= MAX_IMPORT_STEPS; step++) {
         const res = await functions.hubspotIngest();
         total.ok = res.ok;
         // An older deployment of the function doesn't return `done` at all —
-        // treat a missing value as finished rather than re-invoking 20 times.
+        // treat a missing value as finished rather than re-invoking forever.
         const done = res.done ?? true;
         total.done = done;
         for (const k of Object.keys(total.counts) as (keyof IngestResult['counts'])[]) {
@@ -133,10 +139,25 @@ export function Dashboard() {
         }
         for (const w of res.warnings ?? []) if (!total.warnings.includes(w)) total.warnings.push(w);
         total.errors.push(...(res.errors ?? []));
+        total.progress = res.progress ?? total.progress;
+
+        setLive({
+          counts: { ...total.counts },
+          progress: res.progress ?? null,
+          startedAt,
+          step,
+        });
+        qc.invalidateQueries({ queryKey: ['companies'] });
+
         if (done) break;
+        if (cancelRef.current) {
+          total.warnings.push(
+            'Stopped early. Everything imported so far is saved — run the import again to pick up where it left off.'
+          );
+          break;
+        }
       }
       setImportReport(total);
-      qc.invalidateQueries({ queryKey: ['companies'] });
     } catch (e) {
       // A thrown error means the function returned non-2xx — i.e. a real failure
       // (bad HubSpot credential, missing deals scope). Show it verbatim.
@@ -147,6 +168,54 @@ export function Dashboard() {
       });
     } finally {
       setImporting(false);
+      setLive(null);
+      qc.invalidateQueries({ queryKey: ['companies'] });
+    }
+  }
+
+  async function handleRebuild() {
+    if (
+      !window.confirm(
+        'Re-link every deal to the customer named in it?\n\n' +
+          'Deal names look like "ADOBE (REN) - THE PR PEOPLE PTE LTD". The customer is ' +
+          'THE PR PEOPLE — Adobe is the product. Deals were previously filed under the ' +
+          'product, so companies like "Adobe" and "Dell" appear in your list holding ' +
+          'hundreds of unrelated customers.\n\n' +
+          'This rebuilds them from the deal names already imported. The leftover product ' +
+          'rows go to the recycle bin, so nothing is destroyed.'
+      )
+    )
+      return;
+
+    setRebuilding(true);
+    setBanner(null);
+    let remapped = 0;
+    let created = 0;
+    let retired = 0;
+    const errors: string[] = [];
+
+    try {
+      // Same resumable pattern as the import: it works to a time budget and a
+      // second run is a cheap no-op over the deals it already fixed.
+      for (let step = 0; step < MAX_IMPORT_STEPS; step++) {
+        const res: RebuildResult = await functions.hubspotRebuild();
+        remapped += res.counts?.remapped ?? 0;
+        created += res.counts?.created ?? 0;
+        retired = res.counts?.retired ?? retired;
+        errors.push(...(res.errors ?? []));
+        if (res.done ?? true) break;
+      }
+      setBanner(
+        `Re-linked ${remapped.toLocaleString()} deals to their real customer · ` +
+          `${created.toLocaleString()} companies created · ` +
+          `${retired.toLocaleString()} product rows moved to the recycle bin.` +
+          (errors.length ? ` ${errors.length} problem(s): ${errors[0]}` : '')
+      );
+      qc.invalidateQueries({ queryKey: ['companies'] });
+    } catch (e) {
+      setBanner(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRebuilding(false);
     }
   }
 
@@ -160,6 +229,14 @@ export function Dashboard() {
           </button>
           <button className="btn-secondary" onClick={handleImportAll} disabled={importing}>
             {importing ? 'Importing…' : 'Run HubSpot import'}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={handleRebuild}
+            disabled={rebuilding || importing}
+            title="Deal names are 'PRODUCT - CUSTOMER'. Re-file every deal under the customer."
+          >
+            {rebuilding ? 'Re-linking…' : 'Fix company names'}
           </button>
           <button className="btn-secondary" onClick={handleExport} disabled={exporting}>
             {exporting ? 'Exporting…' : 'Export current view'}
@@ -185,6 +262,16 @@ export function Dashboard() {
         <div className="rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800">
           {banner}
         </div>
+      )}
+
+      {live && (
+        <ImportProgressPanel
+          live={live}
+          onStop={() => {
+            cancelRef.current = true;
+          }}
+          stopping={cancelRef.current}
+        />
       )}
 
       {importReport && (
@@ -236,6 +323,91 @@ export function Dashboard() {
         companies={selectedRows}
       />
       <NewCompanyModal open={newOpen} onClose={() => setNewOpen(false)} />
+    </div>
+  );
+}
+
+interface LiveImport {
+  counts: IngestResult['counts'];
+  progress: ImportProgress | null;
+  startedAt: number;
+  step: number;
+}
+
+/** Enough 30s slices to walk a very large portal; the user can stop at any point. */
+const MAX_IMPORT_STEPS = 200;
+
+/**
+ * Live progress while the import loop runs. Without this the button just said
+ * "Importing…" for several minutes with no sign of life or end.
+ */
+function ImportProgressPanel({
+  live,
+  onStop,
+  stopping,
+}: {
+  live: LiveImport;
+  onStop: () => void;
+  stopping: boolean;
+}) {
+  const { counts, progress, startedAt } = live;
+  const total = progress?.deals_in_hubspot ?? null;
+  const imported = progress?.deals_imported ?? 0;
+  const remaining = total != null ? Math.max(0, total - imported) : null;
+
+  // Hold at 99% until the function actually reports done: HubSpot's total counts
+  // only active deals, so archived ones can push the ratio past 1.
+  const percent =
+    total && total > 0 ? Math.min(99, Math.round((imported / total) * 100)) : null;
+
+  const elapsedSec = Math.max(1, (Date.now() - startedAt) / 1000);
+  const dealsPerSec = counts.deals / elapsedSec;
+  const etaMin =
+    remaining != null && dealsPerSec > 0.05 ? Math.ceil(remaining / dealsPerSec / 60) : null;
+
+  return (
+    <div className="space-y-2 rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-900">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium">
+          {percent != null ? `Importing from HubSpot — ${percent}%` : 'Importing from HubSpot…'}
+        </span>
+        <button className="text-xs underline" onClick={onStop} disabled={stopping}>
+          {stopping ? 'Stopping after this step…' : 'Stop'}
+        </button>
+      </div>
+
+      <div
+        className="h-2 w-full overflow-hidden rounded bg-brand-100"
+        role="progressbar"
+        aria-valuenow={percent ?? undefined}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          className={`h-2 rounded bg-brand-600 transition-all duration-500 ${percent == null ? 'animate-pulse' : ''}`}
+          style={{ width: `${percent ?? 100}%` }}
+        />
+      </div>
+
+      <p className="text-xs">
+        {total != null ? (
+          <>
+            <b>{imported.toLocaleString()}</b> of <b>{total.toLocaleString()}</b> deals imported ·{' '}
+            <b>{remaining?.toLocaleString()}</b> remaining · {progress?.companies.toLocaleString()}{' '}
+            companies
+            {etaMin != null && ` · about ${etaMin} min left`}
+          </>
+        ) : (
+          'Starting…'
+        )}
+      </p>
+
+      <p className="text-xs text-brand-700">
+        This run: +{counts.deals.toLocaleString()} deals, +{counts.companies.toLocaleString()}{' '}
+        companies, +{counts.contacts.toLocaleString()} contacts, +
+        {counts.attachments.toLocaleString()} attachments
+        {progress?.phase === 'incremental' && ' · catching up on recent changes only'}
+      </p>
     </div>
   );
 }

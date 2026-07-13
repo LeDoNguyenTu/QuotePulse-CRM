@@ -260,6 +260,27 @@ export class HubSpotClient {
     return q.properties.hs_pdf_download_link || null;
   }
 
+  /**
+   * Total number of (non-archived) objects, for progress reporting. The Search API
+   * reports `total` on any query, so a limit-1 search is the cheapest count there
+   * is. Returns null rather than throwing: a progress bar must never be the reason
+   * an import fails.
+   */
+  async countAll(objectType: 'deals' | 'companies'): Promise<number | null> {
+    try {
+      const res = await fetch(`${BASE}/crm/v3/objects/${objectType}/search`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({ limit: 1, properties: ['hs_object_id'] }),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { total?: number };
+      return typeof body.total === 'number' ? body.total : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Fetch a single object by id (used to resolve associated companies/notes). */
   async getOne(
     objectType: string,

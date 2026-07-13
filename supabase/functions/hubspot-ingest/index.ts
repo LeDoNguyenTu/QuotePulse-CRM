@@ -14,7 +14,7 @@
 // It also swallowed every error and still returned HTTP 200 {ok:true}.
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseAdmin.ts';
-import { cleanDealName } from '../_shared/dealName.ts';
+import { parseDealName, cleanCompanyName } from '../_shared/dealName.ts';
 import {
   HubSpotClient,
   HubSpotApiError,
@@ -23,7 +23,10 @@ import {
 } from '../_shared/hubspot.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
-const TIME_BUDGET_MS = 110_000; // stay inside the ~150s Edge wall-time limit
+// Deliberately well under the ~150s Edge wall-time limit. Each invocation is one
+// visible step of the progress bar, so shorter runs mean the UI actually moves —
+// the work is resumable from sync_state, and the browser drives it in a loop.
+const TIME_BUDGET_MS = 30_000;
 const PAGE_SIZE = 100;
 const MAX_OBJECTS_PER_RUN = 5000; // safety valve
 
@@ -74,6 +77,15 @@ Deno.serve(async (req) => {
   try {
     const userId = await getUserId(req);
     const admin = getAdminClient();
+
+    const body = (await req.json().catch(() => ({}))) as { mode?: string };
+
+    // Repair pass over data we already hold — no HubSpot calls, so it runs even
+    // without a token.
+    if (body?.mode === 'rebuild') {
+      return json(await rebuildCompanies(admin, userId));
+    }
+
     const settings = await getUserSettings(admin, userId);
     const token = settings?.hubspot_token;
     if (!token) {
@@ -102,22 +114,21 @@ Deno.serve(async (req) => {
       processed: 0,
     };
 
-    // Priority 1: recycled / archived deals. Archived records are not covered by
-    // the Search API, so this stream always pages (the recycle bin is bounded).
-    await sweepDeals(ctx, { archived: true, priority: 'recycled', stream: 'deals:recycled' });
-
-    // Priority 2: deleted accounts (archived companies).
-    await sweepArchivedCompanies(ctx);
-
-    // Priority 3: current / active deals — resumable backfill, then incremental.
+    // Active deals: a resumable backfill, then incremental catch-up.
     await sweepDeals(ctx, { archived: false, priority: 'current', stream: 'deals:current' });
 
-    const done = Date.now() < ctx.deadline && ctx.processed < MAX_OBJECTS_PER_RUN;
-    if (!done) {
-      warnings.push(
-        'Import paused at the time limit and will resume where it left off — run it again to continue.'
-      );
+    // Archived records are invisible to the Search API, so those streams have no
+    // incremental mode — they re-page from the top on EVERY run. Sweeping them
+    // while the main backfill is still running would spend each 30s slice
+    // re-reading the recycle bin, and the deals never imported would never arrive.
+    // Once the backfill has caught up there is budget to keep them fresh.
+    const mainState = await loadSyncState(admin, userId, 'deals:current');
+    if (mainState.phase === 'incremental' && !outOfBudget(ctx)) {
+      await sweepDeals(ctx, { archived: true, priority: 'recycled', stream: 'deals:recycled' });
+      await sweepArchivedCompanies(ctx);
     }
+
+    const done = Date.now() < ctx.deadline && ctx.processed < MAX_OBJECTS_PER_RUN;
 
     const importedNothing =
       counts.companies === 0 && counts.deals === 0 && counts.contacts === 0;
@@ -128,7 +139,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, counts, errors, warnings, done: false }, 502);
     }
 
-    return json({ ok: true, counts, errors, warnings, done });
+    return json({ ok: true, counts, errors, warnings, done, progress: await progress(ctx) });
   } catch (e) {
     return json(
       {
@@ -305,8 +316,9 @@ async function sweepArchivedCompanies(ctx: Ctx) {
         if (outOfBudget(ctx)) break;
         const name = co.properties.name ?? 'Unknown';
         try {
+          // A HubSpot company record, not a deal title — no product prefix to strip.
           const id = await upsertCompany(ctx, {
-            name_clean: cleanDealName(name) || name,
+            name_clean: cleanCompanyName(name) || name,
             name_raw: name,
             industry: co.properties.industry ?? null,
             website: co.properties.website ?? co.properties.domain ?? null,
@@ -336,12 +348,19 @@ async function sweepArchivedCompanies(ctx: Ctx) {
 
 async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'current') {
   const rawName = deal.properties.dealname ?? '';
-  const cleaned = cleanDealName(rawName) || rawName || 'Unknown';
 
-  // Enrich company fields from the associated HubSpot company, if any.
+  // "ADOBE (REN) - THE PR PEOPLE PTE LTD" — the customer is the SECOND segment.
+  // The leading token is the vendor whose product they are buying, and treating it
+  // as the company is what merged 374 unrelated customers into one row called
+  // "Adsk". See _shared/dealName.ts.
+  const parsed = parseDealName(rawName);
+
+  // Enrich company fields from the associated HubSpot company, if any. A real
+  // company record beats anything parsed out of a deal title, so its name wins.
   let industry: string | null = null;
   let website: string | null = null;
   let hubspotCompanyId: string | null = null;
+  let hubspotCompanyName: string | null = null;
   const assocCompany = deal.associations?.companies?.results?.[0];
   if (assocCompany) {
     hubspotCompanyId = assocCompany.id;
@@ -349,14 +368,21 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
       const co = await ctx.hs.getOne('companies', assocCompany.id, COMPANY_PROPS);
       industry = co.properties.industry ?? null;
       website = co.properties.website ?? co.properties.domain ?? null;
+      hubspotCompanyName = co.properties.name ?? null;
     } catch (e) {
       ctx.errors.push(`company ${assocCompany.id}: ${msg(e)}`);
     }
   }
 
+  const nameRaw = hubspotCompanyName ?? parsed.company_raw ?? rawName;
+  const cleaned =
+    (hubspotCompanyName ? cleanCompanyName(hubspotCompanyName) : parsed.company_clean) ||
+    rawName ||
+    'Unknown';
+
   const companyId = await upsertCompany(ctx, {
     name_clean: cleaned,
-    name_raw: rawName,
+    name_raw: nameRaw,
     industry,
     website,
     hubspot_company_id: hubspotCompanyId,
@@ -639,6 +665,235 @@ async function saveSyncState(
     { owner_id: userId, object_type: stream, ...state },
     { onConflict: 'owner_id,object_type' }
   );
+}
+
+// --- progress ---------------------------------------------------------------
+
+/**
+ * What the progress bar is drawn from. The denominator comes from HubSpot's
+ * Search API (which reports a `total` for any query) and the numerator from our
+ * own table, so the figure survives across the many invocations one import takes.
+ */
+async function progress(ctx: Ctx) {
+  const [dealsInHubspot, dealsImported, companies, state] = await Promise.all([
+    ctx.hs.countAll('deals'),
+    countActiveDeals(ctx.admin, ctx.userId),
+    countCompanies(ctx.admin, ctx.userId),
+    loadSyncState(ctx.admin, ctx.userId, 'deals:current'),
+  ]);
+  return {
+    deals_in_hubspot: dealsInHubspot,
+    deals_imported: dealsImported,
+    companies,
+    phase: state.phase,
+  };
+}
+
+/** Matches HubSpot's own total, which likewise excludes archived deals. */
+async function countActiveDeals(admin: SupabaseClient, userId: string): Promise<number> {
+  const { count } = await admin
+    .from('deals')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', userId)
+    .eq('is_archived', false);
+  return count ?? 0;
+}
+
+async function countCompanies(admin: SupabaseClient, userId: string): Promise<number> {
+  const { count } = await admin
+    .from('companies')
+    .select('id', { count: 'exact', head: true })
+    .eq('owner_id', userId)
+    .is('deleted_at', null);
+  return count ?? 0;
+}
+
+// --- rebuild ----------------------------------------------------------------
+
+/**
+ * Re-derive companies from the deal names we ALREADY hold, with no HubSpot calls.
+ *
+ * The old cleaner kept the text before the dash, so "ADOBE (REN) - ALPHA PLASTIC
+ * INDUSTRIES PTE LTD" filed the deal under "Adobe". Since companies are deduped on
+ * the cleaned name, every customer buying the same product collapsed into a single
+ * row — 374 deals under "Adsk", 344 under "Adobe" — and KYC researched the vendor.
+ *
+ * Re-importing would not fix this on its own: the sweep is incremental, so it will
+ * never revisit a deal HubSpot considers unchanged. This walks the deals table
+ * instead, re-links each one to its real customer, and drops the leftover vendor
+ * rows into the recycle bin (reversible, rather than deleted).
+ *
+ * Idempotent: a second run re-reads the deals and writes nothing.
+ */
+async function rebuildCompanies(admin: SupabaseClient, userId: string) {
+  const deadline = Date.now() + TIME_BUDGET_MS;
+  const errors: string[] = [];
+  let scanned = 0;
+  let remapped = 0;
+  let created = 0;
+  let retired = 0;
+  let done = true;
+
+  // lower(name_clean) -> company id. One lookup serves all 374 deals of a customer.
+  const byName = new Map<string, string>();
+  const { data: existingCompanies, error: coErr } = await admin
+    .from('companies')
+    .select('id, name_clean')
+    .eq('owner_id', userId)
+    .is('deleted_at', null);
+  if (coErr) throw coErr;
+  for (const c of existingCompanies ?? []) {
+    byName.set(String(c.name_clean).toLowerCase(), c.id as string);
+  }
+
+  const PAGE = 500;
+  let offset = 0;
+  outer: for (;;) {
+    const { data: deals, error } = await admin
+      .from('deals')
+      .select('id, company_id, deal_name_raw, is_archived')
+      .eq('owner_id', userId)
+      .order('id', { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    if (!deals || deals.length === 0) break;
+
+    for (const deal of deals) {
+      // Out of time: stop cleanly. The next run rescans from the top, which is
+      // cheap because already-correct deals need no write.
+      if (Date.now() >= deadline) {
+        done = false;
+        break outer;
+      }
+      scanned++;
+
+      const parsed = parseDealName(deal.deal_name_raw ?? '');
+      const clean = parsed.company_clean || String(deal.deal_name_raw ?? '').trim();
+      if (!clean) continue;
+
+      const key = clean.toLowerCase();
+      let companyId = byName.get(key);
+
+      if (!companyId) {
+        try {
+          const company = await findOrCreateCompany(admin, userId, {
+            name_clean: clean,
+            name_raw: parsed.company_raw || clean,
+            source_priority: deal.is_archived ? 'recycled' : 'current',
+          });
+          companyId = company.id;
+          if (company.created) created++;
+          byName.set(key, companyId);
+        } catch (e) {
+          errors.push(`company "${clean}": ${msg(e)}`);
+          continue;
+        }
+      }
+
+      if (companyId !== deal.company_id) {
+        const { error: upErr } = await admin
+          .from('deals')
+          .update({ company_id: companyId })
+          .eq('id', deal.id)
+          .eq('owner_id', userId);
+        if (upErr) errors.push(`deal ${deal.id}: ${upErr.message}`);
+        else remapped++;
+      }
+    }
+
+    if (deals.length < PAGE) break;
+    offset += PAGE;
+  }
+
+  if (done) retired = await retireVendorRows(admin, userId, errors);
+
+  return {
+    ok: errors.length === 0,
+    mode: 'rebuild',
+    done,
+    counts: { scanned, remapped, created, retired },
+    errors,
+  };
+}
+
+async function findOrCreateCompany(
+  admin: SupabaseClient,
+  userId: string,
+  input: { name_clean: string; name_raw: string; source_priority: string }
+): Promise<{ id: string; created: boolean }> {
+  const { data, error } = await admin
+    .from('companies')
+    .insert({ ...input, owner_id: userId })
+    .select('id')
+    .single();
+  if (!error) return { id: data!.id as string, created: true };
+  if (error.code !== '23505') throw error;
+
+  // The name is taken. It may be a row sitting in the recycle bin — it owns deals
+  // again now, so bring it back rather than leaving those deals invisible.
+  const { data: found, error: findErr } = await admin
+    .from('companies')
+    .select('id, deleted_at')
+    .eq('owner_id', userId)
+    .ilike('name_clean', escapeLike(input.name_clean))
+    .maybeSingle();
+  if (findErr || !found) throw findErr ?? new Error(`company "${input.name_clean}" vanished`);
+  if (found.deleted_at) {
+    await admin
+      .from('companies')
+      .update({ deleted_at: null })
+      .eq('id', found.id)
+      .eq('owner_id', userId);
+  }
+  return { id: found.id as string, created: false };
+}
+
+/**
+ * Send the vendor rows the old cleaner invented ("Adobe", "Dell", "Adsk") to the
+ * recycle bin. Identified by: owns no deals any more, AND its name_raw still holds
+ * a full deal title — the fingerprint of a row derived from a deal name rather than
+ * typed by a person, so a hand-created company is never touched.
+ */
+async function retireVendorRows(
+  admin: SupabaseClient,
+  userId: string,
+  errors: string[]
+): Promise<number> {
+  const { data: companies, error: coErr } = await admin
+    .from('companies')
+    .select('id, name_raw')
+    .eq('owner_id', userId)
+    .is('deleted_at', null);
+  if (coErr) {
+    errors.push(`retire: ${coErr.message}`);
+    return 0;
+  }
+
+  const { data: deals, error: dErr } = await admin
+    .from('deals')
+    .select('company_id')
+    .eq('owner_id', userId);
+  if (dErr) {
+    errors.push(`retire: ${dErr.message}`);
+    return 0;
+  }
+
+  const inUse = new Set((deals ?? []).map((d) => d.company_id as string));
+  const orphans = (companies ?? [])
+    .filter((c) => !inUse.has(c.id as string) && /\s[-–—|]\s/.test(String(c.name_raw ?? '')))
+    .map((c) => c.id as string);
+  if (orphans.length === 0) return 0;
+
+  const { error } = await admin
+    .from('companies')
+    .update({ deleted_at: new Date().toISOString() })
+    .in('id', orphans)
+    .eq('owner_id', userId);
+  if (error) {
+    errors.push(`retire: ${error.message}`);
+    return 0;
+  }
+  return orphans.length;
 }
 
 // --- misc ------------------------------------------------------------------

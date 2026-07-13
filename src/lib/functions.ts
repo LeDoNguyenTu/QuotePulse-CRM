@@ -32,6 +32,14 @@ async function invoke<T>(name: string, body?: unknown): Promise<T> {
   return data as T;
 }
 
+export interface ImportProgress {
+  /** Total deals in HubSpot. null when the count could not be read. */
+  deals_in_hubspot: number | null;
+  deals_imported: number;
+  companies: number;
+  phase: 'backfill' | 'incremental';
+}
+
 export interface IngestResult {
   ok: boolean;
   counts: {
@@ -47,6 +55,23 @@ export interface IngestResult {
   warnings: string[];
   /** false when the run hit its wall-time budget; invoke again to resume. */
   done: boolean;
+  /** Absent on older deployments of the function. */
+  progress?: ImportProgress;
+}
+
+export interface RebuildResult {
+  ok: boolean;
+  mode: 'rebuild';
+  done: boolean;
+  counts: {
+    scanned: number;
+    /** Deals re-pointed from a vendor row to their real customer. */
+    remapped: number;
+    created: number;
+    /** Vendor rows moved to the recycle bin. */
+    retired: number;
+  };
+  errors: string[];
 }
 
 export interface EnrichResult {
@@ -83,6 +108,9 @@ export interface MsAuthStartResult {
 export const functions = {
   hubspotIngest: (opts?: { company_id?: string }) =>
     invoke<IngestResult>('hubspot-ingest', opts ?? {}),
+
+  /** Re-derive companies from deal names already in the database. No HubSpot calls. */
+  hubspotRebuild: () => invoke<RebuildResult>('hubspot-ingest', { mode: 'rebuild' }),
 
   enrichKyc: (company_id: string) => invoke<EnrichResult>('enrich-kyc', { company_id }),
 

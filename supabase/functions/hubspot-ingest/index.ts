@@ -14,7 +14,13 @@
 // It also swallowed every error and still returned HTTP 200 {ok:true}.
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseAdmin.ts';
-import { parseDealName, cleanCompanyName } from '../_shared/dealName.ts';
+import {
+  parseDealName,
+  cleanCompanyName,
+  learnProducts,
+  productKey,
+} from '../_shared/dealName.ts';
+import { classifyIndustry, normalizeHubspotIndustry } from '../_shared/industry.ts';
 import {
   HubSpotClient,
   HubSpotApiError,
@@ -45,6 +51,8 @@ interface Counts {
   contacts: number;
   attachments: number;
   skipped_trashed: number;
+  /** Deals HubSpot returned that we already hold unchanged — not re-read. */
+  skipped_existing: number;
 }
 
 interface Ctx {
@@ -58,6 +66,8 @@ interface Ctx {
   filesAllowed: boolean;
   deadline: number;
   processed: number;
+  /** Vendor names, keyed by productKey(), used to split unpunctuated deal names. */
+  products: Set<string>;
 }
 
 Deno.serve(async (req) => {
@@ -70,6 +80,7 @@ Deno.serve(async (req) => {
     contacts: 0,
     attachments: 0,
     skipped_trashed: 0,
+    skipped_existing: 0,
   };
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -112,6 +123,7 @@ Deno.serve(async (req) => {
       filesAllowed: true,
       deadline: Date.now() + TIME_BUDGET_MS,
       processed: 0,
+      products: await loadProductDictionary(admin, userId),
     };
 
     // Active deals: a resumable backfill, then incremental catch-up.
@@ -263,7 +275,7 @@ async function sweepDeals(
         after: cursor,
       });
 
-      for (const deal of pageRes.results) {
+      for (const deal of await onlyChanged(ctx, pageRes.results)) {
         if (outOfBudget(ctx)) break;
         try {
           await processDeal(ctx, deal, opts.priority);
@@ -353,11 +365,14 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
   // The leading token is the vendor whose product they are buying, and treating it
   // as the company is what merged 374 unrelated customers into one row called
   // "Adsk". See _shared/dealName.ts.
-  const parsed = parseDealName(rawName);
+  const parsed = parseDealName(rawName, ctx.products);
+
+  // Every product we resolve makes the next unpunctuated name easier to cut.
+  if (parsed.product) ctx.products.add(productKey(parsed.product));
 
   // Enrich company fields from the associated HubSpot company, if any. A real
   // company record beats anything parsed out of a deal title, so its name wins.
-  let industry: string | null = null;
+  let hubspotIndustry: string | null = null;
   let website: string | null = null;
   let hubspotCompanyId: string | null = null;
   let hubspotCompanyName: string | null = null;
@@ -366,7 +381,7 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
     hubspotCompanyId = assocCompany.id;
     try {
       const co = await ctx.hs.getOne('companies', assocCompany.id, COMPANY_PROPS);
-      industry = co.properties.industry ?? null;
+      hubspotIndustry = co.properties.industry ?? null;
       website = co.properties.website ?? co.properties.domain ?? null;
       hubspotCompanyName = co.properties.name ?? null;
     } catch (e) {
@@ -379,6 +394,10 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
     (hubspotCompanyName ? cleanCompanyName(hubspotCompanyName) : parsed.company_clean) ||
     rawName ||
     'Unknown';
+
+  // HubSpot's own value first; otherwise read the trade off the name, which in this
+  // book of business is remarkably explicit ("SUNLEY M&E ENGINEERING PTE LTD").
+  const industry = normalizeHubspotIndustry(hubspotIndustry) ?? classifyIndustry(cleaned);
 
   const companyId = await upsertCompany(ctx, {
     name_clean: cleaned,
@@ -398,11 +417,14 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
       hubspot_deal_id: deal.id,
       company_id: companyId,
       deal_name_raw: rawName,
+      product: parsed.product || null,
       deal_stage: deal.properties.dealstage,
       pipeline: deal.properties.pipeline,
       amount: deal.properties.amount ? Number(deal.properties.amount) : null,
       is_archived: !!deal.archived || priority === 'recycled',
       archived_at: deal.archivedAt ?? null,
+      // The watermark that lets the next import skip this deal untouched.
+      hubspot_modified_at: deal.properties.hs_lastmodifieddate ?? null,
     },
     { onConflict: 'owner_id,hubspot_deal_id' }
   );
@@ -667,6 +689,72 @@ async function saveSyncState(
   );
 }
 
+/**
+ * Drop the deals we already hold, unchanged. Compares HubSpot's own
+ * hs_lastmodifieddate against the copy stored on our row.
+ *
+ * This is what makes "run the import" a SYNC rather than a re-import. Paging a
+ * deal costs one hundredth of an API call; the expense is in processDeal, which
+ * fetches the associated company, every contact and every note one at a time. On a
+ * portal of 5,336 deals that was several thousand HTTP calls to rediscover data
+ * that had not moved.
+ */
+async function onlyChanged(ctx: Ctx, deals: HsObject[]): Promise<HsObject[]> {
+  if (deals.length === 0) return deals;
+
+  const { data, error } = await ctx.admin
+    .from('deals')
+    .select('hubspot_deal_id, hubspot_modified_at')
+    .eq('owner_id', ctx.userId)
+    .in(
+      'hubspot_deal_id',
+      deals.map((d) => d.id)
+    );
+  if (error) return deals; // a failed lookup must never lose data — just re-import
+
+  const held = new Map<string, string | null>(
+    (data ?? []).map((r) => [String(r.hubspot_deal_id), r.hubspot_modified_at as string | null])
+  );
+
+  const changed: HsObject[] = [];
+  for (const deal of deals) {
+    const ours = held.get(deal.id);
+    const theirs = deal.properties.hs_lastmodifieddate ?? null;
+
+    // Only skip when we can PROVE it is unchanged: we hold the deal, both sides
+    // carry a timestamp, and they agree. Anything else gets imported.
+    if (ours && theirs && Date.parse(ours) === Date.parse(theirs)) {
+      ctx.counts.skipped_existing++;
+      ctx.processed++;
+      continue;
+    }
+    changed.push(deal);
+  }
+  return changed;
+}
+
+/**
+ * The vendor names used to cut deal names that lack a clean separator. Seeded with
+ * the well-known brands, then grown from the products this user's own deals have
+ * already resolved to.
+ */
+async function loadProductDictionary(
+  admin: SupabaseClient,
+  userId: string
+): Promise<Set<string>> {
+  const known = learnProducts([]); // the seed list
+  const { data } = await admin
+    .from('deals')
+    .select('product')
+    .eq('owner_id', userId)
+    .not('product', 'is', null);
+  for (const row of data ?? []) {
+    const key = productKey(String(row.product ?? ''));
+    if (key) known.add(key);
+  }
+  return known;
+}
+
 // --- progress ---------------------------------------------------------------
 
 /**
@@ -732,18 +820,26 @@ async function rebuildCompanies(admin: SupabaseClient, userId: string) {
   let remapped = 0;
   let created = 0;
   let retired = 0;
+  let industries = 0;
   let done = true;
 
-  // lower(name_clean) -> company id. One lookup serves all 374 deals of a customer.
-  const byName = new Map<string, string>();
+  // Learn the vendor list from the deals that ARE punctuated properly, so the ones
+  // that are not ("ADOBE (REN) THE TANGLIN CLUB") can be cut in the same pass.
+  const products = learnProducts(await allDealNames(admin, userId));
+
+  // lower(name_clean) -> company. One lookup serves all 374 deals of a customer.
+  const byName = new Map<string, { id: string; industry: string | null }>();
   const { data: existingCompanies, error: coErr } = await admin
     .from('companies')
-    .select('id, name_clean')
+    .select('id, name_clean, industry')
     .eq('owner_id', userId)
     .is('deleted_at', null);
   if (coErr) throw coErr;
   for (const c of existingCompanies ?? []) {
-    byName.set(String(c.name_clean).toLowerCase(), c.id as string);
+    byName.set(String(c.name_clean).toLowerCase(), {
+      id: c.id as string,
+      industry: (c.industry as string | null) ?? null,
+    });
   }
 
   const PAGE = 500;
@@ -751,7 +847,7 @@ async function rebuildCompanies(admin: SupabaseClient, userId: string) {
   outer: for (;;) {
     const { data: deals, error } = await admin
       .from('deals')
-      .select('id, company_id, deal_name_raw, is_archived')
+      .select('id, company_id, deal_name_raw, product, is_archived')
       .eq('owner_id', userId)
       .order('id', { ascending: true })
       .range(offset, offset + PAGE - 1);
@@ -767,37 +863,54 @@ async function rebuildCompanies(admin: SupabaseClient, userId: string) {
       }
       scanned++;
 
-      const parsed = parseDealName(deal.deal_name_raw ?? '');
+      const parsed = parseDealName(deal.deal_name_raw ?? '', products);
       const clean = parsed.company_clean || String(deal.deal_name_raw ?? '').trim();
       if (!clean) continue;
 
       const key = clean.toLowerCase();
-      let companyId = byName.get(key);
+      let company = byName.get(key);
 
-      if (!companyId) {
+      if (!company) {
         try {
-          const company = await findOrCreateCompany(admin, userId, {
+          const made = await findOrCreateCompany(admin, userId, {
             name_clean: clean,
             name_raw: parsed.company_raw || clean,
+            industry: classifyIndustry(clean),
             source_priority: deal.is_archived ? 'recycled' : 'current',
           });
-          companyId = company.id;
-          if (company.created) created++;
-          byName.set(key, companyId);
+          company = { id: made.id, industry: made.industry };
+          if (made.created) created++;
+          if (made.industry) industries++;
+          byName.set(key, company);
         } catch (e) {
           errors.push(`company "${clean}": ${msg(e)}`);
           continue;
         }
+      } else if (!company.industry) {
+        // An existing company that predates industry classification.
+        const guess = classifyIndustry(clean);
+        if (guess) {
+          const { error: iErr } = await admin
+            .from('companies')
+            .update({ industry: guess })
+            .eq('id', company.id)
+            .eq('owner_id', userId);
+          if (!iErr) {
+            company.industry = guess;
+            industries++;
+          }
+        }
       }
 
-      if (companyId !== deal.company_id) {
+      const product = parsed.product || null;
+      if (company.id !== deal.company_id || product !== (deal.product ?? null)) {
         const { error: upErr } = await admin
           .from('deals')
-          .update({ company_id: companyId })
+          .update({ company_id: company.id, product })
           .eq('id', deal.id)
           .eq('owner_id', userId);
         if (upErr) errors.push(`deal ${deal.id}: ${upErr.message}`);
-        else remapped++;
+        else if (company.id !== deal.company_id) remapped++;
       }
     }
 
@@ -811,29 +924,53 @@ async function rebuildCompanies(admin: SupabaseClient, userId: string) {
     ok: errors.length === 0,
     mode: 'rebuild',
     done,
-    counts: { scanned, remapped, created, retired },
+    counts: { scanned, remapped, created, retired, industries },
     errors,
   };
+}
+
+/** Every deal title for this user, for the product-learning pass. */
+async function allDealNames(admin: SupabaseClient, userId: string): Promise<string[]> {
+  const names: string[] = [];
+  const PAGE = 1000;
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await admin
+      .from('deals')
+      .select('deal_name_raw')
+      .eq('owner_id', userId)
+      .order('id', { ascending: true })
+      .range(offset, offset + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) if (row.deal_name_raw) names.push(String(row.deal_name_raw));
+    if (data.length < PAGE) break;
+  }
+  return names;
 }
 
 async function findOrCreateCompany(
   admin: SupabaseClient,
   userId: string,
-  input: { name_clean: string; name_raw: string; source_priority: string }
-): Promise<{ id: string; created: boolean }> {
+  input: {
+    name_clean: string;
+    name_raw: string;
+    industry: string | null;
+    source_priority: string;
+  }
+): Promise<{ id: string; created: boolean; industry: string | null }> {
   const { data, error } = await admin
     .from('companies')
     .insert({ ...input, owner_id: userId })
     .select('id')
     .single();
-  if (!error) return { id: data!.id as string, created: true };
+  if (!error) return { id: data!.id as string, created: true, industry: input.industry };
   if (error.code !== '23505') throw error;
 
   // The name is taken. It may be a row sitting in the recycle bin — it owns deals
   // again now, so bring it back rather than leaving those deals invisible.
   const { data: found, error: findErr } = await admin
     .from('companies')
-    .select('id, deleted_at')
+    .select('id, deleted_at, industry')
     .eq('owner_id', userId)
     .ilike('name_clean', escapeLike(input.name_clean))
     .maybeSingle();
@@ -845,7 +982,11 @@ async function findOrCreateCompany(
       .eq('id', found.id)
       .eq('owner_id', userId);
   }
-  return { id: found.id as string, created: false };
+  return {
+    id: found.id as string,
+    created: false,
+    industry: (found.industry as string | null) ?? null,
+  };
 }
 
 /**

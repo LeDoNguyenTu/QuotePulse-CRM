@@ -31,6 +31,7 @@ export function CompaniesTable({
               />
             </th>
             <th className="px-3 py-2">Company</th>
+            <th className="px-3 py-2">Products</th>
             <th className="px-3 py-2">Industry</th>
             <th className="px-3 py-2">Source</th>
             <th className="px-3 py-2">Primary contact</th>
@@ -57,6 +58,9 @@ export function CompaniesTable({
                 {r.name_raw && r.name_raw !== r.name_clean && (
                   <div className="text-xs text-slate-400">{r.name_raw}</div>
                 )}
+              </td>
+              <td className="px-3 py-2">
+                <ProductTags value={r.products} />
               </td>
               <td className="px-3 py-2 text-slate-600">{r.industry ?? '—'}</td>
               <td className="px-3 py-2">
@@ -96,6 +100,33 @@ export function CompaniesTable({
       {rows.length === 0 && (
         <div className="p-8 text-center text-sm text-slate-500">No companies found.</div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The brands this company buys, taken from the front of its deal names. A single
+ * customer often appears under several (ADOBE, ADSK, TRAINING), so cap what is
+ * shown and count the rest.
+ */
+function ProductTags({ value }: { value: string | null }) {
+  if (!value) return <span className="text-slate-400">—</span>;
+
+  const products = value.split(', ').filter(Boolean);
+  const shown = products.slice(0, 3);
+  const extra = products.length - shown.length;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1" title={products.join(', ')}>
+      {shown.map((p) => (
+        <span
+          key={p}
+          className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600"
+        >
+          {p}
+        </span>
+      ))}
+      {extra > 0 && <span className="text-xs text-slate-400">+{extra}</span>}
     </div>
   );
 }

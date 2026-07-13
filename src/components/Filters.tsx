@@ -1,4 +1,4 @@
-import { useIndustries } from '../hooks/useIndustries';
+import { useIndustryFacets } from '../hooks/useIndustries';
 import type { CompanyFilters } from '../hooks/useCompanies';
 
 interface FiltersProps {
@@ -7,21 +7,28 @@ interface FiltersProps {
 }
 
 export function Filters({ filters, onChange }: FiltersProps) {
-  const { data: industries } = useIndustries();
+  // Only the industries that actually occur in the user's companies — offering a
+  // value that cannot match anything is worse than offering nothing.
+  const { data: facets } = useIndustryFacets();
 
   return (
     <div className="flex flex-wrap items-center gap-3">
       <select
-        className="input max-w-[200px]"
+        className="input max-w-[240px]"
         value={filters.industry ?? ''}
         onChange={(e) => onChange({ industry: e.target.value || undefined, page: 0 })}
       >
         <option value="">All industries</option>
-        {industries?.map((i) => (
-          <option key={i.id} value={i.name}>
-            {i.name}
+        {facets?.map((f) => (
+          <option key={f.industry} value={f.industry}>
+            {f.industry} ({f.company_count})
           </option>
         ))}
+        {facets?.length === 0 && (
+          <option value="" disabled>
+            No industries set yet — run the import
+          </option>
+        )}
       </select>
 
       <select

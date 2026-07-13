@@ -38,6 +38,8 @@ export interface CompanyDashboardRow {
   primary_contact_name: string | null;
   primary_contact_email: string | null;
   primary_contact_phone: string | null;
+  /** Comma-separated brands this company buys, from its deals. */
+  products: string | null;
   has_quote: boolean;
   has_kyc: boolean;
   last_email_status: SendStatus | null;
@@ -49,6 +51,8 @@ export interface Deal {
   hubspot_deal_id: string | null;
   company_id: string | null;
   deal_name_raw: string | null;
+  /** The brand/service being sold — the part of the deal name before the customer. */
+  product: string | null;
   deal_stage: string | null;
   is_archived: boolean;
   archived_at: string | null;

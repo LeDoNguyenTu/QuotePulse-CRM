@@ -88,12 +88,28 @@ explicitly on every write and filter `.eq('owner_id', userId)` on every read.**
    the software they are buying and `(AB005226)` is an account code. The original cleaner kept
    the text *before* the dash, and since companies dedupe on `lower(name_clean)`, every customer
    buying the same product collapsed into one row: **374 deals under "Adsk", 344 under "Adobe"**,
-   and KYC researched Adobe instead of the client. `_shared/dealName.ts` → `parseDealName()` now
-   picks the segment carrying a legal suffix (PTE LTD, LLC…), else the segment after the product.
-   Re-importing does **not** repair this — the sweep is incremental and skips unchanged deals —
-   so `hubspot-ingest` takes `{mode:'rebuild'}`, which re-derives companies from the deals already
-   in Postgres and drops the leftover vendor rows into the recycle bin ("Fix company names").
-9. **HubSpot attachments are PRIVATE files with no durable URL.** `GET /files/v3/files/{id}`
+   and KYC researched Adobe instead of the client. `deals.product` now keeps the vendor.
+   Only **93%** of names use ` - `; the rest are `LT--ATLOG PTE LTD`, `STARHUB-\tQool Labs Pte
+   Ltd-MB LINE`, `ADOBE (REN) THE TANGLIN CLUB` (no dash at all). Splitting on "a dash" cannot
+   work — hyphens appear inside both the product (`V-RAY`) and the customer (`AIR-CONDITIONING`,
+   `Kyodo-Allied`). So `_shared/dealName.ts` **learns the vendor list** from the well-punctuated
+   93% (`learnProducts`) and uses it to anchor the cut on the rest; matching ignores punctuation,
+   so `V-RAY` ≡ `VRAY` and `SKETCH UP` ≡ `SKETCHUP`.
+   Re-importing does **not** repair existing rows — the sweep is incremental and skips unchanged
+   deals — so `hubspot-ingest` takes `{mode:'rebuild'}`, which re-derives companies from the deals
+   already in Postgres and drops the leftover vendor rows into the recycle bin ("Fix company
+   names").
+9. **Import is a SYNC, not a re-import.** `deals.hubspot_modified_at` stores HubSpot's
+   `hs_lastmodifieddate`; `onlyChanged()` drops any deal whose timestamp still matches, so the
+   expensive part (one HTTP call per associated company, contact and note) is skipped. Paging is
+   cheap; `processDeal` is not.
+10. **Industry is classified from the company name, not searched.** `_shared/industry.ts` keyword-
+   matches the trade out of the name ("SUNLEY M&E ENGINEERING" → Engineering), because enriching
+   1,200 companies through Serper would cost 1,200 lookups. KYC overwrites it when the user runs
+   it. The filter dropdown reads the `company_industries` view (industries actually present),
+   **not** the `industries` lookup table — the lookup offered ten industries while no company had
+   one, so every choice filtered to zero rows.
+11. **HubSpot attachments are PRIVATE files with no durable URL.** `GET /files/v3/files/{id}`
    returns a `url` that only works for `PUBLIC_*` files; everything attached to a note or a
    quote is private, so `attachments.file_url` is legitimately **null**. Bytes come from
    `GET /files/v3/files/{id}/signed-url`, which expires in minutes — so `parse-quote` mints one
@@ -101,7 +117,7 @@ explicitly on every write and filter `.eq('owner_id', userId)` on every read.**
    files at all (the id is a *quote* id): their PDF is the `hs_pdf_download_link` property.
    All of this needs the **`files`** scope, which is *not* on the current personal access key —
    without it the import stores placeholder names (`file-<id>`) and OCR cannot download.
-10. **Migration files MUST be named `<14-digit-timestamp>_<name>.sql`.** The CLI derives the
+12. **Migration files MUST be named `<14-digit-timestamp>_<name>.sql`.** The CLI derives the
    version from the leading digits, and the remote history table already holds timestamp
    versions (`0001–0003` were applied via the dashboard/MCP, which records a timestamp). Plain
    `0004_foo.sql` makes `supabase db push` fail with *"Remote migration versions not found in

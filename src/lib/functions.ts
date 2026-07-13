@@ -48,6 +48,8 @@ export interface IngestResult {
     contacts: number;
     attachments: number;
     skipped_trashed: number;
+    /** Already held and unchanged in HubSpot — not re-read. */
+    skipped_existing: number;
   };
   /** Hard failures (auth, HubSpot 5xx, DB writes). Always show these. */
   errors: string[];
@@ -70,6 +72,8 @@ export interface RebuildResult {
     created: number;
     /** Vendor rows moved to the recycle bin. */
     retired: number;
+    /** Companies given an industry from their name. */
+    industries: number;
   };
   errors: string[];
 }

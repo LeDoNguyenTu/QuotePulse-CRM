@@ -118,7 +118,14 @@ export function Dashboard() {
     // repaint the progress bar after every slice.
     const total: IngestResult = {
       ok: true,
-      counts: { companies: 0, deals: 0, contacts: 0, attachments: 0, skipped_trashed: 0 },
+      counts: {
+        companies: 0,
+        deals: 0,
+        contacts: 0,
+        attachments: 0,
+        skipped_trashed: 0,
+        skipped_existing: 0,
+      },
       errors: [],
       warnings: [],
       done: false,
@@ -192,6 +199,7 @@ export function Dashboard() {
     let remapped = 0;
     let created = 0;
     let retired = 0;
+    let industries = 0;
     const errors: string[] = [];
 
     try {
@@ -201,6 +209,7 @@ export function Dashboard() {
         const res: RebuildResult = await functions.hubspotRebuild();
         remapped += res.counts?.remapped ?? 0;
         created += res.counts?.created ?? 0;
+        industries += res.counts?.industries ?? 0;
         retired = res.counts?.retired ?? retired;
         errors.push(...(res.errors ?? []));
         if (res.done ?? true) break;
@@ -208,10 +217,12 @@ export function Dashboard() {
       setBanner(
         `Re-linked ${remapped.toLocaleString()} deals to their real customer · ` +
           `${created.toLocaleString()} companies created · ` +
+          `${industries.toLocaleString()} industries identified · ` +
           `${retired.toLocaleString()} product rows moved to the recycle bin.` +
           (errors.length ? ` ${errors.length} problem(s): ${errors[0]}` : '')
       );
       qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['industry-facets'] });
     } catch (e) {
       setBanner(e instanceof Error ? e.message : String(e));
     } finally {
@@ -443,6 +454,14 @@ function ImportReport({
           Dismiss
         </button>
       </div>
+
+      {counts.skipped_existing > 0 && (
+        <p className="text-xs">
+          {counts.skipped_existing.toLocaleString()} deal
+          {counts.skipped_existing === 1 ? ' was' : 's were'} already up to date and left
+          untouched — only new and changed deals are pulled.
+        </p>
+      )}
 
       {counts.skipped_trashed > 0 && (
         <p className="text-xs">

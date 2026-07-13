@@ -140,6 +140,7 @@ function HubspotTab({ companyId }: { companyId: string }) {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
                 <tr>
+                  <th className="px-3 py-2">Product</th>
                   <th className="px-3 py-2">Deal</th>
                   <th className="px-3 py-2">Stage</th>
                   <th className="px-3 py-2">Pipeline</th>
@@ -150,7 +151,16 @@ function HubspotTab({ companyId }: { companyId: string }) {
               <tbody>
                 {deals.data.map((d) => (
                   <tr key={d.id} className="border-t border-slate-100">
-                    <td className="px-3 py-2">{d.deal_name_raw ?? '—'}</td>
+                    <td className="px-3 py-2">
+                      {d.product ? (
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                          {d.product}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-slate-500">{d.deal_name_raw ?? '—'}</td>
                     <td className="px-3 py-2">{d.deal_stage ?? '—'}</td>
                     <td className="px-3 py-2">{d.pipeline ?? '—'}</td>
                     <td className="px-3 py-2">{d.amount != null ? `$${d.amount}` : '—'}</td>

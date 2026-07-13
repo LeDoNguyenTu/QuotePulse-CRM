@@ -207,16 +207,57 @@ export class HubSpotClient {
     return { results: page.results, after: page.paging?.next?.after };
   }
 
-  /** Files API: resolve a file id to its name + signed URL. Throws on 403 so the
-   *  caller can report "missing files scope" once instead of per attachment. */
-  async getFileMeta(fileId: string): Promise<{ name: string; url: string } | null> {
-    const res = await fetch(`${BASE}/files/v3/files/${fileId}`, { headers: this.headers() });
-    if (res.status === 403) {
-      throw new HubSpotApiError(403, `/files/v3/files/${fileId}`, await res.text());
-    }
+  /**
+   * Files API metadata: the display name, plus a `url` that is only *downloadable*
+   * when the file's access is PUBLIC_*. Files attached to CRM notes and quotes are
+   * PRIVATE, so their `url` cannot be fetched — use getFileDownloadUrl() for bytes.
+   *
+   * Throws on 403 so the caller can report "missing files scope" once rather than
+   * once per attachment.
+   */
+  async getFileMeta(fileId: string): Promise<{ name: string; url: string | null } | null> {
+    const path = `/files/v3/files/${fileId}`;
+    const res = await fetch(BASE + path, { headers: this.headers() });
+    if (res.status === 403) throw new HubSpotApiError(403, path, await res.text());
     if (!res.ok) return null;
-    const f = (await res.json()) as { name?: string; url?: string };
-    return { name: f.name ?? `file-${fileId}`, url: f.url ?? '' };
+
+    const f = (await res.json()) as {
+      name?: string;
+      extension?: string;
+      url?: string;
+      access?: string;
+    };
+    // HubSpot stores name and extension separately ("quote-1234" + "pdf").
+    const stem = f.name ?? `file-${fileId}`;
+    const ext = f.extension ? `.${f.extension}` : '';
+    const name = ext && !stem.toLowerCase().endsWith(ext.toLowerCase()) ? stem + ext : stem;
+
+    const isPublic = (f.access ?? '').startsWith('PUBLIC');
+    return { name, url: isPublic ? (f.url ?? null) : null };
+  }
+
+  /**
+   * A short-lived signed URL for the file's bytes — the only way to download a
+   * PRIVATE file, which is what every CRM attachment is. It expires within
+   * minutes, so resolve it at download time and never persist it.
+   */
+  async getFileDownloadUrl(fileId: string): Promise<string | null> {
+    const path = `/files/v3/files/${fileId}/signed-url`;
+    const res = await fetch(BASE + path, { headers: this.headers() });
+    if (res.status === 404) return null; // not a file id (e.g. it's a quote object)
+    if (!res.ok) throw new HubSpotApiError(res.status, path, await res.text());
+    const f = (await res.json()) as { url?: string };
+    return f.url ?? null;
+  }
+
+  /**
+   * Quote objects are not files. hubspot-ingest stores the QUOTE id in
+   * attachments.hubspot_attachment_id, and the rendered PDF hangs off a property
+   * rather than the Files API.
+   */
+  async getQuotePdfUrl(quoteId: string): Promise<string | null> {
+    const q = await this.getOne('quotes', quoteId, ['hs_pdf_download_link']);
+    return q.properties.hs_pdf_download_link || null;
   }
 
   /** Fetch a single object by id (used to resolve associated companies/notes). */

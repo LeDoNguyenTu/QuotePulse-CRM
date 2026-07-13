@@ -647,10 +647,16 @@ function outOfBudget(ctx: Ctx): boolean {
   return Date.now() >= ctx.deadline || ctx.processed >= MAX_OBJECTS_PER_RUN;
 }
 
+/**
+ * Metadata only. The download URL is deliberately NOT resolved here: HubSpot
+ * hands out bytes for private files through a signed URL that expires in
+ * minutes, so parse-quote mints a fresh one at parse time from
+ * hubspot_attachment_id. file_url stays null for private files, which is normal.
+ */
 async function resolveFile(
   ctx: Ctx,
   fileId: string
-): Promise<{ name: string; url: string } | null> {
+): Promise<{ name: string; url: string | null } | null> {
   if (!ctx.filesAllowed) return null;
   try {
     return await ctx.hs.getFileMeta(fileId);
@@ -659,7 +665,9 @@ async function resolveFile(
       // Report the missing scope once, then stop hammering the Files API.
       ctx.filesAllowed = false;
       ctx.warnings.push(
-        'HubSpot token lacks the Files read scope — attachment file names and download URLs are unavailable.'
+        'HubSpot key cannot read Files: attachments were imported without their real ' +
+          'file names, and quote OCR will not be able to download them. Regenerate the ' +
+          'personal access key with the "files" scope ticked, then run the import again.'
       );
       return null;
     }

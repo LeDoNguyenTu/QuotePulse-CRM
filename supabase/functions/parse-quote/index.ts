@@ -5,6 +5,7 @@
 // upsert discovered contacts/companies.
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseAdmin.ts';
+import { HubSpotClient, HubSpotApiError } from '../_shared/hubspot.ts';
 
 // Default to NVIDIA's OpenAI-compatible integrate endpoint. Override with env if
 // you use a dedicated OCR NIM with a different schema.
@@ -37,29 +38,43 @@ Deno.serve(async (req) => {
       return errorResponse('attachment_id or file_url is required', 400);
     }
 
-    let attachment: { id: string; file_url: string | null; deal_id: string | null } | null =
-      null;
+    let attachment: AttachmentRow | null = null;
     if (body.attachment_id) {
       // Service role bypasses RLS — scope by owner explicitly.
       const { data, error } = await admin
         .from('attachments')
-        .select('id, file_url, deal_id')
+        .select('id, file_url, file_name, hubspot_attachment_id, deal_id')
         .eq('id', body.attachment_id)
         .eq('owner_id', userId)
         .maybeSingle();
       if (error || !data) return errorResponse('Attachment not found', 404);
-      attachment = data;
+      attachment = data as AttachmentRow;
     }
 
-    const fileUrl = attachment?.file_url ?? body.file_url ?? null;
-    if (!fileUrl) return errorResponse('Attachment has no file_url to download', 400);
-
     // 1) Download file bytes.
-    const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(15000) });
-    if (!fileRes.ok) throw new Error(`download ${fileRes.status}`);
+    const source = await resolveDownload(attachment, body.file_url ?? null, settings?.hubspot_token ?? null);
+    const fileRes = await fetch(source.url, { signal: AbortSignal.timeout(20000) });
+    if (!fileRes.ok) {
+      throw new Error(
+        `Downloading the file failed (${fileRes.status}). ` +
+          (source.from === 'hubspot'
+            ? 'The HubSpot link is short-lived — try again.'
+            : 'The stored file URL may have expired.')
+      );
+    }
     const contentType = fileRes.headers.get('content-type') ?? 'application/pdf';
     const bytes = new Uint8Array(await fileRes.arrayBuffer());
     const b64 = base64Encode(bytes);
+
+    // Imports done without the Files scope stored a placeholder name; now that we
+    // could reach HubSpot, correct it.
+    if (attachment && source.name && source.name !== attachment.file_name) {
+      await admin
+        .from('attachments')
+        .update({ file_name: source.name })
+        .eq('id', attachment.id)
+        .eq('owner_id', userId);
+    }
 
     // 2) OCR via NVIDIA.
     const apiKey = settings?.nvidia_key || Deno.env.get('NVIDIA_API_KEY');
@@ -124,6 +139,9 @@ Deno.serve(async (req) => {
       errors,
     });
   } catch (e) {
+    // A ParseError is an explained, actionable failure (missing scope, no file in
+    // HubSpot) — give it its own status and message instead of a bare 500.
+    if (e instanceof ParseError) return errorResponse(e.message, e.status);
     return json(
       { ok: false, errors: [...errors, e instanceof Error ? e.message : String(e)] },
       500
@@ -132,6 +150,95 @@ Deno.serve(async (req) => {
 });
 
 // ---------------------------------------------------------------------------
+
+interface AttachmentRow {
+  id: string;
+  file_url: string | null;
+  file_name: string | null;
+  hubspot_attachment_id: string | null;
+  deal_id: string | null;
+}
+
+class ParseError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'ParseError';
+  }
+}
+
+/**
+ * Work out where the document's bytes actually live.
+ *
+ * Files attached to HubSpot notes and quotes are PRIVATE, so the Files API never
+ * returns a fetchable `url` for them — which is why every imported attachment has
+ * file_url = null and why this function used to dead-end at "Attachment has no
+ * file_url to download". The bytes are reachable only through a signed URL that
+ * expires within minutes, so it must be minted here, per parse, rather than
+ * stored at import time.
+ */
+async function resolveDownload(
+  attachment: AttachmentRow | null,
+  explicitUrl: string | null,
+  hubspotToken: string | null
+): Promise<{ url: string; name?: string; from: 'hubspot' | 'stored' }> {
+  if (explicitUrl) return { url: explicitUrl, from: 'stored' };
+
+  const hsId = attachment?.hubspot_attachment_id ?? null;
+  if (hsId) {
+    if (!hubspotToken) {
+      throw new ParseError(
+        400,
+        'This file is stored in HubSpot, but no HubSpot key is saved in Settings, ' +
+          'so it cannot be downloaded. Add the key and try again.'
+      );
+    }
+
+    const hs = await HubSpotClient.connect(hubspotToken);
+    let name: string | undefined;
+    try {
+      const meta = await hs.getFileMeta(hsId);
+      if (meta) name = meta.name;
+      const signed = await hs.getFileDownloadUrl(hsId);
+      if (signed) return { url: signed, name, from: 'hubspot' };
+    } catch (e) {
+      if (e instanceof HubSpotApiError && e.status === 403) {
+        throw new ParseError(
+          403,
+          'Your HubSpot key is not allowed to read Files, so the quote PDF cannot be ' +
+            'downloaded. Regenerate the personal access key in HubSpot with the "files" ' +
+            'scope ticked, paste it into Settings, then run the HubSpot import again.'
+        );
+      }
+      throw e;
+    }
+
+    // Not a file id: quote attachments store the QUOTE object id, whose PDF hangs
+    // off a property instead of the Files API.
+    try {
+      const pdf = await hs.getQuotePdfUrl(hsId);
+      if (pdf) return { url: pdf, name, from: 'hubspot' };
+    } catch (e) {
+      if (!(e instanceof HubSpotApiError && (e.status === 403 || e.status === 404))) throw e;
+    }
+
+    throw new ParseError(
+      404,
+      `HubSpot has no downloadable file behind attachment ${hsId} — it may have been ` +
+        'deleted there, or it is a quote whose PDF has not been generated yet.'
+    );
+  }
+
+  if (attachment?.file_url) return { url: attachment.file_url, from: 'stored' };
+
+  throw new ParseError(
+    400,
+    'This attachment has no file to download: it has neither a stored URL nor a ' +
+      'HubSpot file id.'
+  );
+}
 
 /**
  * Sends the document to NVIDIA as an OpenAI-compatible multimodal message and

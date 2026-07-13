@@ -62,7 +62,7 @@ function AttachmentRow({
               </span>
             )}
           </div>
-          {attachment.file_url && (
+          {attachment.file_url ? (
             <a
               href={attachment.file_url}
               target="_blank"
@@ -71,7 +71,11 @@ function AttachmentRow({
             >
               {attachment.file_url}
             </a>
-          )}
+          ) : attachment.hubspot_attachment_id ? (
+            // Private HubSpot files have no durable URL — the download link is
+            // minted on demand when we parse them.
+            <p className="text-xs text-slate-400">Stored in HubSpot · fetched on demand</p>
+          ) : null}
         </div>
         <button className="btn-secondary shrink-0" onClick={parse} disabled={busy}>
           {busy ? 'Parsing…' : attachment.parsed ? 'Re-parse (OCR)' : 'Parse quote (OCR)'}

@@ -83,7 +83,15 @@ explicitly on every write and filter `.eq('owner_id', userId)` on every read.**
 7. Don't let Edge Functions return `ok: true` on failure. `hubspot-ingest` used to swallow every
    error into an `errors[]` array and still return HTTP 200, so a total auth failure rendered as
    *"import complete: 0 companies (2 warnings)"*. Surface `errors[]` in the UI.
-8. **Migration files MUST be named `<14-digit-timestamp>_<name>.sql`.** The CLI derives the
+8. **HubSpot attachments are PRIVATE files with no durable URL.** `GET /files/v3/files/{id}`
+   returns a `url` that only works for `PUBLIC_*` files; everything attached to a note or a
+   quote is private, so `attachments.file_url` is legitimately **null**. Bytes come from
+   `GET /files/v3/files/{id}/signed-url`, which expires in minutes — so `parse-quote` mints one
+   per parse from `hubspot_attachment_id`; **never store it.** Quote-object attachments are not
+   files at all (the id is a *quote* id): their PDF is the `hs_pdf_download_link` property.
+   All of this needs the **`files`** scope, which is *not* on the current personal access key —
+   without it the import stores placeholder names (`file-<id>`) and OCR cannot download.
+9. **Migration files MUST be named `<14-digit-timestamp>_<name>.sql`.** The CLI derives the
    version from the leading digits, and the remote history table already holds timestamp
    versions (`0001–0003` were applied via the dashboard/MCP, which records a timestamp). Plain
    `0004_foo.sql` makes `supabase db push` fail with *"Remote migration versions not found in

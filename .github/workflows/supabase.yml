@@ -35,6 +35,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Fail with a readable message instead of the CLI's "Access token not
+      # provided", which doesn't say WHICH secret is missing or where to add it.
+      - name: Check required secrets
+        run: |
+          missing=""
+          [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] || missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -n "${PROJECT_REF:-}" ]           || missing="$missing SUPABASE_PROJECT_REF"
+          [ -n "${SUPABASE_DB_PASSWORD:-}" ]  || missing="$missing SUPABASE_DB_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing"
+            echo ""
+            echo "Add them under: Settings -> Secrets and variables -> Actions -> New repository secret"
+            echo "  SUPABASE_ACCESS_TOKEN  https://supabase.com/dashboard/account/tokens"
+            echo "  SUPABASE_PROJECT_REF   qgcooulzzbjebwczjgis"
+            echo "  SUPABASE_DB_PASSWORD   Supabase -> Project Settings -> Database"
+            echo ""
+            echo "Then re-run this workflow. Until it succeeds, the database and Edge"
+            echo "Functions stay on their old versions even though Vercel has the new frontend."
+            exit 1
+          fi
+          echo "All three secrets are present."
+
       - uses: supabase/setup-cli@v1
         with:
           version: latest

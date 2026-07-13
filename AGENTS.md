@@ -83,6 +83,12 @@ explicitly on every write and filter `.eq('owner_id', userId)` on every read.**
 7. Don't let Edge Functions return `ok: true` on failure. `hubspot-ingest` used to swallow every
    error into an `errors[]` array and still return HTTP 200, so a total auth failure rendered as
    *"import complete: 0 companies (2 warnings)"*. Surface `errors[]` in the UI.
+8. **Migration files MUST be named `<14-digit-timestamp>_<name>.sql`.** The CLI derives the
+   version from the leading digits, and the remote history table already holds timestamp
+   versions (`0001–0003` were applied via the dashboard/MCP, which records a timestamp). Plain
+   `0004_foo.sql` makes `supabase db push` fail with *"Remote migration versions not found in
+   local migrations directory"*. Keep the `000N_` part after the timestamp so the derived name
+   still matches the remote row.
 
 ## Edge Function secrets (11)
 

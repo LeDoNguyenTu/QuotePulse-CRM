@@ -196,8 +196,17 @@ create trigger trg_sync_state_updated_at before update on sync_state
 --    already scopes it for browser reads. export-xlsx, however, reads it
 --    with the SERVICE ROLE (which bypasses RLS) and needs the column to
 --    filter on explicitly.
+--
+--    DROP + CREATE, not CREATE OR REPLACE: replacing a view can only APPEND
+--    columns at the end. Inserting owner_id as the 2nd column shifts every
+--    later column, which Postgres reads as renaming column 2 from name_clean
+--    to owner_id and rejects with 42P16 ("cannot change name of view column").
+--    Nothing depends on this view, and the grants + security_invoker are
+--    re-asserted below.
 -- ---------------------------------------------------------------------
-create or replace view company_dashboard as
+drop view if exists company_dashboard;
+
+create view company_dashboard as
 select
   c.id,
   c.owner_id,

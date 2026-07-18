@@ -67,7 +67,8 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Tu
           callback: (token) => onVerify(token),
           'expired-callback': () => onExpire?.(),
           'error-callback': () => onError?.(),
-          appearance: 'interaction-only', // stay invisible unless a challenge is needed
+          appearance: 'always', // show the widget so users see the protection
+          theme: 'auto',
         });
       })
       .catch(() => onError?.());

@@ -1,6 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import type { CompanyDashboardRow } from '../lib/types';
+import { formatDate, formatRelative } from '../lib/dates';
 import { Flag, PriorityBadge, StatusBadge } from './ui';
+
+/** Relative label ("3d ago") with the absolute date on hover; em dash when empty. */
+function RelativeDate({ value }: { value: string | null }) {
+  if (!value) return <span className="text-slate-400">—</span>;
+  return <span title={formatDate(value)}>{formatRelative(value)}</span>;
+}
 
 interface CompaniesTableProps {
   rows: CompanyDashboardRow[];
@@ -33,6 +40,7 @@ export function CompaniesTable({
             <th className="px-3 py-2">Company</th>
             <th className="px-3 py-2">Products</th>
             <th className="px-3 py-2">Industry</th>
+            <th className="px-3 py-2">Last activity</th>
             <th className="px-3 py-2">Source</th>
             <th className="px-3 py-2">Primary contact</th>
             <th className="px-3 py-2">Flags</th>
@@ -63,6 +71,14 @@ export function CompaniesTable({
                 <ProductTags value={r.products} />
               </td>
               <td className="px-3 py-2 text-slate-600">{r.industry ?? '—'}</td>
+              <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                <RelativeDate value={r.last_deal_at} />
+                {r.deal_count ? (
+                  <div className="text-xs text-slate-400">
+                    {r.deal_count} deal{r.deal_count === 1 ? '' : 's'}
+                  </div>
+                ) : null}
+              </td>
               <td className="px-3 py-2">
                 <PriorityBadge value={r.source_priority} />
               </td>

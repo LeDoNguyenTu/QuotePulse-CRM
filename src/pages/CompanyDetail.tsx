@@ -9,6 +9,7 @@ import {
   useCompanyKyc,
 } from '../hooks/useCompany';
 import { functions } from '../lib/functions';
+import { formatDate } from '../lib/dates';
 import { KycPanel } from '../components/KycPanel';
 import { AttachmentList } from '../components/AttachmentList';
 import { CompanyEditModal, ContactsEditor } from '../components/CustomerEditor';
@@ -143,8 +144,9 @@ function HubspotTab({ companyId }: { companyId: string }) {
                   <th className="px-3 py-2">Product</th>
                   <th className="px-3 py-2">Deal</th>
                   <th className="px-3 py-2">Stage</th>
-                  <th className="px-3 py-2">Pipeline</th>
                   <th className="px-3 py-2">Amount</th>
+                  <th className="px-3 py-2">Created</th>
+                  <th className="px-3 py-2">Modified</th>
                   <th className="px-3 py-2">Archived</th>
                 </tr>
               </thead>
@@ -162,8 +164,13 @@ function HubspotTab({ companyId }: { companyId: string }) {
                     </td>
                     <td className="px-3 py-2 text-slate-500">{d.deal_name_raw ?? '—'}</td>
                     <td className="px-3 py-2">{d.deal_stage ?? '—'}</td>
-                    <td className="px-3 py-2">{d.pipeline ?? '—'}</td>
                     <td className="px-3 py-2">{d.amount != null ? `$${d.amount}` : '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                      {formatDate(d.hubspot_created_at) || '—'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                      {formatDate(d.hubspot_modified_at) || '—'}
+                    </td>
                     <td className="px-3 py-2">
                       {d.is_archived ? (
                         <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">

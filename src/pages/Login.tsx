@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useCaptcha } from '../components/Turnstile';
 import { ErrorState } from '../components/ui';
 
 const SIGNED_OUT_REASONS: Record<string, string> = {
@@ -16,6 +17,7 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const captcha = useCaptcha();
 
   const notice = SIGNED_OUT_REASONS[params.get('reason') ?? ''];
   const verified = params.get('verified') === '1';
@@ -25,10 +27,11 @@ export function Login() {
     setBusy(true);
     setError(null);
     try {
-      await signIn(email, password);
+      await signIn(email, password, captcha.token || undefined);
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      captcha.reset(); // the token was consumed; re-arm for another try
     } finally {
       setBusy(false);
     }
@@ -68,7 +71,8 @@ export function Login() {
           />
         </div>
         {error && <ErrorState error={error} />}
-        <button className="btn-primary w-full" disabled={busy}>
+        {captcha.widget}
+        <button className="btn-primary w-full" disabled={busy || !captcha.ready}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>

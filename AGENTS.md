@@ -103,6 +103,13 @@ explicitly on every write and filter `.eq('owner_id', userId)` on every read.**
    `hs_lastmodifieddate`; `onlyChanged()` drops any deal whose timestamp still matches, so the
    expensive part (one HTTP call per associated company, contact and note) is skipped. Paging is
    cheap; `processDeal` is not.
+   **Backfill-vs-incremental is decided from live COUNTS, not a stored phase flag.** Incremental
+   mode (Search API, `hs_lastmodifieddate GT watermark`) can only see *recently modified* deals,
+   so a deal older than the watermark that was never imported is invisible to it forever. A stored
+   `phase='incremental'` once stranded **127k of 183k** deals this way (a smaller earlier portal's
+   backfill had latched the flag; a bigger portal was connected later). `dealsCaughtUp()` compares
+   our row count to `hs.countAll('deals')` each run, so any real gap re-enters backfill; the stream
+   only graduates to incremental once the count proves we hold ~everything (`CATCHUP_SLACK`).
 10. **Industry is classified from the company name, not searched.** `_shared/industry.ts` keyword-
    matches the trade out of the name ("SUNLEY M&E ENGINEERING" → Engineering), because enriching
    1,200 companies through Serper would cost 1,200 lookups. KYC overwrites it when the user runs
@@ -145,7 +152,7 @@ Then exercise the real flow — the failures in this codebase are overwhelmingly
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Client** (704 symbols, 1220 relationships, 22 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **Client** (1099 symbols, 1964 relationships, 52 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

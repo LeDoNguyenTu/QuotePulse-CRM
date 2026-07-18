@@ -40,6 +40,9 @@ export interface CompanyDashboardRow {
   primary_contact_phone: string | null;
   /** Comma-separated brands this company buys, from its deals. */
   products: string | null;
+  deal_count: number | null;
+  /** Newest deal activity (HubSpot modified date) — the default sort key. */
+  last_deal_at: string | null;
   has_quote: boolean;
   has_kyc: boolean;
   last_email_status: SendStatus | null;
@@ -58,6 +61,9 @@ export interface Deal {
   archived_at: string | null;
   pipeline: string | null;
   amount: number | null;
+  /** HubSpot's own timestamps (the row's created_at/updated_at are our import times). */
+  hubspot_created_at: string | null;
+  hubspot_modified_at: string | null;
   created_at: string;
   updated_at: string;
 }

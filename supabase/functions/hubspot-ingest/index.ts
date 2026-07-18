@@ -36,7 +36,19 @@ const TIME_BUDGET_MS = 30_000;
 const PAGE_SIZE = 100;
 const MAX_OBJECTS_PER_RUN = 5000; // safety valve
 
-const DEAL_PROPS = ['dealname', 'dealstage', 'pipeline', 'amount', 'hs_lastmodifieddate'];
+const DEAL_PROPS = [
+  'dealname',
+  'dealstage',
+  'pipeline',
+  'amount',
+  'createdate',
+  'hs_lastmodifieddate',
+];
+
+// A backfill is considered complete once we hold within this many of HubSpot's
+// own deal count. Slack absorbs the handful of deals that get archived or deleted
+// in HubSpot between the count and the crawl.
+const CATCHUP_SLACK = 25;
 const COMPANY_PROPS = ['name', 'domain', 'industry', 'website'];
 const CONTACT_PROPS = ['firstname', 'lastname', 'email', 'phone', 'jobtitle'];
 const NOTE_PROPS = ['hs_note_body', 'hs_attachment_ids'];
@@ -68,6 +80,8 @@ interface Ctx {
   processed: number;
   /** Vendor names, keyed by productKey(), used to split unpunctuated deal names. */
   products: Set<string>;
+  /** HubSpot's total active-deal count, fetched once per invocation (null if unknown). */
+  dealTotal: number | null;
 }
 
 Deno.serve(async (req) => {
@@ -124,18 +138,29 @@ Deno.serve(async (req) => {
       deadline: Date.now() + TIME_BUDGET_MS,
       processed: 0,
       products: await loadProductDictionary(admin, userId),
+      dealTotal: await hs.countAll('deals'),
     };
 
-    // Active deals: a resumable backfill, then incremental catch-up.
-    await sweepDeals(ctx, { archived: false, priority: 'current', stream: 'deals:current' });
+    // Are we still missing deals? Decide from LIVE COUNTS, not a stored phase flag.
+    // The stored flag stranded 127k deals: an earlier (smaller) portal's backfill
+    // finished and latched phase='incremental'; after a bigger portal was connected,
+    // every run only pulled recently-modified deals and never the older historical
+    // ones. Counting on each run means a real gap always forces a backfill.
+    const caughtUp = await dealsCaughtUp(ctx);
 
-    // Archived records are invisible to the Search API, so those streams have no
-    // incremental mode — they re-page from the top on EVERY run. Sweeping them
-    // while the main backfill is still running would spend each 30s slice
-    // re-reading the recycle bin, and the deals never imported would never arrive.
-    // Once the backfill has caught up there is budget to keep them fresh.
-    const mainState = await loadSyncState(admin, userId, 'deals:current');
-    if (mainState.phase === 'incremental' && !outOfBudget(ctx)) {
+    // Active deals: backfill until caught up, then cheap incremental catch-up.
+    await sweepDeals(ctx, {
+      archived: false,
+      priority: 'current',
+      stream: 'deals:current',
+      caughtUp,
+    });
+
+    // Archived records are invisible to the Search API, so those streams re-page
+    // from the top on EVERY run. Sweeping them before the main backfill is caught
+    // up would burn each 30s slice re-reading the recycle bin while brand-new deals
+    // waited. Only touch them once the active backfill has landed.
+    if (caughtUp && !outOfBudget(ctx)) {
       await sweepDeals(ctx, { archived: true, priority: 'recycled', stream: 'deals:recycled' });
       await sweepArchivedCompanies(ctx);
     }
@@ -212,14 +237,21 @@ async function negotiateAssociations(
 
 async function sweepDeals(
   ctx: Ctx,
-  opts: { archived: boolean; priority: 'recycled' | 'current'; stream: string }
+  opts: {
+    archived: boolean;
+    priority: 'recycled' | 'current';
+    stream: string;
+    /** Active stream only: have we already imported (nearly) every deal? */
+    caughtUp?: boolean;
+  }
 ) {
   try {
     const state = await loadSyncState(ctx.admin, ctx.userId, opts.stream);
 
-    // Incremental: only deals modified since the last completed sweep. Not
-    // available for archived records (the Search API ignores them).
-    if (!opts.archived && state.phase === 'incremental' && state.last_synced_at) {
+    // INCREMENTAL — only when the active backfill has genuinely caught up. Pulls
+    // just the deals modified since the watermark, which is cheap. Never taken
+    // while a gap remains, so it can no longer strand un-imported deals.
+    if (!opts.archived && opts.caughtUp && state.last_synced_at) {
       const startedAt = new Date().toISOString();
       let after: string | undefined;
       do {
@@ -252,10 +284,14 @@ async function sweepDeals(
       return;
     }
 
-    // Backfill: page through everything, persisting the cursor so the next run
-    // RESUMES instead of restarting from the oldest deal.
+    // BACKFILL — page through everything, persisting the cursor so the next run
+    // RESUMES instead of restarting. onlyChanged() makes re-encountering an
+    // already-held deal a no-op (one DB lookup, no HubSpot fan-out), so even a
+    // full re-page to hunt stragglers is cheap.
     let cursor = state.page_cursor ?? undefined;
     const startedAt = new Date().toISOString();
+    const startedFromTop = !state.page_cursor;
+    const importedAtStart = ctx.counts.deals;
 
     for (;;) {
       if (outOfBudget(ctx)) {
@@ -286,19 +322,40 @@ async function sweepDeals(
       }
 
       cursor = pageRes.after;
-      if (!cursor) break; // sweep complete
+      if (!cursor) break; // reached the end of the listing
     }
 
-    // Archived streams have no incremental mode — keep re-sweeping them (the
-    // recycle bin is small). Active deals graduate to incremental.
+    // A full pass finished. The active stream only graduates to incremental once
+    // the row count proves we actually hold everything; otherwise it stays in
+    // backfill with a null cursor so the next run re-pages from the top and picks
+    // up whatever was missed (deals added mid-crawl, transient failures, or a
+    // listing that did not surface every record in one pass). Archived streams
+    // have no incremental mode and simply re-sweep.
+    let phase: 'backfill' | 'incremental' = 'backfill';
+    if (!opts.archived) {
+      const caughtUp = await dealsCaughtUp(ctx);
+      // Also stop when a full re-page (top → end, all in this one run) turned up
+      // nothing new: the count may never reach total if a few deals perpetually
+      // error, and re-paging forever would waste every run. If we saw the whole
+      // listing and imported nothing, we are as done as we can get.
+      const wholeListingNoNew = startedFromTop && ctx.counts.deals === importedAtStart;
+      phase = caughtUp || wholeListingNoNew ? 'incremental' : 'backfill';
+    }
     await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
-      phase: opts.archived ? 'backfill' : 'incremental',
+      phase,
       page_cursor: null,
-      last_synced_at: startedAt,
+      last_synced_at: phase === 'incremental' ? startedAt : state.last_synced_at,
     });
   } catch (e) {
     ctx.errors.push(`deals(${opts.priority}): ${msg(e)}`);
   }
+}
+
+/** True once we hold within CATCHUP_SLACK of HubSpot's active-deal count. */
+async function dealsCaughtUp(ctx: Ctx): Promise<boolean> {
+  if (ctx.dealTotal == null) return false; // count unknown → keep backfilling
+  const have = await countActiveDeals(ctx.admin, ctx.userId);
+  return have >= ctx.dealTotal - CATCHUP_SLACK;
 }
 
 async function sweepArchivedCompanies(ctx: Ctx) {
@@ -423,7 +480,10 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
       amount: deal.properties.amount ? Number(deal.properties.amount) : null,
       is_archived: !!deal.archived || priority === 'recycled',
       archived_at: deal.archivedAt ?? null,
-      // The watermark that lets the next import skip this deal untouched.
+      // HubSpot's own timestamps — surfaced on the dashboard and used to sort
+      // newest-first. hubspot_modified_at also lets the next import skip this deal
+      // untouched (see onlyChanged).
+      hubspot_created_at: deal.properties.createdate ?? null,
       hubspot_modified_at: deal.properties.hs_lastmodifieddate ?? null,
     },
     { onConflict: 'owner_id,hubspot_deal_id' }
@@ -763,14 +823,13 @@ async function loadProductDictionary(
  * own table, so the figure survives across the many invocations one import takes.
  */
 async function progress(ctx: Ctx) {
-  const [dealsInHubspot, dealsImported, companies, state] = await Promise.all([
-    ctx.hs.countAll('deals'),
+  const [dealsImported, companies, state] = await Promise.all([
     countActiveDeals(ctx.admin, ctx.userId),
     countCompanies(ctx.admin, ctx.userId),
     loadSyncState(ctx.admin, ctx.userId, 'deals:current'),
   ]);
   return {
-    deals_in_hubspot: dealsInHubspot,
+    deals_in_hubspot: ctx.dealTotal, // already counted once this invocation
     deals_imported: dealsImported,
     companies,
     phase: state.phase,

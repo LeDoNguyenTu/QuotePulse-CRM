@@ -56,7 +56,13 @@ export function useCompanies(filters: CompanyFilters) {
 
       const from = page * pageSize;
       const to = from + pageSize - 1;
-      query = query.order('updated_at', { ascending: false }).range(from, to);
+      // Newest deal activity first — the user should land on the freshest
+      // accounts. Companies with no deals (last_deal_at null) fall to the bottom;
+      // updated_at breaks ties.
+      query = query
+        .order('last_deal_at', { ascending: false, nullsFirst: false })
+        .order('updated_at', { ascending: false })
+        .range(from, to);
 
       const { data, error, count } = await query;
       if (error) throw error;

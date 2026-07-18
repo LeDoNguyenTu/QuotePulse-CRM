@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useCaptcha } from '../components/Turnstile';
 import { ErrorState } from '../components/ui';
 import { AuthShell } from './Login';
 
@@ -13,13 +14,17 @@ export function Signup() {
   const [needsVerification, setNeedsVerification] = useState(false);
   const [resent, setResent] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Two independent challenges: one for the sign-up form, one for the resend
+  // button on the "check your inbox" screen (the token is single-use).
+  const captcha = useCaptcha();
+  const resendCaptcha = useCaptcha();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const { signedIn } = await signUp(email, password);
+      const { signedIn } = await signUp(email, password, captcha.token || undefined);
       if (signedIn) {
         // Email confirmation is disabled on this project — straight in.
         navigate('/');
@@ -30,6 +35,7 @@ export function Signup() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      captcha.reset();
     } finally {
       setBusy(false);
     }
@@ -39,10 +45,12 @@ export function Signup() {
     setError(null);
     setResent(false);
     try {
-      await resendVerification(email);
+      await resendVerification(email, resendCaptcha.token || undefined);
       setResent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      resendCaptcha.reset();
     }
   }
 
@@ -62,8 +70,13 @@ export function Signup() {
           </p>
           {error && <ErrorState error={error} />}
           {resent && <p className="text-emerald-700">Verification email resent.</p>}
+          {resendCaptcha.widget}
           <div className="flex gap-2 pt-1">
-            <button className="btn-secondary" onClick={handleResend}>
+            <button
+              className="btn-secondary"
+              onClick={handleResend}
+              disabled={!resendCaptcha.ready}
+            >
               Resend email
             </button>
             <Link className="btn-primary" to="/login">
@@ -100,7 +113,8 @@ export function Signup() {
           />
         </div>
         {error && <ErrorState error={error} />}
-        <button className="btn-primary w-full" disabled={busy}>
+        {captcha.widget}
+        <button className="btn-primary w-full" disabled={busy || !captcha.ready}>
           {busy ? 'Creating…' : 'Create account'}
         </button>
       </form>

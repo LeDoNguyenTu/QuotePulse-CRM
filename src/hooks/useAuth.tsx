@@ -23,11 +23,13 @@ interface AuthContextValue {
   /** True in the last minute before the idle timeout fires. */
   idleWarning: boolean;
   staySignedIn: () => void;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<SignUpResult>;
+  // captchaToken is required whenever Supabase Attack Protection has Turnstile
+  // enabled; it is ignored server-side when captcha is off.
+  signIn: (email: string, password: string, captchaToken?: string) => Promise<void>;
+  signUp: (email: string, password: string, captchaToken?: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
-  resendVerification: (email: string) => Promise<void>;
+  resetPassword: (email: string, captchaToken?: string) => Promise<void>;
+  resendVerification: (email: string, captchaToken?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -70,11 +72,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       idleWarning: warning,
       staySignedIn,
-      async signIn(email, password) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+      async signIn(email, password, captchaToken) {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+          options: { captchaToken },
+        });
         if (error) throw error;
       },
-      async signUp(email, password) {
+      async signUp(email, password, captchaToken) {
         // Without emailRedirectTo, Supabase falls back to the project's Site URL,
         // which defaults to http://localhost:3000 — that is why the confirmation
         // link opened a dead page. Note the Site URL / redirect allow-list still
@@ -82,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: authCallbackUrl() },
+          options: { emailRedirectTo: authCallbackUrl(), captchaToken },
         });
         if (error) throw error;
         return { signedIn: !!data.session };
@@ -90,17 +96,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signOut() {
         await supabase.auth.signOut();
       },
-      async resetPassword(email) {
+      async resetPassword(email, captchaToken) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/login`,
+          captchaToken,
         });
         if (error) throw error;
       },
-      async resendVerification(email) {
+      async resendVerification(email, captchaToken) {
         const { error } = await supabase.auth.resend({
           type: 'signup',
           email,
-          options: { emailRedirectTo: authCallbackUrl() },
+          options: { emailRedirectTo: authCallbackUrl(), captchaToken },
         });
         if (error) throw error;
       },

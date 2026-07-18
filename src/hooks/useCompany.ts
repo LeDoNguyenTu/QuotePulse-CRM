@@ -35,7 +35,10 @@ export function useCompanyDeals(companyId: string | undefined) {
         .from('deals')
         .select('*')
         .eq('company_id', companyId!)
-        .order('archived_at', { ascending: false, nullsFirst: false });
+        // Newest deals first: HubSpot's modified date, falling back to when we
+        // imported the row for deals that predate the column.
+        .order('hubspot_modified_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []) as Deal[];
     },

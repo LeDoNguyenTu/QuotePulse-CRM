@@ -1,40 +1,35 @@
 import { useEffect } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import type { Company, CompanyDashboardRow, SourcePriority } from '../lib/types';
-import { companyCountKey, companyPageKey, companyRange, companySort, normalizedCompanyFilters } from '../lib/companyPagination';
+import type { Company, CompanyDashboardRow } from '../lib/types';
+import { companyCountKey, companyPageKey, companyRange, normalizedCompanyFilters } from '../lib/companyPagination';
 
 export interface CompanyFilters {
   search?: string; industry?: string; source_priority?: string; has_quote?: boolean; has_kyc?: boolean; page?: number; pageSize?: number;
 }
 export interface CompaniesPage { rows: CompanyDashboardRow[]; count: number; }
 export const DEFAULT_PAGE_SIZE = 25;
-const DASHBOARD_COLUMNS = 'id,name_clean,name_raw,industry,website,source_priority,created_at,updated_at,primary_contact_name,primary_contact_email,primary_contact_phone,products,deal_count,last_deal_at,has_quote,has_kyc,last_email_status,last_email_sent_at';
 
-function applyCompanyFilters(query: any, filters: CompanyFilters) {
+function companyDashboardArgs(filters: CompanyFilters) {
   const normalized = normalizedCompanyFilters(filters);
-  if (normalized.search) {
-    const term = `%${normalized.search}%`;
-    query = query.or([`name_clean.ilike.${term}`, `name_raw.ilike.${term}`, `industry.ilike.${term}`, `primary_contact_name.ilike.${term}`, `primary_contact_email.ilike.${term}`].join(','));
-  }
-  if (normalized.industry) query = query.eq('industry', normalized.industry);
-  if (normalized.source_priority) query = query.eq('source_priority', normalized.source_priority as SourcePriority);
-  if (normalized.has_quote) query = query.eq('has_quote', true);
-  if (normalized.has_kyc) query = query.eq('has_kyc', true);
-  return query;
+  return {
+    p_search: normalized.search ?? null, p_industry: normalized.industry ?? null,
+    p_source_priority: normalized.source_priority ?? null, p_has_quote: normalized.has_quote ?? null,
+    p_has_kyc: normalized.has_kyc ?? null,
+  };
 }
 
 async function fetchCompanyPage(filters: CompanyFilters) {
-  const { from, to } = companyRange(filters.page ?? 0, filters.pageSize ?? DEFAULT_PAGE_SIZE);
-  let query = applyCompanyFilters(supabase.from('company_dashboard').select(DASHBOARD_COLUMNS), filters);
-  for (const sort of companySort) query = query.order(sort.column, { ascending: sort.ascending, nullsFirst: sort.nullsFirst });
-  const { data, error } = await query.range(from, to);
+  const { from } = companyRange(filters.page ?? 0, filters.pageSize ?? DEFAULT_PAGE_SIZE);
+  const { data, error } = await (supabase as any).rpc('company_dashboard_page', {
+    ...companyDashboardArgs(filters), p_limit: filters.pageSize ?? DEFAULT_PAGE_SIZE, p_offset: from,
+  });
   if (error) throw error;
   return (data ?? []) as CompanyDashboardRow[];
 }
 
 async function fetchCompanyCount(filters: CompanyFilters) {
-  const { count, error } = await applyCompanyFilters(supabase.from('company_dashboard').select('id', { count: 'exact', head: true }), filters);
+  const { data: count, error } = await (supabase as any).rpc('company_dashboard_count', companyDashboardArgs(filters));
   if (error) throw error;
   return count ?? 0;
 }

@@ -307,12 +307,14 @@ export function Dashboard() {
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar value={filters.search ?? ''} onChange={(v) => patch({ search: v, page: 0 })} />
         <Filters filters={filters} onChange={patch} />
-        <ColumnSelector
-          options={[...visibleColumns.map((id) => ({ id, label: id.replace(/_/g, ' ') })), ...(companyCatalog.data ?? []).map((field) => ({ id: field.property_name, label: field.label }))]}
-          visible={visibleColumns}
-          onChange={(columns) => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', columns) })}
-          onRestore={() => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', null) })}
-        />
+        <div className="order-1">
+          <ColumnSelector
+            options={[...visibleColumns.map((id) => ({ id, label: id.replace(/_/g, ' ') })), ...(companyCatalog.data ?? []).map((field) => ({ id: field.property_name, label: field.label }))]}
+            visible={visibleColumns}
+            onChange={(columns) => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', columns) })}
+            onRestore={() => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', null) })}
+          />
+        </div>
       </div>
 
       {pageQuery.error && <ErrorState error={pageQuery.error} />}

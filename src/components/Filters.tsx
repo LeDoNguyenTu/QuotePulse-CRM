@@ -12,7 +12,7 @@ export function Filters({ filters, onChange }: FiltersProps) {
   const { data: facets } = useIndustryFacets();
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="contents">
       <select
         className="input max-w-[240px]"
         value={filters.industry ?? ''}
@@ -44,23 +44,25 @@ export function Filters({ filters, onChange }: FiltersProps) {
         <option value="current">Current</option>
       </select>
 
-      <label className="flex items-center gap-2 text-sm text-slate-600">
-        <input
-          type="checkbox"
-          checked={!!filters.has_quote}
-          onChange={(e) => onChange({ has_quote: e.target.checked || undefined, page: 0 })}
-        />
-        Has quote PDF
-      </label>
+      <div className="order-2 flex basis-full flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={!!filters.has_quote}
+            onChange={(e) => onChange({ has_quote: e.target.checked || undefined, page: 0 })}
+          />
+          Has quote PDF
+        </label>
 
-      <label className="flex items-center gap-2 text-sm text-slate-600">
-        <input
-          type="checkbox"
-          checked={!!filters.has_kyc}
-          onChange={(e) => onChange({ has_kyc: e.target.checked || undefined, page: 0 })}
-        />
-        Has KYC
-      </label>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={!!filters.has_kyc}
+            onChange={(e) => onChange({ has_kyc: e.target.checked || undefined, page: 0 })}
+          />
+          Has KYC
+        </label>
+      </div>
     </div>
   );
 }

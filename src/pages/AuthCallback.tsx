@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { authOtpType } from '../lib/authCallback';
 import { useAuth } from '../hooks/useAuth';
 import { AuthShell } from './Login';
 import { ErrorState, Spinner } from '../components/ui';
@@ -52,7 +53,7 @@ export function AuthCallback() {
       if (tokenHash) {
         const { error: otpErr } = await supabase.auth.verifyOtp({
           token_hash: tokenHash,
-          type: (type as 'signup' | 'email' | 'recovery' | 'invite') ?? 'signup',
+          type: authOtpType(type),
         });
         if (cancelled) return;
         if (otpErr) {

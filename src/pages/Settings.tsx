@@ -5,10 +5,12 @@ import {
   useSaveSettings,
   useSettings,
 } from '../hooks/useSettings';
+import { useAuth } from '../hooks/useAuth';
 import { functions } from '../lib/functions';
 import { ErrorState, Spinner } from '../components/ui';
 
 export function Settings() {
+  const { user, changeLoginEmail } = useAuth();
   const { data, isLoading } = useSettings();
   const save = useSaveSettings();
   const disconnectMs = useDisconnectMicrosoft();
@@ -20,6 +22,9 @@ export function Settings() {
   const [brevoSenderEmail, setBrevoSenderEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [newLoginEmail, setNewLoginEmail] = useState('');
+  const [emailChangeMessage, setEmailChangeMessage] = useState<string | null>(null);
+  const [isChangingLoginEmail, setIsChangingLoginEmail] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -76,11 +81,57 @@ export function Settings() {
     }
   }
 
+  async function handleChangeLoginEmail() {
+    setError(null);
+    setEmailChangeMessage(null);
+    setIsChangingLoginEmail(true);
+    try {
+      await changeLoginEmail(newLoginEmail);
+      setNewLoginEmail('');
+      setEmailChangeMessage(
+        'Confirmation email sent. Follow the link to complete the change; your companies, deals, and settings remain attached to this account.'
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsChangingLoginEmail(false);
+    }
+  }
+
   if (isLoading) return <Spinner />;
 
   return (
     <div className="max-w-2xl space-y-6">
       <h1 className="text-2xl font-semibold">Settings</h1>
+
+      <section className="card space-y-3 p-5">
+        <h2 className="font-semibold">Login email</h2>
+        <p className="text-sm text-slate-500">
+          Current login: <span className="font-medium text-slate-700">{user?.email ?? 'Unknown'}</span>
+        </p>
+        <p className="text-sm text-slate-500">
+          Changing this keeps the same account and all of its data. We will send a confirmation
+          link before the new address takes effect.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            className="input"
+            type="email"
+            autoComplete="email"
+            placeholder="New login email"
+            value={newLoginEmail}
+            onChange={(event) => setNewLoginEmail(event.target.value)}
+          />
+          <button
+            className="btn-secondary shrink-0"
+            onClick={handleChangeLoginEmail}
+            disabled={isChangingLoginEmail || !newLoginEmail.trim()}
+          >
+            {isChangingLoginEmail ? 'Sending confirmation…' : 'Change login email'}
+          </button>
+        </div>
+        {emailChangeMessage && <p className="text-sm text-emerald-700">{emailChangeMessage}</p>}
+      </section>
 
       <section className="card space-y-3 p-5">
         <h2 className="font-semibold">HubSpot</h2>

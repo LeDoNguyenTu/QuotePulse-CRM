@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { prepareLoginEmailChange } from '../lib/accountEmail';
 import { useIdleTimeout } from './useIdleTimeout';
 
 interface SignUpResult {
@@ -28,6 +29,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string, captchaToken?: string) => Promise<void>;
   signUp: (email: string, password: string, captchaToken?: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
+  changeLoginEmail: (email: string) => Promise<void>;
   resetPassword: (email: string, captchaToken?: string) => Promise<void>;
   resendVerification: (email: string, captchaToken?: string) => Promise<void>;
 }
@@ -95,6 +97,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async signOut() {
         await supabase.auth.signOut();
+      },
+      async changeLoginEmail(email) {
+        const prepared = prepareLoginEmailChange(session?.user.email, email);
+        if ('error' in prepared) throw new Error(prepared.error);
+
+        // This updates auth.users.email for the current user only. It does not
+        // create a user or change auth.users.id, so all owner_id / created_by
+        // relationships in the application stay attached to this same account.
+        const { error } = await supabase.auth.updateUser(
+          { email: prepared.email },
+          { emailRedirectTo: authCallbackUrl() }
+        );
+        if (error) throw error;
       },
       async resetPassword(email, captchaToken) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {

@@ -42,7 +42,8 @@ export function CompaniesTable({
             <th className="px-3 py-2">Company</th>
             <th className="px-3 py-2">Products</th>
             <th className="px-3 py-2">Industry</th>
-            <th className="px-3 py-2">HubSpot activity</th>
+            <th className="px-3 py-2">HubSpot created</th>
+            <th className="px-3 py-2">HubSpot last modified</th>
             <th className="px-3 py-2">Source</th>
             <th className="px-3 py-2">Primary contact</th>
             <th className="px-3 py-2">Flags</th>
@@ -75,7 +76,10 @@ export function CompaniesTable({
               </td>
               <td className="px-3 py-2 text-slate-600">{r.industry ?? '—'}</td>
               <td className="px-3 py-2 whitespace-nowrap text-slate-600">
-                <RelativeDate value={r.last_deal_at} />
+                <RelativeDate value={r.last_hubspot_created_at} />
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                <RelativeDate value={r.last_hubspot_modified_at} />
                 {r.deal_count ? (
                   <div className="text-xs text-slate-400">
                     {r.deal_count} deal{r.deal_count === 1 ? '' : 's'}

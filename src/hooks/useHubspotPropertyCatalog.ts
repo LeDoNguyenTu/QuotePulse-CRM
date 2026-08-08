@@ -17,3 +17,19 @@ export function useHubspotPropertyCatalog(objectType: HubspotPropertyCatalogEntr
     },
   });
 }
+
+/** Property names that have at least one non-empty value in the owner's import. */
+export function useHubspotPropertyCoverage(objectType: HubspotPropertyCatalogEntry['object_type']) {
+  const { user } = useAuth();
+  return useQuery<string[]>({
+    queryKey: accountQueryKey(user?.id, ['hubspot-property-coverage', objectType]),
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('hubspot_property_names_with_values', {
+        p_object_type: objectType,
+      });
+      if (error) throw error;
+      return (data ?? []).map((row: { property_name: string }) => row.property_name);
+    },
+  });
+}

@@ -18,9 +18,10 @@ import { exportXlsx, functions } from '../lib/functions';
 import { cleanDealName } from '../lib/dealName';
 import type { SourcePriority } from '../lib/types';
 import { useSettings, useSaveSettings } from '../hooks/useSettings';
-import { useHubspotPropertyCatalog } from '../hooks/useHubspotPropertyCatalog';
+import { useHubspotPropertyCatalog, useHubspotPropertyCoverage } from '../hooks/useHubspotPropertyCatalog';
 import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns } from '../lib/tablePreferences';
 import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
+import { fieldsWithImportedValues } from '../lib/propertyCoverage';
 
 const PAGE_SIZE = 25;
 
@@ -41,8 +42,10 @@ export function Dashboard() {
   const settings = useSettings();
   const saveSettings = useSaveSettings();
   const companyCatalog = useHubspotPropertyCatalog('companies');
+  const companyCoverage = useHubspotPropertyCoverage('companies');
   const visibleColumns = resolveVisibleColumns('companies', settings.data?.table_column_preferences);
-  const customColumns = (companyCatalog.data ?? []).filter((field) =>
+  const companyFields = fieldsWithImportedValues(companyCatalog.data ?? [], companyCoverage.data ?? []);
+  const customColumns = companyFields.filter((field) =>
     visibleColumns.includes(field.property_name) && !DEFAULT_VISIBLE_COLUMNS.companies.includes(field.property_name)
   );
   const softDelete = useSoftDeleteCompanies();
@@ -320,7 +323,12 @@ export function Dashboard() {
         <Filters filters={filters} onChange={patch} />
         <div className="order-1">
           <ColumnSelector
-            options={[...visibleColumns.map((id) => ({ id, label: id.replace(/_/g, ' ') })), ...(companyCatalog.data ?? []).map((field) => ({ id: field.property_name, label: field.label }))]}
+            options={[
+              ...visibleColumns
+                .filter((id) => DEFAULT_VISIBLE_COLUMNS.companies.includes(id))
+                .map((id) => ({ id, label: id.replace(/_/g, ' ') })),
+              ...companyFields.map((field) => ({ id: field.property_name, label: field.label })),
+            ]}
             visible={visibleColumns}
             onChange={(columns) => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', columns) })}
             onRestore={() => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', null) })}

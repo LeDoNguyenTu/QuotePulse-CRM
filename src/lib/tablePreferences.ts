@@ -4,7 +4,7 @@ export type TableColumnPreferences = Partial<Record<ConfigurableTable, string[]>
 /** Existing UI columns are intentionally the first-login defaults. */
 export const DEFAULT_VISIBLE_COLUMNS: Record<ConfigurableTable, string[]> = {
   companies: [
-    'name_clean', 'products', 'industry', 'last_deal_at', 'source_priority',
+    'name_clean', 'products', 'industry', 'hubspot_created_at', 'hubspot_last_modified_at', 'source_priority',
     'primary_contact', 'flags', 'last_email',
   ],
   deals: [

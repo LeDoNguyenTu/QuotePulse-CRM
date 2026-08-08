@@ -11,6 +11,12 @@ describe('table preferences', () => {
     expect(resolveVisibleColumns('companies', null)).toEqual(DEFAULT_VISIBLE_COLUMNS.companies);
   });
 
+  it('includes separate HubSpot created and last-modified timestamps by default', () => {
+    expect(DEFAULT_VISIBLE_COLUMNS.companies).toEqual(
+      expect.arrayContaining(['hubspot_created_at', 'hubspot_last_modified_at'])
+    );
+  });
+
   it('persists only the columns deliberately chosen for a table', () => {
     const current: TableColumnPreferences = { deals: ['deal_name_raw', 'amount'] };
     expect(saveVisibleColumns(current, 'contacts', ['email', 'phone'])).toEqual({

@@ -54,7 +54,12 @@ export interface CompanyDashboardRow {
   products: string | null;
   deal_count: number | null;
   /** Newest deal activity (HubSpot modified date) — the default sort key. */
+  /** Effective source activity for sorting: last modified, then created as fallback. */
   last_deal_at: string | null;
+  /** Most recent deal creation timestamp supplied by HubSpot. */
+  last_hubspot_created_at: string | null;
+  /** Most recent HubSpot modification timestamp; creation time is used when it was never modified. */
+  last_hubspot_modified_at: string | null;
   has_quote: boolean;
   has_kyc: boolean;
   last_email_status: SendStatus | null;

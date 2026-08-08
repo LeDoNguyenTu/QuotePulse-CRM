@@ -29,6 +29,8 @@ export interface Company {
   industry: string | null;
   website: string | null;
   hubspot_company_id: string | null;
+  hubspot_properties: Record<string, string | null>;
+  hubspot_properties_schema_version: string | null;
   source_priority: SourcePriority;
   deleted_at: string | null;
   created_at: string;
@@ -56,6 +58,7 @@ export interface CompanyDashboardRow {
   has_kyc: boolean;
   last_email_status: SendStatus | null;
   last_email_sent_at: string | null;
+  hubspot_properties: Record<string, string | null>;
 }
 
 export interface Deal {
@@ -73,6 +76,8 @@ export interface Deal {
   /** HubSpot's own timestamps (the row's created_at/updated_at are our import times). */
   hubspot_created_at: string | null;
   hubspot_modified_at: string | null;
+  hubspot_properties: Record<string, string | null>;
+  hubspot_properties_schema_version: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +91,8 @@ export interface Contact {
   role_title: string | null;
   is_primary_contact: boolean;
   source: ContactSource;
+  hubspot_properties: Record<string, string | null>;
+  hubspot_properties_schema_version: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -204,7 +211,21 @@ export interface UserSettings {
   brevo_api_key: string | null;
   brevo_sender_email: string | null;
   brevo_sender_name: string | null;
+  table_column_preferences: import('./tablePreferences').TableColumnPreferences;
   created_at: string;
+  updated_at: string;
+}
+
+export interface HubspotPropertyCatalogEntry {
+  owner_id: string;
+  object_type: 'companies' | 'deals' | 'contacts';
+  property_name: string;
+  label: string;
+  data_type: string | null;
+  field_type: string | null;
+  group_name: string | null;
+  display_order: number | null;
+  hubspot_defined: boolean;
   updated_at: string;
 }
 
@@ -235,6 +256,7 @@ export interface Database {
       email_sends: Table<EmailSend>;
       user_settings: Table<UserSettings>;
       industries: Table<Industry>;
+      hubspot_property_catalog: Table<HubspotPropertyCatalogEntry>;
     };
     Views: {
       company_dashboard: View<CompanyDashboardRow>;

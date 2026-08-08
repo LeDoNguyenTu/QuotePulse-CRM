@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { accountQueryKey } from '../lib/accountQueryScope';
+import { useAuth } from './useAuth';
 import type {
   Attachment,
   Company,
@@ -11,9 +13,10 @@ import type {
 } from '../lib/types';
 
 export function useCompany(companyId: string | undefined) {
+  const { user } = useAuth();
   return useQuery<Company | null>({
-    queryKey: ['company', companyId],
-    enabled: !!companyId,
+    queryKey: accountQueryKey(user?.id, ['company', companyId]),
+    enabled: !!companyId && !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('companies')
@@ -27,9 +30,10 @@ export function useCompany(companyId: string | undefined) {
 }
 
 export function useCompanyDeals(companyId: string | undefined) {
+  const { user } = useAuth();
   return useQuery<Deal[]>({
-    queryKey: ['company-deals', companyId],
-    enabled: !!companyId,
+    queryKey: accountQueryKey(user?.id, ['company-deals', companyId]),
+    enabled: !!companyId && !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('deals')
@@ -46,9 +50,10 @@ export function useCompanyDeals(companyId: string | undefined) {
 }
 
 export function useCompanyContacts(companyId: string | undefined) {
+  const { user } = useAuth();
   return useQuery<Contact[]>({
-    queryKey: ['company-contacts', companyId],
-    enabled: !!companyId,
+    queryKey: accountQueryKey(user?.id, ['company-contacts', companyId]),
+    enabled: !!companyId && !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('contacts')
@@ -62,9 +67,10 @@ export function useCompanyContacts(companyId: string | undefined) {
 }
 
 export function useCompanyAttachments(companyId: string | undefined) {
+  const { user } = useAuth();
   return useQuery<Attachment[]>({
-    queryKey: ['company-attachments', companyId],
-    enabled: !!companyId,
+    queryKey: accountQueryKey(user?.id, ['company-attachments', companyId]),
+    enabled: !!companyId && !!user,
     queryFn: async () => {
       // attachments -> deals -> company. Two-step to keep it simple/typed.
       const { data: deals, error: dErr } = await supabase
@@ -86,9 +92,10 @@ export function useCompanyAttachments(companyId: string | undefined) {
 }
 
 export function useCompanyKyc(companyId: string | undefined) {
+  const { user } = useAuth();
   return useQuery<KycProfile | null>({
-    queryKey: ['company-kyc', companyId],
-    enabled: !!companyId,
+    queryKey: accountQueryKey(user?.id, ['company-kyc', companyId]),
+    enabled: !!companyId && !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('kyc_profiles')
@@ -102,9 +109,10 @@ export function useCompanyKyc(companyId: string | undefined) {
 }
 
 export function useCompanyEmailSends(companyId: string | undefined) {
+  const { user } = useAuth();
   return useQuery<EmailSend[]>({
-    queryKey: ['company-emails', companyId],
-    enabled: !!companyId,
+    queryKey: accountQueryKey(user?.id, ['company-emails', companyId]),
+    enabled: !!companyId && !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('email_sends')

@@ -4,9 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { prepareLoginEmailChange } from '../lib/accountEmail';
@@ -48,17 +50,29 @@ export function authCallbackUrl(flow?: 'email-change'): string {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const previousUserId = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
+    const applySession = (nextSession: Session | null) => {
+      const nextUserId = nextSession?.user.id ?? null;
+      if (previousUserId.current !== undefined && previousUserId.current !== nextUserId) {
+        void queryClient.cancelQueries();
+        queryClient.clear();
+      }
+      previousUserId.current = nextUserId;
+      setSession(nextSession);
+    };
+
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+      applySession(data.session);
       setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
+      applySession(newSession);
     });
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [queryClient]);
 
   const handleIdleTimeout = useCallback(async () => {
     await supabase.auth.signOut();
@@ -100,6 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { signedIn: !!data.session };
       },
       async signOut() {
+        await queryClient.cancelQueries();
+        queryClient.clear();
         await supabase.auth.signOut();
       },
       async changeLoginEmail(email) {
@@ -141,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
       },
     }),
-    [session, loading, warning, staySignedIn]
+    [session, loading, warning, staySignedIn, queryClient]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

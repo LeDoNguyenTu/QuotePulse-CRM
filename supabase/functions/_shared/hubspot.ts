@@ -1,5 +1,6 @@
 // Minimal HubSpot CRM v3 REST client used by the ingest function.
 // Docs: https://developers.hubspot.com/docs/api/crm/deals
+import type { HubspotPropertyDefinition } from './hubspotProperties.ts';
 const BASE = 'https://api.hubapi.com';
 
 export interface HsObject {
@@ -110,7 +111,7 @@ export class HubSpotClient {
   }
 
   /** GET with simple 429 backoff (HubSpot returns Retry-After). */
-  private async get(path: string, params: Record<string, string> = {}): Promise<HsPage> {
+  private async get<T = HsPage>(path: string, params: Record<string, string> = {}): Promise<T> {
     const url = new URL(BASE + path);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
@@ -122,9 +123,53 @@ export class HubSpotClient {
         continue;
       }
       if (!res.ok) throw new HubSpotApiError(res.status, path, await res.text());
-      return (await res.json()) as HsPage;
+      return (await res.json()) as T;
     }
     throw new Error(`HubSpot rate-limited after retries: ${path}`);
+  }
+
+  private async post<T>(path: string, body: unknown): Promise<T> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(BASE + path, {
+        method: 'POST', headers: this.headers(), body: JSON.stringify(body),
+      });
+      if (res.status === 429) {
+        const retry = Number(res.headers.get('Retry-After') ?? '2');
+        await sleep(Math.min(retry, 10) * 1000);
+        continue;
+      }
+      if (!res.ok) throw new HubSpotApiError(res.status, path, await res.text());
+      return (await res.json()) as T;
+    }
+    throw new Error(`HubSpot rate-limited after retries: ${path}`);
+  }
+
+  /** Lists all readable standard and custom property definitions for this portal. */
+  async listProperties(
+    objectType: 'deals' | 'companies' | 'contacts'
+  ): Promise<HubspotPropertyDefinition[]> {
+    const page = await this.get<{ results?: HubspotPropertyDefinition[] }>(
+      `/crm/v3/properties/${objectType}`
+    );
+    return (page.results ?? []).filter((definition) => !definition.archived && !!definition.name);
+  }
+
+  /**
+   * Batch read avoids one API call per record while hydrating the complete
+   * property snapshot. HubSpot accepts a property list in the POST body, so it
+   * avoids URL-length issues that occur with many custom fields.
+   */
+  async batchRead(
+    objectType: 'deals' | 'companies' | 'contacts',
+    ids: string[],
+    properties: string[]
+  ): Promise<HsObject[]> {
+    if (ids.length === 0 || properties.length === 0) return [];
+    const page = await this.post<{ results?: HsObject[] }>(
+      `/crm/v3/objects/${objectType}/batch/read`,
+      { inputs: ids.map((id) => ({ id })), properties }
+    );
+    return page.results ?? [];
   }
 
   /**

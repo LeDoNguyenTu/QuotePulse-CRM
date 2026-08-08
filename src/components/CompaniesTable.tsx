@@ -14,6 +14,7 @@ interface CompaniesTableProps {
   selected: Set<string>;
   onToggle: (id: string) => void;
   onToggleAll: (ids: string[], value: boolean) => void;
+  extraColumns?: Array<{ id: string; label: string }>;
 }
 
 export function CompaniesTable({
@@ -21,6 +22,7 @@ export function CompaniesTable({
   selected,
   onToggle,
   onToggleAll,
+  extraColumns = [],
 }: CompaniesTableProps) {
   const navigate = useNavigate();
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
@@ -45,6 +47,7 @@ export function CompaniesTable({
             <th className="px-3 py-2">Primary contact</th>
             <th className="px-3 py-2">Flags</th>
             <th className="px-3 py-2">Last email</th>
+            {extraColumns.map((column) => <th key={column.id} className="px-3 py-2">{column.label}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -109,6 +112,11 @@ export function CompaniesTable({
                   </div>
                 )}
               </td>
+              {extraColumns.map((column) => (
+                <td key={column.id} className="max-w-56 truncate px-3 py-2" title={r.hubspot_properties[column.id] ?? ''}>
+                  {r.hubspot_properties[column.id] ?? '—'}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

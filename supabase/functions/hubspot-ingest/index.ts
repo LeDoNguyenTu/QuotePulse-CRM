@@ -27,6 +27,12 @@ import {
   extractContactsFromText,
   type HsObject,
 } from '../_shared/hubspot.ts';
+import {
+  chunkPropertyNames,
+  mergeHubspotProperties,
+  propertySchemaVersion,
+  type HubspotPropertyDefinition,
+} from '../_shared/hubspotProperties.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 // Deliberately well under the ~150s Edge wall-time limit. Each invocation is one
@@ -82,7 +88,12 @@ interface Ctx {
   products: Set<string>;
   /** HubSpot's total active-deal count, fetched once per invocation (null if unknown). */
   dealTotal: number | null;
+  propertyDefinitions: Record<ImportObjectType, HubspotPropertyDefinition[]>;
+  propertyVersions: Record<ImportObjectType, string>;
+  objectCache: Map<string, HsObject>;
 }
+
+type ImportObjectType = 'deals' | 'companies' | 'contacts';
 
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
@@ -126,6 +137,7 @@ Deno.serve(async (req) => {
       return errorResponse(e instanceof Error ? e.message : String(e), 400);
     }
 
+    const propertyDefinitions = await loadPropertyDefinitions(hs, admin, userId, warnings);
     const ctx: Ctx = {
       hs,
       admin,
@@ -139,6 +151,13 @@ Deno.serve(async (req) => {
       processed: 0,
       products: await loadProductDictionary(admin, userId),
       dealTotal: await hs.countAll('deals'),
+      propertyDefinitions,
+      propertyVersions: {
+        deals: propertySchemaVersion(propertyDefinitions.deals),
+        companies: propertySchemaVersion(propertyDefinitions.companies),
+        contacts: propertySchemaVersion(propertyDefinitions.contacts),
+      },
+      objectCache: new Map(),
     };
 
     // Are we still missing deals? Decide from LIVE COUNTS, not a stored phase flag.
@@ -235,6 +254,85 @@ async function negotiateAssociations(
   );
 }
 
+const FALLBACK_PROPERTY_DEFINITIONS: Record<ImportObjectType, HubspotPropertyDefinition[]> = {
+  deals: DEAL_PROPS.map((name) => ({ name, label: name, hubspotDefined: true })),
+  companies: COMPANY_PROPS.map((name) => ({ name, label: name, hubspotDefined: true })),
+  contacts: CONTACT_PROPS.map((name) => ({ name, label: name, hubspotDefined: true })),
+};
+
+/** Read and retain each owner's standard and custom HubSpot field catalogue. */
+async function loadPropertyDefinitions(
+  hs: HubSpotClient,
+  admin: SupabaseClient,
+  userId: string,
+  warnings: string[]
+): Promise<Record<ImportObjectType, HubspotPropertyDefinition[]>> {
+  const loaded = {} as Record<ImportObjectType, HubspotPropertyDefinition[]>;
+  for (const objectType of ['deals', 'companies', 'contacts'] as const) {
+    try {
+      const definitions = await hs.listProperties(objectType);
+      const { error } = await admin.from('hubspot_property_catalog').upsert(
+        definitions.map((definition) => ({
+          owner_id: userId,
+          object_type: objectType,
+          property_name: definition.name,
+          label: definition.label || definition.name,
+          data_type: definition.type ?? null,
+          field_type: definition.fieldType ?? null,
+          group_name: definition.groupName ?? null,
+          display_order: definition.displayOrder ?? null,
+          hubspot_defined: !!definition.hubspotDefined,
+        })),
+        { onConflict: 'owner_id,object_type,property_name' }
+      );
+      if (error) throw error;
+      loaded[objectType] = definitions;
+    } catch (error) {
+      warnings.push(
+        `Could not read all HubSpot ${objectType} properties; retaining the existing core fields only. ${msg(error)}`
+      );
+      loaded[objectType] = FALLBACK_PROPERTY_DEFINITIONS[objectType];
+    }
+  }
+  return loaded;
+}
+
+/** Hydrates a regular HubSpot page (up to 100 objects) through efficient batch reads. */
+async function hydrateProperties(
+  ctx: Ctx,
+  objectType: ImportObjectType,
+  objects: HsObject[]
+): Promise<HsObject[]> {
+  if (objects.length === 0) return objects;
+  const byId = new Map(objects.map((object) => [object.id, object]));
+  const names = ctx.propertyDefinitions[objectType].map((definition) => definition.name);
+  for (const propertyChunk of chunkPropertyNames(names)) {
+    const results = await ctx.hs.batchRead(objectType, objects.map((object) => object.id), propertyChunk);
+    for (const result of results) {
+      const current = byId.get(result.id);
+      if (current) current.properties = mergeHubspotProperties(current.properties, result.properties);
+    }
+  }
+  return objects;
+}
+
+/** Fetches and caches a full company/contact snapshot once per import run. */
+async function getCompleteObject(
+  ctx: Ctx,
+  objectType: 'companies' | 'contacts',
+  id: string,
+  coreProperties: string[]
+): Promise<HsObject> {
+  const cacheKey = `${objectType}:${id}`;
+  const cached = ctx.objectCache.get(cacheKey);
+  if (cached) return cached;
+  const base = await ctx.hs.getOne(objectType, id, coreProperties);
+  const [complete] = await hydrateProperties(ctx, objectType, [base]);
+  const result = complete ?? base;
+  ctx.objectCache.set(cacheKey, result);
+  return result;
+}
+
 async function sweepDeals(
   ctx: Ctx,
   opts: {
@@ -267,7 +365,8 @@ async function sweepDeals(
           try {
             // Search doesn't return associations — hydrate each changed deal.
             const deal = await ctx.hs.getOne('deals', hit.id, DEAL_PROPS, ctx.assoc);
-            await processDeal(ctx, deal, opts.priority);
+            const [completeDeal] = await hydrateProperties(ctx, 'deals', [deal]);
+            await processDeal(ctx, completeDeal ?? deal, opts.priority);
           } catch (e) {
             ctx.errors.push(`deal ${hit.id}: ${msg(e)}`);
           }
@@ -311,7 +410,8 @@ async function sweepDeals(
         after: cursor,
       });
 
-      for (const deal of await onlyChanged(ctx, pageRes.results)) {
+      const changedDeals = await onlyChanged(ctx, pageRes.results);
+      for (const deal of await hydrateProperties(ctx, 'deals', changedDeals)) {
         if (outOfBudget(ctx)) break;
         try {
           await processDeal(ctx, deal, opts.priority);
@@ -381,7 +481,7 @@ async function sweepArchivedCompanies(ctx: Ctx) {
         after: cursor,
       });
 
-      for (const co of pageRes.results) {
+      for (const co of await hydrateProperties(ctx, 'companies', pageRes.results)) {
         if (outOfBudget(ctx)) break;
         const name = co.properties.name ?? 'Unknown';
         try {
@@ -393,6 +493,8 @@ async function sweepArchivedCompanies(ctx: Ctx) {
             website: co.properties.website ?? co.properties.domain ?? null,
             hubspot_company_id: co.id,
             source_priority: 'deleted',
+            hubspot_properties: co.properties,
+            hubspot_properties_schema_version: ctx.propertyVersions.companies,
           });
           if (id) ctx.counts.companies++;
         } catch (e) {
@@ -437,7 +539,7 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
   if (assocCompany) {
     hubspotCompanyId = assocCompany.id;
     try {
-      const co = await ctx.hs.getOne('companies', assocCompany.id, COMPANY_PROPS);
+      const co = await getCompleteObject(ctx, 'companies', assocCompany.id, COMPANY_PROPS);
       hubspotIndustry = co.properties.industry ?? null;
       website = co.properties.website ?? co.properties.domain ?? null;
       hubspotCompanyName = co.properties.name ?? null;
@@ -463,12 +565,16 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
     website,
     hubspot_company_id: hubspotCompanyId,
     source_priority: priority,
+    hubspot_properties: hubspotCompanyId
+      ? (ctx.objectCache.get(`companies:${hubspotCompanyId}`)?.properties ?? {})
+      : {},
+    hubspot_properties_schema_version: hubspotCompanyId ? ctx.propertyVersions.companies : null,
   });
   // upsertCompany returns null when the company sits in the user's recycle bin.
   if (!companyId) return;
   ctx.counts.companies++;
 
-  const { error: dealErr } = await ctx.admin.from('deals').upsert(
+  const { data: dealRow, error: dealErr } = await ctx.admin.from('deals').upsert(
     {
       owner_id: ctx.userId,
       hubspot_deal_id: deal.id,
@@ -485,18 +591,19 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
       // untouched (see onlyChanged).
       hubspot_created_at: deal.properties.createdate ?? null,
       hubspot_modified_at: deal.properties.hs_lastmodifieddate ?? null,
+      hubspot_properties: deal.properties,
+      hubspot_properties_schema_version: ctx.propertyVersions.deals,
     },
     { onConflict: 'owner_id,hubspot_deal_id' }
-  );
+  ).select('id').single();
   if (dealErr) throw dealErr;
   ctx.counts.deals++;
-
-  const dealRowId = await getDealRowId(ctx, deal.id);
+  const dealRowId = dealRow!.id as string;
 
   // Associated contacts.
   for (const c of deal.associations?.contacts?.results ?? []) {
     try {
-      const contact = await ctx.hs.getOne('contacts', c.id, CONTACT_PROPS);
+      const contact = await getCompleteObject(ctx, 'contacts', c.id, CONTACT_PROPS);
       const full = [contact.properties.firstname, contact.properties.lastname]
         .filter(Boolean)
         .join(' ')
@@ -508,6 +615,8 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
         phone: contact.properties.phone ?? null,
         role_title: contact.properties.jobtitle ?? null,
         source: 'hubspot_contact',
+        hubspot_properties: contact.properties,
+        hubspot_properties_schema_version: ctx.propertyVersions.contacts,
       });
       if (added) ctx.counts.contacts++;
     } catch (e) {
@@ -587,6 +696,8 @@ async function upsertCompany(
     website: string | null;
     hubspot_company_id: string | null;
     source_priority: 'recycled' | 'deleted' | 'current';
+    hubspot_properties?: Record<string, string | null>;
+    hubspot_properties_schema_version?: string | null;
   }
 ): Promise<string | null> {
   const { data: existing } = await ctx.admin
@@ -607,6 +718,10 @@ async function upsertCompany(
         industry: input.industry ?? existing.industry,
         website: input.website ?? existing.website,
         hubspot_company_id: input.hubspot_company_id ?? existing.hubspot_company_id,
+        ...(input.hubspot_properties ? { hubspot_properties: input.hubspot_properties } : {}),
+        ...(input.hubspot_properties_schema_version
+          ? { hubspot_properties_schema_version: input.hubspot_properties_schema_version }
+          : {}),
       })
       .eq('id', existing.id)
       .eq('owner_id', ctx.userId);
@@ -617,17 +732,6 @@ async function upsertCompany(
     .from('companies')
     .insert({ ...input, owner_id: ctx.userId })
     .select('id')
-    .single();
-  if (error) throw error;
-  return data!.id as string;
-}
-
-async function getDealRowId(ctx: Ctx, hubspotDealId: string): Promise<string> {
-  const { data, error } = await ctx.admin
-    .from('deals')
-    .select('id')
-    .eq('owner_id', ctx.userId)
-    .eq('hubspot_deal_id', hubspotDealId)
     .single();
   if (error) throw error;
   return data!.id as string;
@@ -649,6 +753,8 @@ async function saveContact(
     phone: string | null;
     role_title: string | null;
     source: string;
+    hubspot_properties?: Record<string, string | null>;
+    hubspot_properties_schema_version?: string;
   }
 ): Promise<boolean> {
   if (!input.email && !input.phone) return false;
@@ -658,9 +764,18 @@ async function saveContact(
       .from('contacts')
       .select('id')
       .eq('company_id', input.company_id)
+      .eq('owner_id', ctx.userId)
       .ilike('email', escapeLike(input.email))
       .maybeSingle();
-    if (dup) return false;
+    if (dup) {
+      if (input.hubspot_properties) {
+        await ctx.admin.from('contacts').update({
+          hubspot_properties: input.hubspot_properties,
+          hubspot_properties_schema_version: input.hubspot_properties_schema_version ?? null,
+        }).eq('id', dup.id).eq('owner_id', ctx.userId);
+      }
+      return false;
+    }
   }
 
   const { error } = await ctx.admin
@@ -764,7 +879,7 @@ async function onlyChanged(ctx: Ctx, deals: HsObject[]): Promise<HsObject[]> {
 
   const { data, error } = await ctx.admin
     .from('deals')
-    .select('hubspot_deal_id, hubspot_modified_at')
+    .select('hubspot_deal_id, hubspot_modified_at, hubspot_properties_schema_version')
     .eq('owner_id', ctx.userId)
     .in(
       'hubspot_deal_id',
@@ -772,8 +887,11 @@ async function onlyChanged(ctx: Ctx, deals: HsObject[]): Promise<HsObject[]> {
     );
   if (error) return deals; // a failed lookup must never lose data — just re-import
 
-  const held = new Map<string, string | null>(
-    (data ?? []).map((r) => [String(r.hubspot_deal_id), r.hubspot_modified_at as string | null])
+  const held = new Map<string, { modifiedAt: string | null; schemaVersion: string | null }>(
+    (data ?? []).map((r) => [String(r.hubspot_deal_id), {
+      modifiedAt: r.hubspot_modified_at as string | null,
+      schemaVersion: r.hubspot_properties_schema_version as string | null,
+    }])
   );
 
   const changed: HsObject[] = [];
@@ -783,7 +901,11 @@ async function onlyChanged(ctx: Ctx, deals: HsObject[]): Promise<HsObject[]> {
 
     // Only skip when we can PROVE it is unchanged: we hold the deal, both sides
     // carry a timestamp, and they agree. Anything else gets imported.
-    if (ours && theirs && Date.parse(ours) === Date.parse(theirs)) {
+    if (
+      ours && theirs &&
+      Date.parse(ours.modifiedAt ?? '') === Date.parse(theirs) &&
+      ours.schemaVersion === ctx.propertyVersions.deals
+    ) {
       ctx.counts.skipped_existing++;
       ctx.processed++;
       continue;

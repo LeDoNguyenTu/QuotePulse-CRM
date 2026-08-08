@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="QuotePulse CRM">
+  <rect width="64" height="64" rx="14" fill="#2563eb"/>
+  <path d="M18 16h22l8 8v24H18z" fill="#fff" opacity=".96"/>
+  <path d="M40 16v10h10M25 34h16M25 42h11" fill="none" stroke="#2563eb" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>
+  <circle cx="48" cy="48" r="10" fill="#14b8a6"/>
+  <path d="M44 48h8M48 44v8" stroke="#fff" stroke-linecap="round" stroke-width="2.5"/>
+</svg>

@@ -10,12 +10,16 @@ import type { ImportProgress, IngestResult, RebuildResult } from '../lib/functio
 import { SearchBar } from '../components/SearchBar';
 import { Filters } from '../components/Filters';
 import { CompaniesTable } from '../components/CompaniesTable';
+import { ColumnSelector } from '../components/ColumnSelector';
 import { BulkSendPanel } from '../components/BulkSendPanel';
 import { Modal } from '../components/Modal';
 import { ErrorState, Spinner } from '../components/ui';
 import { exportXlsx, functions } from '../lib/functions';
 import { cleanDealName } from '../lib/dealName';
 import type { SourcePriority } from '../lib/types';
+import { useSettings, useSaveSettings } from '../hooks/useSettings';
+import { useHubspotPropertyCatalog } from '../hooks/useHubspotPropertyCatalog';
+import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns } from '../lib/tablePreferences';
 
 const PAGE_SIZE = 25;
 
@@ -33,6 +37,13 @@ export function Dashboard() {
   const cancelRef = useRef(false);
 
   const qc = useQueryClient();
+  const settings = useSettings();
+  const saveSettings = useSaveSettings();
+  const companyCatalog = useHubspotPropertyCatalog('companies');
+  const visibleColumns = resolveVisibleColumns('companies', settings.data?.table_column_preferences);
+  const customColumns = (companyCatalog.data ?? []).filter((field) =>
+    visibleColumns.includes(field.property_name) && !DEFAULT_VISIBLE_COLUMNS.companies.includes(field.property_name)
+  );
   const softDelete = useSoftDeleteCompanies();
   const { data, isLoading, isFetching, isPlaceholderData, pageQuery, countQuery } = useCompanies(filters);
   const rows = data?.rows ?? [];
@@ -159,7 +170,7 @@ export function Dashboard() {
           startedAt,
           step,
         });
-        qc.invalidateQueries({ queryKey: ['companies'] });
+        qc.invalidateQueries({ queryKey: ['account'] });
 
         if (done) break;
         if (cancelRef.current) {
@@ -181,7 +192,7 @@ export function Dashboard() {
     } finally {
       setImporting(false);
       setLive(null);
-      qc.invalidateQueries({ queryKey: ['companies'] });
+      qc.invalidateQueries({ queryKey: ['account'] });
     }
   }
 
@@ -226,8 +237,7 @@ export function Dashboard() {
           `${retired.toLocaleString()} product rows moved to the recycle bin.` +
           (errors.length ? ` ${errors.length} problem(s): ${errors[0]}` : '')
       );
-      qc.invalidateQueries({ queryKey: ['companies'] });
-      qc.invalidateQueries({ queryKey: ['industry-facets'] });
+      qc.invalidateQueries({ queryKey: ['account'] });
     } catch (e) {
       setBanner(e instanceof Error ? e.message : String(e));
     } finally {
@@ -297,6 +307,12 @@ export function Dashboard() {
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar value={filters.search ?? ''} onChange={(v) => patch({ search: v, page: 0 })} />
         <Filters filters={filters} onChange={patch} />
+        <ColumnSelector
+          options={[...visibleColumns.map((id) => ({ id, label: id.replace(/_/g, ' ') })), ...(companyCatalog.data ?? []).map((field) => ({ id: field.property_name, label: field.label }))]}
+          visible={visibleColumns}
+          onChange={(columns) => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', columns) })}
+          onRestore={() => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', null) })}
+        />
       </div>
 
       {pageQuery.error && <ErrorState error={pageQuery.error} />}
@@ -305,7 +321,7 @@ export function Dashboard() {
         <Spinner label="Loading companies…" />
       ) : (
         <div className="relative">
-          <CompaniesTable rows={rows} selected={selected} onToggle={toggle} onToggleAll={toggleAll} />
+          <CompaniesTable rows={rows} selected={selected} onToggle={toggle} onToggleAll={toggleAll} extraColumns={customColumns.map((field) => ({ id: field.property_name, label: field.label }))} />
           {isFetching && (
             <div className="absolute inset-0 grid place-items-center bg-white/65" aria-live="polite">
               <Spinner label={`Loading page ${page + 1}…`} />

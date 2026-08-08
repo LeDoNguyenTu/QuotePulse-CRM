@@ -5,6 +5,7 @@ import { useTemplates } from '../hooks/useTemplates';
 import { useSettings } from '../hooks/useSettings';
 import { useEmailQueue, countSentLast24h } from '../hooks/useEmailQueue';
 import { renderTemplate } from '../lib/render';
+import { emailProviderConfigurationError } from '../lib/emailProviderConfig';
 import { Modal } from './Modal';
 import { ErrorState, Spinner } from './ui';
 
@@ -54,6 +55,10 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
   );
 
   const dailyLimit = settings?.daily_send_limit ?? 50;
+  const providerConfigurationError = emailProviderConfigurationError(
+    settings?.email_provider ?? 'microsoft_graph',
+    settings ?? {}
+  );
   const remainingToday = Math.max(0, dailyLimit - (sentLast24h ?? 0));
   const willExceed = recipients.length > remainingToday;
 
@@ -79,8 +84,8 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
       setLocalError('Choose a template first.');
       return;
     }
-    if (!settings?.ms_refresh_token) {
-      setLocalError('Connect your Microsoft 365 mailbox in Settings first.');
+    if (providerConfigurationError) {
+      setLocalError(providerConfigurationError);
       return;
     }
     try {
@@ -229,13 +234,17 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
           </div>
         )}
 
-        {!settings?.ms_refresh_token && (
+        {providerConfigurationError && (
           <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">
+            {settings?.email_provider === 'brevo' ? <>{providerConfigurationError}</> : (
+              <>
             No Microsoft mailbox connected — connect one in{' '}
             <Link className="underline" to="/settings">
               Settings
             </Link>{' '}
             to send.
+              </>
+            )}
           </p>
         )}
 
@@ -250,8 +259,8 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
               running ||
               !templateId ||
               recipients.length === 0 ||
-              // Sending without a mailbox used to be reachable and only failed on click.
-              !(settings?.email_provider === 'brevo' ? settings?.brevo_sender_email : settings?.ms_refresh_token) || !consentConfirmed
+              !!providerConfigurationError ||
+              !consentConfirmed
             }
           >
             {running ? 'Sending…' : `Queue & send ${recipients.length}`}

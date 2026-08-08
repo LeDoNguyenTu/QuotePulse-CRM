@@ -5,6 +5,7 @@ export interface ProviderEmail {
   subject: string;
   bodyText: string;
   senderEmail?: string | null;
+  senderName?: string | null;
   unsubscribeUrl?: string | null;
 }
 
@@ -78,7 +79,11 @@ export async function sendBrevo(apiKey: string, input: ProviderEmail): Promise<P
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json', 'api-key': apiKey },
       body: JSON.stringify({
-        sender: { email: input.senderEmail }, to: [{ email: input.toEmail }], subject: input.subject, textContent: input.bodyText,
+        sender: {
+          email: input.senderEmail,
+          ...(input.senderName?.trim() ? { name: input.senderName.trim() } : {}),
+        },
+        to: [{ email: input.toEmail }], subject: input.subject, textContent: input.bodyText,
       }),
     });
     const body = await response.text();

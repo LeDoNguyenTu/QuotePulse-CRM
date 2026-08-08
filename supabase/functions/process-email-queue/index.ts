@@ -1,6 +1,6 @@
 // Durable scheduled worker. It never sleeps and is invoked by pg_cron/pg_net.
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
-import { getAdminClient, getUserSettings } from '../_shared/supabaseAdmin.ts';
+import { getAdminClient, getUserSettings, type UserSettingsRow } from '../_shared/supabaseAdmin.ts';
 import { refreshAccessToken } from '../_shared/ms.ts';
 import { safeErrorMessage } from '../_shared/errors.ts';
 import { sendBrevo, sendMicrosoftGraph, type EmailProvider } from '../_shared/emailProviders.ts';
@@ -64,6 +64,7 @@ Deno.serve(async (request) => {
       const provider = (row.provider ?? settings.email_provider ?? 'microsoft_graph') as EmailProvider;
       const providerResult = await sendWithProvider(provider, settings, tokenByOwner, ownerId, {
         toEmail: row.to_email, subject, bodyText, senderEmail: settings.brevo_sender_email,
+        senderName: settings.brevo_sender_name,
       });
       if (providerResult.ok) {
         await finish(admin, row, { status: 'sent', subject, body_rendered: bodyText, sent_at: new Date().toISOString(),
@@ -84,10 +85,12 @@ Deno.serve(async (request) => {
   return json(result);
 });
 
-async function sendWithProvider(provider: EmailProvider, settings: Record<string, unknown>, tokens: Map<string, string>, ownerId: string, input: Parameters<typeof sendMicrosoftGraph>[1]) {
+async function sendWithProvider(provider: EmailProvider, settings: UserSettingsRow, tokens: Map<string, string>, ownerId: string, input: Parameters<typeof sendMicrosoftGraph>[1]) {
   if (provider === 'brevo') {
-    const apiKey = Deno.env.get('BREVO_API_KEY');
-    return apiKey ? sendBrevo(apiKey, input) : { ok: false, providerMessageId: null, retryable: false, ambiguous: false, errorMessage: 'Brevo is not configured on the server.' };
+    const apiKey = settings.brevo_api_key?.trim();
+    return apiKey
+      ? sendBrevo(apiKey, input)
+      : { ok: false, providerMessageId: null, retryable: false, ambiguous: false, errorMessage: 'Enter your Brevo API key in Settings.' };
   }
   let token = tokens.get(ownerId);
   if (!token) {

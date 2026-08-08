@@ -19,7 +19,10 @@ export function Settings() {
   const [nvidiaKey, setNvidiaKey] = useState('');
   const [dailyLimit, setDailyLimit] = useState(50);
   const [emailProvider, setEmailProvider] = useState<'microsoft_graph' | 'brevo'>('microsoft_graph');
+  const [brevoApiKey, setBrevoApiKey] = useState('');
   const [brevoSenderEmail, setBrevoSenderEmail] = useState('');
+  const [brevoSenderName, setBrevoSenderName] = useState('');
+  const [clearBrevoApiKey, setClearBrevoApiKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [newLoginEmail, setNewLoginEmail] = useState('');
@@ -33,10 +36,12 @@ export function Settings() {
       setDailyLimit(data.daily_send_limit ?? 50);
       setEmailProvider(data.email_provider ?? 'microsoft_graph');
       setBrevoSenderEmail(data.brevo_sender_email ?? '');
+      setBrevoSenderName(data.brevo_sender_name ?? '');
     }
   }, [data]);
 
   const tokenKind = classifyHubspotToken(hubspotToken);
+  const hasSavedBrevoApiKey = !!data?.brevo_api_key;
 
   async function handleSave() {
     setError(null);
@@ -48,7 +53,15 @@ export function Settings() {
         daily_send_limit: dailyLimit,
         email_provider: emailProvider,
         brevo_sender_email: brevoSenderEmail || null,
+        brevo_sender_name: brevoSenderName || null,
+        ...(brevoApiKey.trim()
+          ? { brevo_api_key: brevoApiKey.trim() }
+          : clearBrevoApiKey
+            ? { brevo_api_key: null }
+            : {}),
       });
+      setBrevoApiKey('');
+      setClearBrevoApiKey(false);
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -230,8 +243,46 @@ export function Settings() {
         </select>
         {emailProvider === 'brevo' && (
           <>
-            <input className="input" type="email" placeholder="Verified Brevo sender email" value={brevoSenderEmail} onChange={(event) => setBrevoSenderEmail(event.target.value)} />
-            <p className="text-xs text-slate-500">Brevo Free has a daily sending limit and may add provider branding. It prohibits spam; use it only for legitimate, expected email. The Brevo API key stays server-side.</p>
+            <label className="label">Brevo API key</label>
+            <input
+              className="input"
+              type="password"
+              autoComplete="off"
+              placeholder={hasSavedBrevoApiKey ? 'Saved — enter a new key only to replace it' : 'xkeysib-…'}
+              value={brevoApiKey}
+              onChange={(event) => {
+                setBrevoApiKey(event.target.value);
+                setClearBrevoApiKey(false);
+              }}
+            />
+            {hasSavedBrevoApiKey && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={clearBrevoApiKey}
+                  onChange={(event) => setClearBrevoApiKey(event.target.checked)}
+                />
+                Remove the saved Brevo API key
+              </label>
+            )}
+            <input
+              className="input"
+              type="email"
+              placeholder="Verified Brevo sender email"
+              value={brevoSenderEmail}
+              onChange={(event) => setBrevoSenderEmail(event.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Sender display name (optional)"
+              value={brevoSenderName}
+              onChange={(event) => setBrevoSenderName(event.target.value)}
+            />
+            <p className="text-xs text-slate-500">
+              Create the key and verify this sender or domain in your own Brevo account, then save
+              here. This configuration is private to this CRM owner; it is not shared with other
+              customers. Brevo Free has a daily sending limit and may add provider branding.
+            </p>
           </>
         )}
         <p className="text-xs text-slate-500">Microsoft Graph sends through the connected Exchange mailbox. DNS authentication and sender reputation, not the API call, drive deliverability.</p>

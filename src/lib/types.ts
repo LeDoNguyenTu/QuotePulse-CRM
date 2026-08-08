@@ -201,7 +201,9 @@ export interface UserSettings {
   nvidia_key: string | null;
   daily_send_limit: number;
   email_provider: EmailProvider;
+  brevo_api_key: string | null;
   brevo_sender_email: string | null;
+  brevo_sender_name: string | null;
   created_at: string;
   updated_at: string;
 }

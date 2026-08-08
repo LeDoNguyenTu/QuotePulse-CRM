@@ -85,6 +85,13 @@ export interface EnrichResult {
   errors: string[];
 }
 
+export interface JobDiscoveryResult {
+  ok: boolean;
+  sources_checked: number;
+  discovered: number;
+  errors: string[];
+}
+
 export interface ParseResult {
   ok: boolean;
   attachment_id: string;
@@ -104,6 +111,9 @@ export const functions = {
   hubspotRebuild: () => invoke<RebuildResult>('hubspot-ingest', { mode: 'rebuild' }),
 
   enrichKyc: (company_id: string) => invoke<EnrichResult>('enrich-kyc', { company_id }),
+
+  discoverJobs: (company_id: string) =>
+    invoke<JobDiscoveryResult>('discover-jobs', { company_id }),
 
   parseQuote: (attachment_id: string) =>
     invoke<ParseResult>('parse-quote', { attachment_id }),

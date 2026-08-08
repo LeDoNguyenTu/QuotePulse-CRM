@@ -21,6 +21,7 @@ export type SendStatus =
   | 'blocked'
   | 'deferred';
 export type EmailProvider = 'microsoft_graph' | 'brevo';
+export type JobSourceProvider = 'greenhouse' | 'lever';
 
 export interface Company {
   id: string;
@@ -229,6 +230,40 @@ export interface HubspotPropertyCatalogEntry {
   updated_at: string;
 }
 
+export interface JobSourceConfig {
+  id: string;
+  owner_id: string;
+  company_id: string;
+  provider: JobSourceProvider;
+  identifier: string;
+  label: string | null;
+  enabled: boolean;
+  last_checked_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobOpportunity {
+  id: string;
+  owner_id: string;
+  company_id: string;
+  job_source_config_id: string;
+  external_id: string;
+  fingerprint: string;
+  title: string;
+  location: string | null;
+  department: string | null;
+  workplace_type: string | null;
+  description: string | null;
+  apply_url: string;
+  source_url: string | null;
+  posted_at: string | null;
+  is_open: boolean;
+  last_seen_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Industry {
   id: string;
   name: string;
@@ -257,6 +292,8 @@ export interface Database {
       user_settings: Table<UserSettings>;
       industries: Table<Industry>;
       hubspot_property_catalog: Table<HubspotPropertyCatalogEntry>;
+      job_source_configs: Table<JobSourceConfig>;
+      job_opportunities: Table<JobOpportunity>;
     };
     Views: {
       company_dashboard: View<CompanyDashboardRow>;

@@ -8,6 +8,9 @@ import type {
   Contact,
   Deal,
   EmailSend,
+  JobOpportunity,
+  JobSourceConfig,
+  JobSourceProvider,
   KycEnrichedData,
   KycProfile,
 } from '../lib/types';
@@ -105,6 +108,75 @@ export function useCompanyKyc(companyId: string | undefined) {
       if (error) throw error;
       return data as KycProfile | null;
     },
+  });
+}
+
+export function useCompanyJobSources(companyId: string | undefined) {
+  const { user } = useAuth();
+  return useQuery<JobSourceConfig[]>({
+    queryKey: accountQueryKey(user?.id, ['company-job-sources', companyId]),
+    enabled: !!companyId && !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('job_source_configs')
+        .select('*')
+        .eq('company_id', companyId!)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as JobSourceConfig[];
+    },
+  });
+}
+
+export function useCompanyJobOpportunities(companyId: string | undefined) {
+  const { user } = useAuth();
+  return useQuery<JobOpportunity[]>({
+    queryKey: accountQueryKey(user?.id, ['company-job-opportunities', companyId]),
+    enabled: !!companyId && !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('job_opportunities')
+        .select('*')
+        .eq('company_id', companyId!)
+        .eq('is_open', true)
+        .order('posted_at', { ascending: false, nullsFirst: false })
+        .order('last_seen_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as JobOpportunity[];
+    },
+  });
+}
+
+export interface JobSourceInput {
+  provider: JobSourceProvider;
+  identifier: string;
+  label?: string;
+}
+
+export function useCreateJobSource(companyId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: JobSourceInput) => {
+      const { error } = await supabase.from('job_source_configs').insert({
+        company_id: companyId!,
+        provider: input.provider,
+        identifier: input.identifier.trim(),
+        label: input.label?.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['account'] }),
+  });
+}
+
+export function useDeleteJobSource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (sourceId: string) => {
+      const { error } = await supabase.from('job_source_configs').delete().eq('id', sourceId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['account'] }),
   });
 }
 

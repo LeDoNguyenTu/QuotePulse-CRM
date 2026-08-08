@@ -1,8 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { KycContact, KycEnrichedData, KycProfile } from '../lib/types';
+import type { JobSourceProvider, KycContact, KycEnrichedData, KycProfile } from '../lib/types';
 import { functions } from '../lib/functions';
-import { useSaveContact, useUpdateKyc } from '../hooks/useCompany';
+import {
+  useCompanyJobOpportunities,
+  useCompanyJobSources,
+  useCreateJobSource,
+  useDeleteJobSource,
+  useSaveContact,
+  useUpdateKyc,
+} from '../hooks/useCompany';
+import { portalAccessNotice, validSourceIdentifier } from '../lib/jobIntelligence';
 import { Modal } from './Modal';
 import { ErrorState } from './ui';
 
@@ -165,6 +173,8 @@ export function KycPanel({ companyId, kyc }: KycPanelProps) {
         </div>
       )}
 
+      <JobIntelligencePanel companyId={companyId} />
+
       {kyc && (
         <KycEditModal
           companyId={companyId}
@@ -174,6 +184,140 @@ export function KycPanel({ companyId, kyc }: KycPanelProps) {
         />
       )}
     </div>
+  );
+}
+
+function JobIntelligencePanel({ companyId }: { companyId: string }) {
+  const qc = useQueryClient();
+  const sources = useCompanyJobSources(companyId);
+  const opportunities = useCompanyJobOpportunities(companyId);
+  const createSource = useCreateJobSource(companyId);
+  const deleteSource = useDeleteJobSource();
+  const [provider, setProvider] = useState<JobSourceProvider>('greenhouse');
+  const [identifier, setIdentifier] = useState('');
+  const [label, setLabel] = useState('');
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function addSource() {
+    const cleaned = identifier.trim();
+    if (!validSourceIdentifier(cleaned)) {
+      setError('Use the board token or site name from the official career URL (letters, numbers, hyphens, and underscores only).');
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    try {
+      await createSource.mutateAsync({ provider, identifier: cleaned, label });
+      setIdentifier('');
+      setLabel('');
+      setNotice('Source saved. Select Refresh jobs to load its current vacancies.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function refreshJobs() {
+    setRunning(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await functions.discoverJobs(companyId);
+      if (result.errors.length) {
+        setError(result.errors.join(' '));
+      } else {
+        setNotice(`Checked ${result.sources_checked} source${result.sources_checked === 1 ? '' : 's'} and found ${result.discovered} open job${result.discovered === 1 ? '' : 's'}.`);
+      }
+      qc.invalidateQueries({ queryKey: ['account'] });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function removeSource(sourceId: string) {
+    setError(null);
+    try {
+      await deleteSource.mutateAsync(sourceId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const sourceNames = new Map((sources.data ?? []).map((source) => [source.id, source.label || `${source.provider}: ${source.identifier}`]));
+
+  return (
+    <section className="card space-y-4 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">Job Intelligence</h3>
+          <p className="text-sm text-slate-500">Find currently open roles from this company’s official MNC career board.</p>
+        </div>
+        <button className="btn-secondary" onClick={refreshJobs} disabled={running || (sources.data?.length ?? 0) === 0}>
+          {running ? 'Refreshing jobs…' : 'Refresh jobs'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <select className="input" value={provider} onChange={(event) => setProvider(event.target.value as JobSourceProvider)}>
+          <option value="greenhouse">Greenhouse</option>
+          <option value="lever">Lever</option>
+        </select>
+        <input className="input" placeholder={provider === 'greenhouse' ? 'Greenhouse board token' : 'Lever site name'} value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+        <input className="input" placeholder="Label (optional)" value={label} onChange={(event) => setLabel(event.target.value)} />
+        <button className="btn-primary" onClick={addSource} disabled={createSource.isPending || !identifier.trim()}>
+          {createSource.isPending ? 'Saving…' : 'Add source'}
+        </button>
+      </div>
+      <p className="text-xs text-slate-500">For example, use <code>acme</code> from <code>boards.greenhouse.io/acme</code> or <code>jobs.lever.co/acme</code>. Only public, official ATS feeds are connected.</p>
+
+      {(sources.data?.length ?? 0) > 0 && (
+        <ul className="space-y-1 text-sm">
+          {sources.data?.map((source) => (
+            <li key={source.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 px-2 py-1.5">
+              <span className="font-medium">{source.label || source.identifier}</span>
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{source.provider}</span>
+              {source.last_checked_at && <span className="text-xs text-slate-400">Checked {new Date(source.last_checked_at).toLocaleString()}</span>}
+              <button className="ml-auto text-xs text-red-600 hover:underline" onClick={() => removeSource(source.id)} disabled={deleteSource.isPending}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {error && <ErrorState error={error} />}
+      {notice && <p className="text-sm text-emerald-700">{notice}</p>}
+
+      <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <p>{portalAccessNotice('linkedin')}</p>
+        <p className="mt-1">{portalAccessNotice('mycareersfuture')}</p>
+      </div>
+
+      <div>
+        <div className="label">Open roles</div>
+        {opportunities.isLoading ? (
+          <p className="text-sm text-slate-400">Loading jobs…</p>
+        ) : opportunities.data?.length ? (
+          <ul className="space-y-2">
+            {opportunities.data.map((job) => (
+              <li key={job.id} className="rounded border border-slate-200 p-3 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium">{job.title}</p>
+                    <p className="text-slate-500">{[job.location, job.department, job.workplace_type].filter(Boolean).join(' · ') || 'Location not listed'}</p>
+                  </div>
+                  <a className="btn-secondary shrink-0" href={job.apply_url} target="_blank" rel="noreferrer">Apply on official site</a>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">Source: {sourceNames.get(job.job_source_config_id) ?? 'Official career board'} · Last seen {new Date(job.last_seen_at).toLocaleString()}</p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-400">Add an official Greenhouse or Lever source, then refresh to see open roles.</p>
+        )}
+      </div>
+    </section>
   );
 }
 

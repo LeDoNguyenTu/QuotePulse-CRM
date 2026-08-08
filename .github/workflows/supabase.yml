@@ -82,7 +82,7 @@ jobs:
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx; do
+          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF"
             echo "::endgroup::"

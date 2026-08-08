@@ -46,6 +46,8 @@ enable_confirmations = false
 verify_jwt = true
 [functions.enrich-kyc]
 verify_jwt = true
+[functions.discover-jobs]
+verify_jwt = true
 [functions.parse-quote]
 verify_jwt = true
 [functions.ms-auth-start]

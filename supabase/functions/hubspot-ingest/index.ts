@@ -33,6 +33,8 @@ import {
   propertySchemaVersion,
   type HubspotPropertyDefinition,
 } from '../_shared/hubspotProperties.ts';
+import { associatedObjectIds } from '../_shared/hubspotAssociations.ts';
+import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 // Deliberately well under the ~150s Edge wall-time limit. Each invocation is one
@@ -159,6 +161,11 @@ Deno.serve(async (req) => {
       },
       objectCache: new Map(),
     };
+
+    // A previous sync may have recorded attachments as file-<id> when the token
+    // lacked Files access. Retrying a small batch here repairs them automatically
+    // on the same Run HubSpot import button once that scope becomes available.
+    await repairMissingAttachmentMetadata(ctx);
 
     // Are we still missing deals? Decide from LIVE COUNTS, not a stored phase flag.
     // The stored flag stranded 127k deals: an earlier (smaller) portal's backfill
@@ -316,6 +323,31 @@ async function hydrateProperties(
   return objects;
 }
 
+/**
+ * A page contains up to 100 deals. Prefetch their associated companies and
+ * contacts in batched property reads so processDeal can use its existing cache
+ * instead of issuing one company/contact request per deal.
+ */
+async function prefetchAssociatedObjects(ctx: Ctx, deals: HsObject[]): Promise<void> {
+  await Promise.all([
+    prefetchObjectType(ctx, 'companies', associatedObjectIds(deals, 'companies')),
+    prefetchObjectType(ctx, 'contacts', associatedObjectIds(deals, 'contacts')),
+  ]);
+}
+
+async function prefetchObjectType(
+  ctx: Ctx,
+  objectType: 'companies' | 'contacts',
+  ids: string[]
+): Promise<void> {
+  for (let start = 0; start < ids.length; start += PAGE_SIZE) {
+    if (outOfBudget(ctx)) return;
+    const batch = ids.slice(start, start + PAGE_SIZE).map((id) => ({ id, properties: {} }));
+    const hydrated = await hydrateProperties(ctx, objectType, batch);
+    for (const object of hydrated) ctx.objectCache.set(`${objectType}:${object.id}`, object);
+  }
+}
+
 /** Fetches and caches a full company/contact snapshot once per import run. */
 async function getCompleteObject(
   ctx: Ctx,
@@ -411,7 +443,9 @@ async function sweepDeals(
       });
 
       const changedDeals = await onlyChanged(ctx, pageRes.results);
-      for (const deal of await hydrateProperties(ctx, 'deals', changedDeals)) {
+      const hydratedDeals = await hydrateProperties(ctx, 'deals', changedDeals);
+      await prefetchAssociatedObjects(ctx, hydratedDeals);
+      for (const deal of hydratedDeals) {
         if (outOfBudget(ctx)) break;
         try {
           await processDeal(ctx, deal, opts.priority);
@@ -1224,6 +1258,35 @@ function outOfBudget(ctx: Ctx): boolean {
   return Date.now() >= ctx.deadline || ctx.processed >= MAX_OBJECTS_PER_RUN;
 }
 
+async function repairMissingAttachmentMetadata(ctx: Ctx): Promise<void> {
+  if (!ctx.filesAllowed || outOfBudget(ctx)) return;
+  const { data, error } = await ctx.admin
+    .from('attachments')
+    .select('id, hubspot_attachment_id, file_name')
+    .eq('owner_id', ctx.userId)
+    .like('file_name', 'file-%')
+    .limit(100);
+  if (error) {
+    ctx.errors.push(`find missing attachment metadata: ${error.message}`);
+    return;
+  }
+
+  for (const attachment of data ?? []) {
+    if (outOfBudget(ctx) || !ctx.filesAllowed) return;
+    const fileName = attachment.file_name as string | null;
+    const fileId = attachment.hubspot_attachment_id as string | null;
+    if (!fileId || !isMissingAttachmentMetadata(fileName)) continue;
+    const metadata = await resolveFile(ctx, fileId);
+    if (!metadata) continue;
+    const { error: updateError } = await ctx.admin
+      .from('attachments')
+      .update({ file_name: metadata.name, file_url: metadata.url })
+      .eq('id', attachment.id)
+      .eq('owner_id', ctx.userId);
+    if (updateError) ctx.errors.push(`update attachment ${fileId}: ${updateError.message}`);
+  }
+}
+
 /**
  * Metadata only. The download URL is deliberately NOT resolved here: HubSpot
  * hands out bytes for private files through a signed URL that expires in
@@ -1244,7 +1307,7 @@ async function resolveFile(
       ctx.warnings.push(
         'HubSpot key cannot read Files: attachments were imported without their real ' +
           'file names, and quote OCR will not be able to download them. Regenerate the ' +
-          'personal access key with the "files" scope ticked, then run the import again.'
+          'personal access key with the "files" scope ticked; the same import button will retry them.'
       );
       return null;
     }

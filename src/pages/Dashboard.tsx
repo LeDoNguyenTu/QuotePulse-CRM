@@ -22,6 +22,7 @@ import { useHubspotPropertyCatalog, useHubspotPropertyCoverage } from '../hooks/
 import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns } from '../lib/tablePreferences';
 import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
 import { fieldsWithImportedValues } from '../lib/propertyCoverage';
+import { shouldShowImportReport } from '../lib/importReport';
 
 const PAGE_SIZE = 25;
 
@@ -270,7 +271,7 @@ export function Dashboard() {
             + New company
           </button>
           <button className="btn-secondary" onClick={handleImportAll} disabled={importing}>
-            {importing ? 'Importing…' : 'Run HubSpot import'}
+            {importing ? 'Importing…' : 'Sync HubSpot (new + changed)'}
           </button>
           <button
             className="btn-secondary"
@@ -314,7 +315,7 @@ export function Dashboard() {
         />
       )}
 
-      {importReport && (
+      {shouldShowImportReport(importState?.status, !!importReport) && importReport && (
         <ImportReport report={importReport} onDismiss={dismissImportReport} />
       )}
 

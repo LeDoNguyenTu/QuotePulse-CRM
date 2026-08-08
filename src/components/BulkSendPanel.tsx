@@ -8,6 +8,10 @@ import { renderTemplate } from '../lib/render';
 import { Modal } from './Modal';
 import { ErrorState, Spinner } from './ui';
 
+function hiddenLegacyProgress(): { sent: number; failed: number; blocked: number; remaining: number } | null {
+  return null;
+}
+
 interface BulkSendPanelProps {
   open: boolean;
   onClose: () => void;
@@ -17,14 +21,16 @@ interface BulkSendPanelProps {
 export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) {
   const { data: templates } = useTemplates();
   const { data: settings } = useSettings();
-  const { enqueue, drain, running, progress, error, MIN_COOLDOWN } = useEmailQueue();
+  const { enqueue, running, error, MIN_COOLDOWN } = useEmailQueue();
 
   const [templateId, setTemplateId] = useState('');
   const [industry, setIndustry] = useState('');
-  const [cooldown, setCooldown] = useState(2);
+  const [cooldown, setCooldown] = useState(60);
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
   const [sentLast24h, setSentLast24h] = useState<number | null>(null);
   const [queued, setQueued] = useState<number | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const progress = hiddenLegacyProgress();
 
   useEffect(() => {
     if (open) countSentLast24h().then(setSentLast24h).catch(() => setSentLast24h(null));
@@ -47,7 +53,7 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
     [companies, industry]
   );
 
-  const dailyLimit = settings?.daily_send_limit ?? 500;
+  const dailyLimit = settings?.daily_send_limit ?? 50;
   const remainingToday = Math.max(0, dailyLimit - (sentLast24h ?? 0));
   const willExceed = recipients.length > remainingToday;
 
@@ -78,15 +84,16 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
       return;
     }
     try {
-      const n = await enqueue({
+      const queuedRows = await enqueue({
         companies: recipients,
         templateId: selectedTemplate.id,
         subject: selectedTemplate.subject,
         body: selectedTemplate.body,
         cooldownSeconds: cooldown,
+        provider: settings?.email_provider ?? 'microsoft_graph',
+        recipientConsentConfirmed: consentConfirmed,
       });
-      setQueued(n);
-      await drain();
+      setQueued(queuedRows.length);
       countSentLast24h().then(setSentLast24h).catch(() => {});
     } catch (e) {
       setLocalError(e instanceof Error ? e.message : String(e));
@@ -181,7 +188,22 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
           </div>
         )}
 
-        {(localError || error) && <ErrorState error={localError || error} />}
+        <label className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          <input type="checkbox" checked={consentConfirmed} onChange={(event) => setConsentConfirmed(event.target.checked)} />
+          <span>I confirm these recipients are customers, opted-in contacts, or otherwise legitimately expect this message.</span>
+        </label>
+        {(dailyLimit > 100 || cooldown < 60) && (
+          <p className="rounded-md border border-orange-200 bg-orange-50 p-2 text-sm text-orange-900">
+            These settings are unusually aggressive. SPF, DKIM, DMARC, and sender reputation matter more than cooldowns.
+          </p>
+        )}
+        {queued != null && !running && (
+          <p className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+            {queued} message{queued === 1 ? '' : 's'} queued. Scheduled processing continues after this dialog closes.
+          </p>
+        )}
+
+        {(localError != null || error != null) && <ErrorState error={localError ?? error} />}
 
         {progress && (
           <div className="rounded-md border border-slate-200 bg-white p-3 text-sm">
@@ -229,7 +251,7 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
               !templateId ||
               recipients.length === 0 ||
               // Sending without a mailbox used to be reachable and only failed on click.
-              !settings?.ms_refresh_token
+              !(settings?.email_provider === 'brevo' ? settings?.brevo_sender_email : settings?.ms_refresh_token) || !consentConfirmed
             }
           >
             {running ? 'Sending…' : `Queue & send ${recipients.length}`}

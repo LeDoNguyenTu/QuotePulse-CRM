@@ -92,19 +92,6 @@ export interface ParseResult {
   errors: string[];
 }
 
-export interface QueueProgress {
-  ok: boolean;
-  processed: number;
-  sent: number;
-  failed: number;
-  blocked: number;
-  remaining: number;
-  sent_last_24h: number;
-  daily_limit: number;
-  done: boolean;
-  errors: string[];
-}
-
 export interface MsAuthStartResult {
   url: string;
 }
@@ -133,7 +120,6 @@ export const functions = {
       state,
     }),
 
-  processEmailQueue: () => invoke<QueueProgress>('process-email-queue', {}),
 };
 
 // Excel export needs the raw bytes, not JSON, so it uses a direct fetch to the

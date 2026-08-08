@@ -215,6 +215,12 @@ SPA redirect URI to the real Vercel domain, then redeploy the two `ms-auth-*` fu
 
 ## Notes / limitations to be aware of
 
+## Durable email queue deployment
+
+The browser now only enqueues mail. Supabase Cron invokes `process-email-queue` once per minute, so sending continues after the browser closes. Before pushing the branch to `main`, set the server-only `BREVO_API_KEY` only if Brevo is selected, and set `QUEUE_CRON_SECRET` for the worker with `supabase secrets set`. In Supabase Vault, create `queue_worker_url` with `https://qgcooulzzbjebwczjgis.supabase.co/functions/v1/process-email-queue` and `queue_cron_secret` with the same worker secret. The migration schedules the cron job; inspect its run history in the Supabase Dashboard after deployment.
+
+The `unsubscribe` function is intentionally public but accepts only an opaque, hashed, expiring token. Configure the Vercel/Supabase production URLs in Supabase Authentication URL Configuration. Email domains should have SPF, DKIM, and DMARC configured; cooldowns cannot guarantee inbox placement.
+
 - **PDF OCR:** `parse-quote` sends the file to an OpenAI-compatible NVIDIA endpoint as a data URI. Multi-page image PDFs may need page rasterization first — there's a TODO hook in `runOcr`. Confirm the exact request/response schema for the specific NIM you enable and adjust if needed.
 - **Per-company delta import:** the "Run import/update" on a company currently triggers a bounded full sync. Extend `hubspot-ingest` with an association-scoped fetch if you need true per-company deltas.
 - **Quote PDF links:** HubSpot quote objects don't expose a direct PDF URL via the object API; note-based file attachments are resolved via the Files API. Wire the Quotes public-link API if you need the rendered quote PDF.

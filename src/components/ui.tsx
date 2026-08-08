@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { SendStatus, SourcePriority } from '../lib/types';
+import { normalizeError } from '../lib/error';
 
 export function Spinner({ label }: { label?: string }) {
   return (
@@ -11,10 +12,21 @@ export function Spinner({ label }: { label?: string }) {
 }
 
 export function ErrorState({ error }: { error: unknown }) {
-  const msg = error instanceof Error ? error.message : String(error);
+  const normalized = normalizeError(error);
   return (
     <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-      {msg}
+      <p>{normalized.message}</p>
+      {(normalized.code || normalized.details || normalized.hint || normalized.status) && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer font-medium">Technical details</summary>
+          <dl className="mt-1 space-y-1 break-words">
+            {normalized.status != null && <div><dt className="inline font-medium">HTTP status: </dt><dd className="inline">{normalized.status}</dd></div>}
+            {normalized.code && <div><dt className="inline font-medium">Code: </dt><dd className="inline">{normalized.code}</dd></div>}
+            {normalized.details && <div><dt className="inline font-medium">Details: </dt><dd className="inline">{normalized.details}</dd></div>}
+            {normalized.hint && <div><dt className="inline font-medium">Hint: </dt><dd className="inline">{normalized.hint}</dd></div>}
+          </dl>
+        </details>
+      )}
     </div>
   );
 }
@@ -45,6 +57,9 @@ export function PriorityBadge({ value }: { value: SourcePriority }) {
 
 const STATUS_STYLES: Record<SendStatus, string> = {
   queued: 'bg-slate-100 text-slate-700',
+  scheduled: 'bg-sky-100 text-sky-800',
+  sending: 'bg-blue-100 text-blue-800',
+  retrying: 'bg-amber-100 text-amber-800',
   sent: 'bg-emerald-100 text-emerald-800',
   failed: 'bg-red-100 text-red-800',
   blocked: 'bg-orange-100 text-orange-800',

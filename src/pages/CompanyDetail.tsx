@@ -225,7 +225,7 @@ function EmailsTab({ companyId }: { companyId: string }) {
           <span className="font-medium">{e.subject ?? '(no subject)'}</span>
           <span className="text-slate-500">{e.to_email}</span>
           <span className="text-slate-400">
-            {e.sent_at ? new Date(e.sent_at).toLocaleString() : ''}
+            {e.sent_at ? new Date(e.sent_at).toLocaleString() : e.next_attempt_at ? `Next attempt ${new Date(e.next_attempt_at).toLocaleString()}` : ''}
           </span>
           <button
             className="ml-auto text-brand-600 hover:underline"
@@ -241,6 +241,9 @@ function EmailsTab({ companyId }: { companyId: string }) {
           <div className="space-y-2 text-sm">
             <div className="text-slate-500">To: {view.to_email}</div>
             {view.error_message && <ErrorState error={view.error_message} />}
+            {view.next_attempt_at && view.status !== 'sent' && (
+              <div className="text-slate-500">Next attempt: {new Date(view.next_attempt_at).toLocaleString()} · attempt {view.attempt_count}</div>
+            )}
             <pre className="whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3">
               {view.body_rendered ?? '(no stored body)'}
             </pre>

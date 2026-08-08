@@ -11,7 +11,16 @@ export type ContactSource =
   | 'google'
   | 'manual';
 export type AttachmentSource = 'quote' | 'generic';
-export type SendStatus = 'queued' | 'sent' | 'failed' | 'blocked' | 'deferred';
+export type SendStatus =
+  | 'queued'
+  | 'scheduled'
+  | 'sending'
+  | 'retrying'
+  | 'sent'
+  | 'failed'
+  | 'blocked'
+  | 'deferred';
+export type EmailProvider = 'microsoft_graph' | 'brevo';
 
 export interface Company {
   id: string;
@@ -170,6 +179,13 @@ export interface EmailSend {
   provider_message_id: string | null;
   provider_url: string | null;
   cooldown_seconds: number;
+  provider: EmailProvider;
+  scheduled_at: string;
+  next_attempt_at: string;
+  attempt_count: number;
+  claimed_at: string | null;
+  lease_expires_at: string | null;
+  last_error_code: string | null;
   sent_at: string | null;
   error_message: string | null;
   created_by: string | null;
@@ -184,6 +200,8 @@ export interface UserSettings {
   ms_account_email: string | null;
   nvidia_key: string | null;
   daily_send_limit: number;
+  email_provider: EmailProvider;
+  brevo_sender_email: string | null;
   created_at: string;
   updated_at: string;
 }

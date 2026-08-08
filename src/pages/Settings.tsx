@@ -15,7 +15,9 @@ export function Settings() {
 
   const [hubspotToken, setHubspotToken] = useState('');
   const [nvidiaKey, setNvidiaKey] = useState('');
-  const [dailyLimit, setDailyLimit] = useState(500);
+  const [dailyLimit, setDailyLimit] = useState(50);
+  const [emailProvider, setEmailProvider] = useState<'microsoft_graph' | 'brevo'>('microsoft_graph');
+  const [brevoSenderEmail, setBrevoSenderEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -23,7 +25,9 @@ export function Settings() {
     if (data) {
       setHubspotToken(data.hubspot_token ?? '');
       setNvidiaKey(data.nvidia_key ?? '');
-      setDailyLimit(data.daily_send_limit ?? 500);
+      setDailyLimit(data.daily_send_limit ?? 50);
+      setEmailProvider(data.email_provider ?? 'microsoft_graph');
+      setBrevoSenderEmail(data.brevo_sender_email ?? '');
     }
   }, [data]);
 
@@ -37,6 +41,8 @@ export function Settings() {
         hubspot_token: hubspotToken || null,
         nvidia_key: nvidiaKey || null,
         daily_send_limit: dailyLimit,
+        email_provider: emailProvider,
+        brevo_sender_email: brevoSenderEmail || null,
       });
       setSaved(true);
     } catch (e) {
@@ -160,10 +166,29 @@ export function Settings() {
             onChange={(e) => setDailyLimit(Number(e.target.value))}
           />
           <p className="mt-1 text-xs text-slate-500">
-            Exchange Online allows ~10,000 recipients/24h. Keep this well under (default 500)
-            to avoid throttling and spam flags.
+            Default 50/day is a conservative starting point. SPF, DKIM, DMARC, sender reputation, and legitimate recipient expectations matter more than an API cooldown.
           </p>
         </div>
+      </section>
+
+      <section className="card space-y-3 p-5">
+        <h2 className="font-semibold">Email provider</h2>
+        <select className="input max-w-sm" value={emailProvider} onChange={(event) => setEmailProvider(event.target.value as 'microsoft_graph' | 'brevo')}>
+          <option value="microsoft_graph">Microsoft Graph (connected Exchange mailbox)</option>
+          <option value="brevo">Brevo transactional email</option>
+        </select>
+        {emailProvider === 'brevo' && (
+          <>
+            <input className="input" type="email" placeholder="Verified Brevo sender email" value={brevoSenderEmail} onChange={(event) => setBrevoSenderEmail(event.target.value)} />
+            <p className="text-xs text-slate-500">Brevo Free has a daily sending limit and may add provider branding. It prohibits spam; use it only for legitimate, expected email. The Brevo API key stays server-side.</p>
+          </>
+        )}
+        <p className="text-xs text-slate-500">Microsoft Graph sends through the connected Exchange mailbox. DNS authentication and sender reputation, not the API call, drive deliverability.</p>
+      </section>
+
+      <section className="card space-y-2 p-5 text-sm text-slate-600">
+        <h2 className="font-semibold text-slate-900">Sending-domain checklist</h2>
+        <p>Configure SPF, DKIM, and DMARC for the sending domain. Use recipients who expect the message and honor unsubscribe requests.</p>
       </section>
 
       <section className="card space-y-3 p-5">

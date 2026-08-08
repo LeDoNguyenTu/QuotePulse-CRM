@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useCompanies,
@@ -34,11 +34,16 @@ export function Dashboard() {
 
   const qc = useQueryClient();
   const softDelete = useSoftDeleteCompanies();
-  const { data, isLoading, error } = useCompanies(filters);
+  const { data, isLoading, isFetching, isPlaceholderData, pageQuery, countQuery } = useCompanies(filters);
   const rows = data?.rows ?? [];
   const total = data?.count ?? 0;
   const page = filters.page ?? 0;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageSize = filters.pageSize ?? PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    if (countQuery.data != null && page >= pageCount) setFilters((f) => ({ ...f, page: pageCount - 1 }));
+  }, [countQuery.data, page, pageCount]);
 
   const selectedRows = useMemo(
     () => rows.filter((r) => selected.has(r.id)),
@@ -294,16 +299,19 @@ export function Dashboard() {
         <Filters filters={filters} onChange={patch} />
       </div>
 
-      {error && <ErrorState error={error} />}
+      {pageQuery.error && <ErrorState error={pageQuery.error} />}
+      {countQuery.error && <ErrorState error={countQuery.error} />}
       {isLoading ? (
         <Spinner label="Loading companies…" />
       ) : (
-        <CompaniesTable
-          rows={rows}
-          selected={selected}
-          onToggle={toggle}
-          onToggleAll={toggleAll}
-        />
+        <div className="relative">
+          <CompaniesTable rows={rows} selected={selected} onToggle={toggle} onToggleAll={toggleAll} />
+          {isFetching && (
+            <div className="absolute inset-0 grid place-items-center bg-white/65" aria-live="polite">
+              <Spinner label={`Loading page ${page + 1}…`} />
+            </div>
+          )}
+        </div>
       )}
 
       <div className="flex items-center justify-between text-sm text-slate-600">
@@ -313,18 +321,23 @@ export function Dashboard() {
         <div className="flex gap-2">
           <button
             className="btn-secondary"
-            disabled={page <= 0}
+            disabled={page <= 0 || isFetching}
             onClick={() => patch({ page: page - 1 })}
           >
             Prev
           </button>
           <button
             className="btn-secondary"
-            disabled={page + 1 >= pageCount}
+            disabled={page + 1 >= pageCount || isFetching}
             onClick={() => patch({ page: page + 1 })}
           >
             Next
           </button>
+          {pageQuery.error && isPlaceholderData && (
+            <button className="btn-secondary" onClick={() => pageQuery.refetch()}>
+              Retry page {page + 1}
+            </button>
+          )}
         </div>
       </div>
 

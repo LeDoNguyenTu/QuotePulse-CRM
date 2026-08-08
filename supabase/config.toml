@@ -53,6 +53,8 @@ verify_jwt = true
 [functions.ms-auth-callback]
 verify_jwt = true
 [functions.process-email-queue]
-verify_jwt = true
+verify_jwt = false
+[functions.unsubscribe]
+verify_jwt = false
 [functions.export-xlsx]
 verify_jwt = true

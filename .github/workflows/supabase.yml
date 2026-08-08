@@ -15,9 +15,6 @@ name: Deploy Supabase
 on:
   push:
     branches: [main]
-    paths:
-      - 'supabase/**'
-      - '.github/workflows/supabase.yml'
   workflow_dispatch: # allow a manual re-run from the Actions tab
 
 concurrency:
@@ -25,7 +22,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --run
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
   deploy:
+    needs: quality
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -70,7 +82,7 @@ jobs:
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc parse-quote ms-auth-start ms-auth-callback process-email-queue export-xlsx; do
+          for fn in hubspot-ingest enrich-kyc parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF"
             echo "::endgroup::"

@@ -32,6 +32,8 @@ export interface UserSettingsRow {
   ms_account_email: string | null;
   nvidia_key: string | null;
   daily_send_limit: number;
+  email_provider: 'microsoft_graph' | 'brevo';
+  brevo_sender_email: string | null;
 }
 
 export async function getUserSettings(

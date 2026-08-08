@@ -10,7 +10,7 @@ import { functions } from '../lib/functions';
 import { ErrorState, Spinner } from '../components/ui';
 
 export function Settings() {
-  const { user, changeLoginEmail } = useAuth();
+  const { user, changeLoginEmail, changePassword } = useAuth();
   const { data, isLoading } = useSettings();
   const save = useSaveSettings();
   const disconnectMs = useDisconnectMicrosoft();
@@ -28,6 +28,11 @@ export function Settings() {
   const [newLoginEmail, setNewLoginEmail] = useState('');
   const [emailChangeMessage, setEmailChangeMessage] = useState<string | null>(null);
   const [isChangingLoginEmail, setIsChangingLoginEmail] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordChangeMessage, setPasswordChangeMessage] = useState<string | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -111,6 +116,23 @@ export function Settings() {
     }
   }
 
+  async function handleChangePassword() {
+    setError(null);
+    setPasswordChangeMessage(null);
+    setIsChangingPassword(true);
+    try {
+      await changePassword(currentPassword, newPassword, confirmPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordChangeMessage('Password changed successfully.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }
+
   if (isLoading) return <Spinner />;
 
   return (
@@ -144,6 +166,45 @@ export function Settings() {
           </button>
         </div>
         {emailChangeMessage && <p className="text-sm text-emerald-700">{emailChangeMessage}</p>}
+      </section>
+
+      <section id="password" className="card space-y-3 p-5">
+        <h2 className="font-semibold">Change password</h2>
+        <p className="text-sm text-slate-500">
+          Enter your current password, then choose and confirm a new one.
+        </p>
+        <input
+          className="input"
+          type="password"
+          autoComplete="current-password"
+          placeholder="Current password"
+          value={currentPassword}
+          onChange={(event) => setCurrentPassword(event.target.value)}
+        />
+        <input
+          className="input"
+          type="password"
+          autoComplete="new-password"
+          placeholder="New password"
+          value={newPassword}
+          onChange={(event) => setNewPassword(event.target.value)}
+        />
+        <input
+          className="input"
+          type="password"
+          autoComplete="new-password"
+          placeholder="Confirm new password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+        />
+        <button
+          className="btn-secondary"
+          onClick={handleChangePassword}
+          disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword}
+        >
+          {isChangingPassword ? 'Changing password…' : 'Change password'}
+        </button>
+        {passwordChangeMessage && <p className="text-sm text-emerald-700">{passwordChangeMessage}</p>}
       </section>
 
       <section className="card space-y-3 p-5">

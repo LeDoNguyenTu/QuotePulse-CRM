@@ -10,6 +10,7 @@ import {
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { prepareLoginEmailChange } from '../lib/accountEmail';
+import { preparePasswordChange } from '../lib/accountPassword';
 import { useIdleTimeout } from './useIdleTimeout';
 
 interface SignUpResult {
@@ -30,6 +31,7 @@ interface AuthContextValue {
   signUp: (email: string, password: string, captchaToken?: string) => Promise<SignUpResult>;
   signOut: () => Promise<void>;
   changeLoginEmail: (email: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string, confirmation: string) => Promise<void>;
   resetPassword: (email: string, captchaToken?: string) => Promise<void>;
   resendVerification: (email: string, captchaToken?: string) => Promise<void>;
 }
@@ -37,8 +39,10 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 /** Where Supabase should send the user after they click a link in an email. */
-export function authCallbackUrl(): string {
-  return `${window.location.origin}/auth/callback`;
+export function authCallbackUrl(flow?: 'email-change'): string {
+  const url = new URL('/auth/callback', window.location.origin);
+  if (flow) url.searchParams.set('flow', flow);
+  return url.toString();
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -107,8 +111,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // relationships in the application stay attached to this same account.
         const { error } = await supabase.auth.updateUser(
           { email: prepared.email },
-          { emailRedirectTo: authCallbackUrl() }
+          { emailRedirectTo: authCallbackUrl('email-change') }
         );
+        if (error) throw error;
+      },
+      async changePassword(currentPassword, newPassword, confirmation) {
+        const prepared = preparePasswordChange(currentPassword, newPassword, confirmation);
+        if ('error' in prepared) throw new Error(prepared.error);
+
+        const { error } = await supabase.auth.updateUser({
+          current_password: prepared.currentPassword,
+          password: prepared.newPassword,
+        });
         if (error) throw error;
       },
       async resetPassword(email, captchaToken) {

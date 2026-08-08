@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { authOtpType } from '../lib/authCallback';
+import { authCallbackNoTokenState, authCallbackSessionState, authOtpType } from '../lib/authCallback';
 import { useAuth } from '../hooks/useAuth';
 import { AuthShell } from './Login';
 import { ErrorState, Spinner } from '../components/ui';
 
-type State = 'working' | 'verified' | 'error';
+type State = 'working' | 'verified' | 'email_change_pending' | 'error';
 
 /**
  * Landing page for links in Supabase auth emails (signup confirmation, magic
@@ -27,6 +27,7 @@ export function AuthCallback() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { session } = useAuth();
+  const flow = params.get('flow');
   const [state, setState] = useState<State>('working');
   const [error, setError] = useState<string | null>(null);
 
@@ -70,11 +71,16 @@ export function AuthCallback() {
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
       if (data.session) {
-        setState('verified');
+        setState(authCallbackSessionState(flow, data.session.user.new_email));
         return;
       }
 
       // No tokens, no error — someone opened /auth/callback directly.
+      const noTokenState = authCallbackNoTokenState(flow);
+      if (noTokenState === 'email_change_pending') {
+        setState(noTokenState);
+        return;
+      }
       setError('This confirmation link is missing its token. Request a new email and try again.');
       setState('error');
     }
@@ -83,17 +89,35 @@ export function AuthCallback() {
     return () => {
       cancelled = true;
     };
-  }, [params]);
+  }, [params, flow]);
 
   // The implicit flow can settle slightly after our first getSession() check.
   useEffect(() => {
-    if (session && state !== 'verified') setState('verified');
-  }, [session, state]);
+    if (session && state === 'working') {
+      setState(authCallbackSessionState(flow, session.user.new_email));
+    }
+  }, [flow, session, state]);
 
   if (state === 'working') {
     return (
       <AuthShell title="Confirming your email">
         <Spinner label="Verifying…" />
+      </AuthShell>
+    );
+  }
+
+  if (state === 'email_change_pending') {
+    return (
+      <AuthShell title="Email confirmation recorded">
+        <div className="space-y-4 text-sm">
+          <p className="text-slate-700">
+            This confirmation was accepted. To finish changing the login email, open the link in
+            the other inbox as well. Then sign in with the new email address.
+          </p>
+          <Link className="btn-primary block w-full text-center" to="/login">
+            Continue to sign in
+          </Link>
+        </div>
       </AuthShell>
     );
   }
@@ -121,7 +145,7 @@ export function AuthCallback() {
   }
 
   return (
-    <AuthShell title="Email verified">
+    <AuthShell title={flow === 'email-change' ? 'Login email changed' : 'Email verified'}>
       <div className="space-y-4 text-sm">
         <div
           className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-3xl text-emerald-700"
@@ -130,13 +154,21 @@ export function AuthCallback() {
           ✓
         </div>
         <p className="text-center text-slate-700">
-          Your email address is confirmed and your account is active.
+          {flow === 'email-change'
+            ? 'Your login email is confirmed. Set a new password now to finish securing your account.'
+            : 'Your email address is confirmed and your account is active.'}
         </p>
         <button
           className="btn-primary w-full"
-          onClick={() => navigate(session ? '/' : '/login?verified=1')}
+          onClick={() =>
+            navigate(flow === 'email-change' ? '/settings#password' : session ? '/' : '/login?verified=1')
+          }
         >
-          {session ? 'Continue to dashboard' : 'Continue to sign in'}
+          {flow === 'email-change'
+            ? 'Set a new password'
+            : session
+              ? 'Continue to dashboard'
+              : 'Continue to sign in'}
         </button>
       </div>
     </AuthShell>

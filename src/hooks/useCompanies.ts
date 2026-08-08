@@ -7,7 +7,7 @@ import { accountQueryKey } from '../lib/accountQueryScope';
 import { useAuth } from './useAuth';
 
 export interface CompanyFilters {
-  search?: string; industry?: string; source_priority?: string; has_quote?: boolean; has_kyc?: boolean; page?: number; pageSize?: number;
+  search?: string; industry?: string; source_priority?: string; has_quote?: boolean; has_kyc?: boolean; activity_from?: string; activity_to?: string; page?: number; pageSize?: number;
 }
 export interface CompaniesPage { rows: CompanyDashboardRow[]; count: number; }
 export const DEFAULT_PAGE_SIZE = 25;
@@ -18,6 +18,8 @@ function companyDashboardArgs(filters: CompanyFilters) {
     p_search: normalized.search ?? null, p_industry: normalized.industry ?? null,
     p_source_priority: normalized.source_priority ?? null, p_has_quote: normalized.has_quote ?? null,
     p_has_kyc: normalized.has_kyc ?? null,
+    p_activity_from: normalized.activity_from ?? null,
+    p_activity_to: normalized.activity_to ?? null,
   };
 }
 

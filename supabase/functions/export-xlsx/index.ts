@@ -11,6 +11,8 @@ interface Filters {
   source_priority?: string;
   has_quote?: boolean;
   has_kyc?: boolean;
+  activity_from?: string;
+  activity_to?: string;
 }
 
 Deno.serve(async (req) => {
@@ -40,6 +42,11 @@ Deno.serve(async (req) => {
     if (filters.source_priority) query = query.eq('source_priority', filters.source_priority);
     if (filters.has_quote) query = query.eq('has_quote', true);
     if (filters.has_kyc) query = query.eq('has_kyc', true);
+    if (filters.activity_from) query = query.gte('last_deal_at', `${filters.activity_from}T00:00:00.000Z`);
+    if (filters.activity_to) {
+      const endExclusive = nextUtcDay(filters.activity_to);
+      if (endExclusive) query = query.lt('last_deal_at', endExclusive);
+    }
     query = query.order('name_clean', { ascending: true }).limit(5000);
 
     const { data, error } = await query;
@@ -58,6 +65,7 @@ Deno.serve(async (req) => {
       { header: 'Contact phone', key: 'primary_contact_phone', width: 18 },
       { header: 'Has quote', key: 'has_quote', width: 10 },
       { header: 'Has KYC', key: 'has_kyc', width: 10 },
+      { header: 'Last HubSpot activity', key: 'last_deal_at', width: 25 },
       { header: 'Last email status', key: 'last_email_status', width: 16 },
       { header: 'Last email sent', key: 'last_email_sent_at', width: 22 },
     ];
@@ -68,6 +76,7 @@ Deno.serve(async (req) => {
         ...r,
         has_quote: r.has_quote ? 'Yes' : 'No',
         has_kyc: r.has_kyc ? 'Yes' : 'No',
+        last_deal_at: r.last_deal_at ? new Date(r.last_deal_at).toISOString() : '',
         last_email_sent_at: r.last_email_sent_at
           ? new Date(r.last_email_sent_at).toISOString()
           : '',
@@ -95,4 +104,12 @@ async function safeJson(req: Request): Promise<unknown> {
   } catch {
     return null;
   }
+}
+
+function nextUtcDay(date: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const value = new Date(`${date}T00:00:00.000Z`);
+  if (Number.isNaN(value.getTime())) return null;
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString();
 }

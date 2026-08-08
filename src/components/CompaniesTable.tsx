@@ -42,7 +42,7 @@ export function CompaniesTable({
             <th className="px-3 py-2">Company</th>
             <th className="px-3 py-2">Products</th>
             <th className="px-3 py-2">Industry</th>
-            <th className="px-3 py-2">Last activity</th>
+            <th className="px-3 py-2">HubSpot activity</th>
             <th className="px-3 py-2">Source</th>
             <th className="px-3 py-2">Primary contact</th>
             <th className="px-3 py-2">Flags</th>

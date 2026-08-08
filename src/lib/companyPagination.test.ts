@@ -18,4 +18,13 @@ describe('company pagination', () => {
   it('uses id as the deterministic final sort key', () => {
     expect(companySort[companySort.length - 1]).toEqual({ column: 'id', ascending: true });
   });
+
+  it('keeps HubSpot activity date filters in page and count cache keys', () => {
+    expect(companyCountKey({ activity_from: '2026-08-01' })).not.toEqual(
+      companyCountKey({ activity_from: '2026-08-02' })
+    );
+    expect(companyPageKey({ activity_to: '2026-08-31' })[1]).toMatchObject({
+      activity_to: '2026-08-31',
+    });
+  });
 });

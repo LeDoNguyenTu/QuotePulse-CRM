@@ -1,6 +1,6 @@
 import type { CompanyFilters } from '../hooks/useCompanies';
 
-type FilterKey = Pick<CompanyFilters, 'search' | 'industry' | 'source_priority' | 'has_quote' | 'has_kyc'>;
+type FilterKey = Pick<CompanyFilters, 'search' | 'industry' | 'source_priority' | 'has_quote' | 'has_kyc' | 'activity_from' | 'activity_to'>;
 
 export const companySort: Array<{ column: string; ascending: boolean; nullsFirst?: boolean }> = [
   { column: 'last_deal_at', ascending: false, nullsFirst: false },
@@ -15,6 +15,8 @@ export function normalizedCompanyFilters(filters: CompanyFilters): FilterKey {
     source_priority: filters.source_priority || undefined,
     has_quote: filters.has_quote || undefined,
     has_kyc: filters.has_kyc || undefined,
+    activity_from: filters.activity_from || undefined,
+    activity_to: filters.activity_to || undefined,
   };
 }
 

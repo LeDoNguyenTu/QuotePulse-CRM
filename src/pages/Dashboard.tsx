@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useCompanies,
@@ -6,7 +6,7 @@ import {
   useSoftDeleteCompanies,
   type CompanyFilters,
 } from '../hooks/useCompanies';
-import type { ImportProgress, IngestResult, RebuildResult } from '../lib/functions';
+import type { IngestResult, RebuildResult } from '../lib/functions';
 import { SearchBar } from '../components/SearchBar';
 import { Filters } from '../components/Filters';
 import { CompaniesTable } from '../components/CompaniesTable';
@@ -20,6 +20,7 @@ import type { SourcePriority } from '../lib/types';
 import { useSettings, useSaveSettings } from '../hooks/useSettings';
 import { useHubspotPropertyCatalog } from '../hooks/useHubspotPropertyCatalog';
 import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns } from '../lib/tablePreferences';
+import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
 
 const PAGE_SIZE = 25;
 
@@ -29,14 +30,14 @@ export function Dashboard() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
-  const [importReport, setImportReport] = useState<IngestResult | null>(null);
-  const [live, setLive] = useState<LiveImport | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
-  const cancelRef = useRef(false);
 
   const qc = useQueryClient();
+  const { state: importState, startImport, stopImport, dismissImportReport } = useHubspotImport();
+  const importing = importState?.status === 'running';
+  const importReport = importState?.report ?? null;
+  const live = importState?.live ?? null;
   const settings = useSettings();
   const saveSettings = useSaveSettings();
   const companyCatalog = useHubspotPropertyCatalog('companies');
@@ -89,6 +90,8 @@ export function Dashboard() {
         source_priority: filters.source_priority,
         has_quote: filters.has_quote,
         has_kyc: filters.has_kyc,
+        activity_from: filters.activity_from,
+        activity_to: filters.activity_to,
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -124,6 +127,13 @@ export function Dashboard() {
   }
 
   async function handleImportAll() {
+    setBanner(null);
+    await startImport();
+    /*
+    setBanner(null);
+    await startImport();
+    return;
+
     setImporting(true);
     setBanner(null);
     setImportReport(null);
@@ -194,6 +204,9 @@ export function Dashboard() {
       setLive(null);
       qc.invalidateQueries({ queryKey: ['account'] });
     }
+  }
+
+  */
   }
 
   async function handleRebuild() {
@@ -293,15 +306,13 @@ export function Dashboard() {
       {live && (
         <ImportProgressPanel
           live={live}
-          onStop={() => {
-            cancelRef.current = true;
-          }}
-          stopping={cancelRef.current}
+          onStop={stopImport}
+          stopping={!!importState?.stopRequested}
         />
       )}
 
       {importReport && (
-        <ImportReport report={importReport} onDismiss={() => setImportReport(null)} />
+        <ImportReport report={importReport} onDismiss={dismissImportReport} />
       )}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -367,13 +378,6 @@ export function Dashboard() {
       <NewCompanyModal open={newOpen} onClose={() => setNewOpen(false)} />
     </div>
   );
-}
-
-interface LiveImport {
-  counts: IngestResult['counts'];
-  progress: ImportProgress | null;
-  startedAt: number;
-  step: number;
 }
 
 /** Enough 30s slices to walk a very large portal; the user can stop at any point. */

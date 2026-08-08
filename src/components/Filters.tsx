@@ -46,6 +46,26 @@ export function Filters({ filters, onChange }: FiltersProps) {
 
       <div className="order-2 flex basis-full flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-slate-600">
+          HubSpot activity from
+          <input
+            className="input w-auto"
+            type="date"
+            value={filters.activity_from ?? ''}
+            onChange={(e) => onChange({ activity_from: e.target.value || undefined, page: 0 })}
+          />
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          to
+          <input
+            className="input w-auto"
+            type="date"
+            value={filters.activity_to ?? ''}
+            onChange={(e) => onChange({ activity_to: e.target.value || undefined, page: 0 })}
+          />
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
           <input
             type="checkbox"
             checked={!!filters.has_quote}

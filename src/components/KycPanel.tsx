@@ -271,7 +271,11 @@ function JobIntelligencePanel({ companyId }: { companyId: string }) {
           {createSource.isPending ? 'Saving…' : 'Add source'}
         </button>
       </div>
-      <p className="text-xs text-slate-500">For example, use <code>acme</code> from <code>boards.greenhouse.io/acme</code> or <code>jobs.lever.co/acme</code>. Only public, official ATS feeds are connected.</p>
+      <p className="text-xs text-slate-500">
+        This is not a password or API key. Copy the last part of the public career URL: use <code>acme</code> from{' '}
+        <code>https://boards.greenhouse.io/acme</code> for Greenhouse, or from <code>https://jobs.lever.co/acme</code>{' '}
+        for Lever. Only public, official ATS feeds are connected.
+      </p>
 
       {(sources.data?.length ?? 0) > 0 && (
         <ul className="space-y-1 text-sm">

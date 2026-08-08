@@ -140,6 +140,8 @@ export async function exportXlsx(filters: {
   source_priority?: string;
   has_quote?: boolean;
   has_kyc?: boolean;
+  activity_from?: string;
+  activity_to?: string;
 }): Promise<Blob> {
   const {
     data: { session },

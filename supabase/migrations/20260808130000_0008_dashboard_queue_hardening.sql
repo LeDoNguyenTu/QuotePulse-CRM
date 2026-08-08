@@ -75,12 +75,54 @@ grant select on public.company_dashboard to authenticated;
 -- Durable queue. Convert the original enum column to a constrained text state
 -- so scheduled/sending/retrying can be represented without enum migration traps.
 -- ---------------------------------------------------------------------
+-- The dashboard view created above reads email_sends.status. Drop it again
+-- before changing the column type, then recreate it immediately afterward.
+drop view if exists public.company_dashboard;
 alter table public.email_sends alter column status drop default;
 alter table public.email_sends alter column status type text using status::text;
 alter table public.email_sends alter column status set default 'queued';
 alter table public.email_sends drop constraint if exists email_sends_status_check;
 alter table public.email_sends add constraint email_sends_status_check
   check (status in ('queued', 'scheduled', 'sending', 'retrying', 'sent', 'failed', 'blocked', 'deferred'));
+
+create view public.company_dashboard as
+with deal_summary as (
+  select d.owner_id, d.company_id, count(*)::int as deal_count,
+    max(coalesce(d.hubspot_modified_at, d.hubspot_created_at, d.created_at)) as last_deal_at,
+    string_agg(distinct nullif(d.product, ''), ', ' order by nullif(d.product, '')) as products
+  from public.deals d where d.company_id is not null group by d.owner_id, d.company_id
+), primary_contact as (
+  select distinct on (ct.owner_id, ct.company_id) ct.owner_id, ct.company_id, ct.full_name, ct.email, ct.phone
+  from public.contacts ct where ct.company_id is not null
+  order by ct.owner_id, ct.company_id, ct.is_primary_contact desc, (ct.email is not null) desc, ct.created_at asc
+), quote_company as (
+  select d.owner_id, d.company_id, true as has_quote from public.attachments a
+  join public.deals d on d.id = a.deal_id and d.owner_id = a.owner_id
+  where a.source_type = 'quote' and d.company_id is not null group by d.owner_id, d.company_id
+), kyc_company as (
+  select k.owner_id, k.company_id, true as has_kyc from public.kyc_profiles k group by k.owner_id, k.company_id
+), latest_email as (
+  select distinct on (es.created_by, es.company_id) es.created_by, es.company_id, es.status as last_email_status
+  from public.email_sends es where es.company_id is not null order by es.created_by, es.company_id, es.created_at desc, es.id desc
+), latest_sent as (
+  select es.created_by, es.company_id, max(es.sent_at) as last_email_sent_at from public.email_sends es
+  where es.company_id is not null and es.sent_at is not null group by es.created_by, es.company_id
+)
+select c.id, c.owner_id, c.name_clean, c.name_raw, c.industry, c.website, c.source_priority, c.created_at, c.updated_at,
+  pc.full_name as primary_contact_name, pc.email as primary_contact_email, pc.phone as primary_contact_phone,
+  ds.products, ds.deal_count, ds.last_deal_at, coalesce(qc.has_quote, false) as has_quote,
+  coalesce(kc.has_kyc, false) as has_kyc, le.last_email_status, ls.last_email_sent_at
+from public.companies c
+left join deal_summary ds on ds.owner_id = c.owner_id and ds.company_id = c.id
+left join primary_contact pc on pc.owner_id = c.owner_id and pc.company_id = c.id
+left join quote_company qc on qc.owner_id = c.owner_id and qc.company_id = c.id
+left join kyc_company kc on kc.owner_id = c.owner_id and kc.company_id = c.id
+left join latest_email le on le.created_by = c.owner_id and le.company_id = c.id
+left join latest_sent ls on ls.created_by = c.owner_id and ls.company_id = c.id
+where c.deleted_at is null;
+alter view public.company_dashboard set (security_invoker = true);
+revoke all on public.company_dashboard from anon;
+grant select on public.company_dashboard to authenticated;
 alter table public.email_sends add column if not exists provider text not null default 'microsoft_graph'
   check (provider in ('microsoft_graph', 'brevo'));
 alter table public.email_sends add column if not exists scheduled_at timestamptz;

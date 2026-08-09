@@ -4,3 +4,8 @@ export type ImportReportStatus = 'idle' | 'running' | 'paused' | 'complete' | 'f
 export function shouldShowImportReport(status: ImportReportStatus | undefined, hasReport: boolean): boolean {
   return hasReport && status !== 'running';
 }
+
+/** A live ratio may be unreliable while archived records are still syncing. */
+export function importCompletionPercent(done: boolean): 100 | null {
+  return done ? 100 : null;
+}

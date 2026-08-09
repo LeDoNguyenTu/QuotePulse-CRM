@@ -35,6 +35,7 @@ import {
 } from '../_shared/hubspotProperties.ts';
 import { associatedObjectIds } from '../_shared/hubspotAssociations.ts';
 import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
+import { formatHubspotError } from '../_shared/hubspotErrors.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 // Deliberately well under the ~150s Edge wall-time limit. Each invocation is one
@@ -1327,5 +1328,5 @@ function isQuoteName(name?: string): boolean {
 }
 
 function msg(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+  return formatHubspotError(e);
 }

@@ -2,14 +2,17 @@ export interface PropertyDefinitionLike {
   property_name: string;
 }
 
-/**
- * Catalogues describe every field HubSpot makes available. The table picker
- * should only offer fields that have at least one non-empty imported value.
- */
-export function fieldsWithImportedValues<T extends PropertyDefinitionLike>(
+/** Keep the complete HubSpot catalogue, with empty-for-now fields grouped separately. */
+export function splitPropertiesByCoverage<T extends PropertyDefinitionLike>(
   catalog: T[],
   observedPropertyNames: readonly string[]
-): T[] {
+): { available: T[]; hidden: T[] } {
   const observed = new Set(observedPropertyNames);
-  return catalog.filter((field) => observed.has(field.property_name));
+  return catalog.reduce<{ available: T[]; hidden: T[] }>(
+    (groups, field) => {
+      groups[observed.has(field.property_name) ? 'available' : 'hidden'].push(field);
+      return groups;
+    },
+    { available: [], hidden: [] }
+  );
 }

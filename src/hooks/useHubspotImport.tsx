@@ -15,7 +15,6 @@ import { functions } from '../lib/functions';
 import { accumulateImportResult, emptyImportResult } from '../lib/importSession';
 import { useAuth } from './useAuth';
 
-const MAX_IMPORT_STEPS = 200;
 const STALE_RUN_MS = 2 * 60 * 1000;
 
 export interface LiveImport {
@@ -147,7 +146,7 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      for (let step = live.step + 1; step <= MAX_IMPORT_STEPS; step++) {
+      for (let step = live.step + 1; ; step++) {
         const saved = readStoredState(user.id);
         if (saved?.stopRequested) {
           report = {
@@ -169,12 +168,6 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
         }
         writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'running', report, live, stopRequested: false, updatedAt: Date.now() });
       }
-      report = {
-        ...report,
-        done: false,
-        warnings: [...new Set([...report.warnings, 'Import paused after its maximum run length. Run it again to resume.'])],
-      };
-      writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'paused', report, live, stopRequested: false, updatedAt: Date.now() });
     } catch (error) {
       report = { ...report, ok: false, errors: [...report.errors, error instanceof Error ? error.message : String(error)] };
       writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'failed', report, live: null, stopRequested: false, updatedAt: Date.now() });

@@ -21,10 +21,11 @@ import { useSettings, useSaveSettings } from '../hooks/useSettings';
 import { useHubspotPropertyCatalog, useHubspotPropertyCoverage } from '../hooks/useHubspotPropertyCatalog';
 import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns } from '../lib/tablePreferences';
 import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
-import { fieldsWithImportedValues } from '../lib/propertyCoverage';
-import { shouldShowImportReport } from '../lib/importReport';
+import { splitPropertiesByCoverage } from '../lib/propertyCoverage';
+import { importCompletionPercent, shouldShowImportReport } from '../lib/importReport';
 
 const PAGE_SIZE = 25;
+const MAX_REBUILD_STEPS = 200;
 
 export function Dashboard() {
   const [filters, setFilters] = useState<CompanyFilters>({ page: 0, pageSize: PAGE_SIZE });
@@ -45,8 +46,8 @@ export function Dashboard() {
   const companyCatalog = useHubspotPropertyCatalog('companies');
   const companyCoverage = useHubspotPropertyCoverage('companies');
   const visibleColumns = resolveVisibleColumns('companies', settings.data?.table_column_preferences);
-  const companyFields = fieldsWithImportedValues(companyCatalog.data ?? [], companyCoverage.data ?? []);
-  const customColumns = companyFields.filter((field) =>
+  const companyFields = splitPropertiesByCoverage(companyCatalog.data ?? [], companyCoverage.data ?? []);
+  const customColumns = [...companyFields.available, ...companyFields.hidden].filter((field) =>
     visibleColumns.includes(field.property_name) && !DEFAULT_VISIBLE_COLUMNS.companies.includes(field.property_name)
   );
   const softDelete = useSoftDeleteCompanies();
@@ -238,7 +239,7 @@ export function Dashboard() {
     try {
       // Same resumable pattern as the import: it works to a time budget and a
       // second run is a cheap no-op over the deals it already fixed.
-      for (let step = 0; step < MAX_IMPORT_STEPS; step++) {
+      for (let step = 0; step < MAX_REBUILD_STEPS; step++) {
         const res: RebuildResult = await functions.hubspotRebuild();
         remapped += res.counts?.remapped ?? 0;
         created += res.counts?.created ?? 0;
@@ -328,7 +329,8 @@ export function Dashboard() {
               ...visibleColumns
                 .filter((id) => DEFAULT_VISIBLE_COLUMNS.companies.includes(id))
                 .map((id) => ({ id, label: id.replace(/_/g, ' ') })),
-              ...companyFields.map((field) => ({ id: field.property_name, label: field.label })),
+              ...companyFields.available.map((field) => ({ id: field.property_name, label: field.label })),
+              ...companyFields.hidden.map((field) => ({ id: field.property_name, label: field.label, group: 'hidden' as const })),
             ]}
             visible={visibleColumns}
             onChange={(columns) => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', columns) })}
@@ -388,9 +390,6 @@ export function Dashboard() {
     </div>
   );
 }
-
-/** Enough 30s slices to walk a very large portal; the user can stop at any point. */
-const MAX_IMPORT_STEPS = 200;
 
 /**
  * Live progress while the import loop runs. Without this the button just said
@@ -480,6 +479,7 @@ function ImportReport({
   onDismiss: () => void;
 }) {
   const { ok, counts, errors, warnings, done } = report;
+  const completionPercent = importCompletionPercent(done);
   const tone = !ok
     ? 'border-red-200 bg-red-50 text-red-900'
     : errors.length || warnings.length
@@ -498,6 +498,10 @@ function ImportReport({
           Dismiss
         </button>
       </div>
+
+      {completionPercent != null && (
+        <p className="text-xs font-medium">Sync progress: {completionPercent}%</p>
+      )}
 
       {counts.skipped_existing > 0 && (
         <p className="text-xs">

@@ -24,6 +24,11 @@ import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns, typ
 import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
 import { splitPropertiesByCoverage } from '../lib/propertyCoverage';
 import { importCompletionPercent, shouldShowImportReport } from '../lib/importReport';
+import {
+  importActivityText,
+  importResponseTimestamp,
+  recentImportEtaMinutes,
+} from '../lib/importProgress';
 
 const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
@@ -431,6 +436,12 @@ function ImportProgressPanel({
   onStop: () => void;
   stopping: boolean;
 }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const { counts, progress, startedAt } = live;
   const total = progress?.deals_in_hubspot ?? null;
   const imported = progress?.deals_imported ?? 0;
@@ -442,10 +453,14 @@ function ImportProgressPanel({
   const percent =
     total && total > 0 ? Math.min(99, Math.round((imported / total) * 100)) : null;
 
-  const elapsedSec = Math.max(1, (Date.now() - startedAt) / 1000);
-  const dealsPerSec = counts.deals / elapsedSec;
-  const etaMin =
-    remaining != null && dealsPerSec > 0.05 ? Math.ceil(remaining / dealsPerSec / 60) : null;
+  const etaMin = recentImportEtaMinutes(
+    remaining,
+    live.recentDealsPerSec,
+    progress?.phase
+  );
+  const lastResponseAt = importResponseTimestamp(live.lastStepAt, startedAt);
+  const secondsSinceResponse = Math.max(0, (now - lastResponseAt) / 1_000);
+  const activityText = importActivityText(secondsSinceResponse);
 
   return (
     <div className="space-y-2 rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-900">
@@ -471,6 +486,19 @@ function ImportProgressPanel({
           className={`h-2 rounded bg-brand-600 transition-all duration-500 ${percent == null ? 'animate-pulse' : ''}`}
           style={{ width: `${percent ?? 100}%` }}
         />
+      </div>
+
+      <div
+        className="flex items-center gap-2 text-xs text-brand-700"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <span
+          className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-brand-200 border-t-brand-700"
+          aria-hidden="true"
+        />
+        <span>{activityText}</span>
       </div>
 
       <p className="text-xs">

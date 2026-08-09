@@ -18,6 +18,7 @@ import {
   normalizeImportResult,
   postImportStepAction,
 } from '../lib/importSession';
+import { recentDealsPerSecond } from '../lib/importProgress';
 import { useAuth } from './useAuth';
 
 const STALE_RUN_MS = 2 * 60 * 1000;
@@ -27,6 +28,10 @@ export interface LiveImport {
   progress: ImportProgress | null;
   startedAt: number;
   step: number;
+  /** Completion time of the latest server slice; absent in legacy saved state. */
+  lastStepAt?: number;
+  /** Throughput of only the latest slice; null hides misleading ETA. */
+  recentDealsPerSec?: number | null;
 }
 
 type ImportStatus = 'idle' | 'running' | 'paused' | 'complete' | 'failed';
@@ -143,12 +148,16 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
     let report = existing?.status === 'paused' && existing.report
       ? { ...existing.report, warnings: existing.report.warnings.filter((warning) => !warning.startsWith('Import paused')) }
       : emptyImportResult();
-    const startedAt = existing?.live?.startedAt ?? Date.now();
+    // A resumed run gets a fresh active timing window so paused time can never
+    // inflate its ETA. Counts and the resumable server step remain cumulative.
+    const startedAt = Date.now();
     let live: LiveImport = {
       counts: { ...report.counts },
       progress: report.progress ?? null,
       startedAt,
       step: existing?.live?.step ?? 0,
+      lastStepAt: startedAt,
+      recentDealsPerSec: null,
     };
     writeState({
       version: 1,
@@ -176,7 +185,26 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
 
         const result = await functions.hubspotIngest();
         report = accumulateImportResult(report, result);
-        live = { counts: { ...report.counts }, progress: result.progress ?? live.progress, startedAt, step };
+        const completedAt = Date.now();
+        const nextProgress = result.progress ?? live.progress;
+        const previousImported = live.progress?.deals_imported;
+        const currentImported = nextProgress?.deals_imported;
+        const recentRate = previousImported != null && currentImported != null
+          ? recentDealsPerSecond(
+              previousImported,
+              currentImported,
+              live.lastStepAt ?? live.startedAt,
+              completedAt
+            )
+          : null;
+        live = {
+          counts: { ...report.counts },
+          progress: nextProgress,
+          startedAt,
+          step,
+          lastStepAt: completedAt,
+          recentDealsPerSec: recentRate,
+        };
         queryClient.invalidateQueries({ queryKey: ['account'] });
         // Stop may be clicked while the request above is in flight. Re-read the
         // shared state before writing anything, otherwise a stale false value

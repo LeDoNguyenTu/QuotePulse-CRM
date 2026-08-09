@@ -1,10 +1,9 @@
 // Edge Function: enrich-kyc
 //
 // Builds a company KYC profile the way a person actually researches a client:
-// Google the name, read the knowledge panel and the Maps listing, open the
-// official site, click through to Contact / About / Team, and note the LinkedIn
-// and Facebook pages. No LLM — the quality comes from reading STRUCTURED data
-// that the previous version ignored entirely:
+// Google the name, read the knowledge panel and the Maps listing, and note the
+// LinkedIn and Facebook pages. Company-controlled URLs are never fetched by
+// this function; public search remains the network boundary.
 //
 //   * Serper `knowledgeGraph`  — website, phone, address, type, socials
 //   * Serper `/places`         — Google Maps: street address + phone + website
@@ -22,6 +21,14 @@
 // KYC editor.
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
+import {
+  detectJobSourceCandidates,
+  extractHttpsLinks,
+  type JobSourceCandidate,
+} from '../_shared/jobSourceDiscovery.ts';
+import { mergeKycEnrichment } from '../_shared/kycMerge.ts';
+import { publicCareerPageUrl } from '../_shared/jobSources.ts';
+import { isPrivateNetworkAddress } from '../_shared/publicNetwork.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 // --- types -----------------------------------------------------------------
@@ -51,6 +58,7 @@ interface KycData {
   contacts: KycContact[];
   other_links: string[];
   sources: FieldSource[];
+  job_source_candidates: JobSourceCandidate[];
 }
 
 interface SearchResult {
@@ -102,7 +110,16 @@ Deno.serve(async (req) => {
     if (cErr || !company) return errorResponse('Company not found', 404);
 
     const name = company.name_clean as string;
-    const data: KycData = { contacts: [], other_links: [], sources: [] };
+    const { data: existingProfile, error: existingError } = await admin
+      .from('kyc_profiles')
+      .select('enriched_data, updated_at, last_enriched_at')
+      .eq('company_id', company_id)
+      .eq('owner_id', userId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    let data: KycData = { contacts: [], other_links: [], sources: [], job_source_candidates: [] };
+    const jobCandidateUrls: string[] = [];
 
     // ---- Stage 1: discover, from the NAME alone ---------------------------
     let organic: SearchResult[] = [];
@@ -111,12 +128,11 @@ Deno.serve(async (req) => {
 
     if (!Deno.env.get('SEARCH_API_KEY')) {
       errors.push(
-        'SEARCH_API_KEY (Serper.dev) is not set, so KYC cannot search Google by company name — ' +
-          'it can only scrape a website already recorded on the company. Set it with: ' +
+        'SEARCH_API_KEY (Serper.dev) is not set, so KYC and job-source discovery cannot search by company name. Set it with: ' +
           'supabase secrets set SEARCH_API_KEY=<your serper.dev key>'
       );
     } else {
-      const [general, contactQ, linkedinQ, placeRes] = await Promise.all([
+      const [general, contactQ, linkedinQ, careersQ, portalJobsQ, placeRes] = await Promise.all([
         serperSearch(`"${name}"`).catch((e) => {
           errors.push(`search: ${msg(e)}`);
           return { organic: [], knowledgeGraph: null };
@@ -129,10 +145,24 @@ Deno.serve(async (req) => {
           organic: [],
           knowledgeGraph: null,
         })),
+        serperSearch(`"${name}" jobs Singapore careers`).catch(() => ({
+          organic: [],
+          knowledgeGraph: null,
+        })),
+        serperSearch(
+          `"${name}" jobs Singapore (` +
+          'site:linkedin.com/jobs OR site:mycareersfuture.gov.sg/job OR site:jobstreet.com OR ' +
+          'site:indeed.com OR site:foundit.sg OR site:fastjobs.sg OR site:glints.com/sg OR ' +
+          'site:careers.gov.sg OR site:myworkdayjobs.com)'
+        ).catch(() => ({ organic: [], knowledgeGraph: null })),
         serperPlaces(name).catch(() => [] as PlaceResult[]),
       ]);
 
       organic = [...general.organic, ...contactQ.organic, ...linkedinQ.organic];
+      jobCandidateUrls.push(
+        ...careersQ.organic.map((result) => result.url),
+        ...portalJobsQ.organic.map((result) => result.url)
+      );
       kg = general.knowledgeGraph ?? contactQ.knowledgeGraph;
       places = placeRes;
     }
@@ -210,17 +240,32 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ---- Stages 3-5: crawl the site and extract ---------------------------
-    if (data.website) {
-      try {
-        await crawlSite(data.website, data, errors);
-      } catch (e) {
-        errors.push(`scrape: ${msg(e)}`);
-      }
-    }
+    // Never fetch a discovered or CRM-provided company URL from the Edge
+    // Function. Keeping discovery search-only prevents DNS-rebinding SSRF;
+    // Serper results still supply official career and portal candidates.
+
+    data.job_source_candidates = detectJobSourceCandidates(
+      jobCandidateUrls,
+      name,
+      data.website ? safeHost(data.website) : null
+    );
 
     // ---- Stage 6: persist --------------------------------------------------
     dedupeContacts(data);
+    const existingData = existingProfile?.enriched_data && typeof existingProfile.enriched_data === 'object'
+      ? existingProfile.enriched_data as Record<string, unknown>
+      : null;
+    const lastEnrichedAt = Date.parse(String(existingProfile?.last_enriched_at ?? ''));
+    const updatedAt = Date.parse(String(existingProfile?.updated_at ?? ''));
+    const manuallyEdited = !!existingData?.manual_override_updated_at || (
+      Number.isFinite(updatedAt) &&
+      (!Number.isFinite(lastEnrichedAt) || updatedAt - lastEnrichedAt > 5_000)
+    );
+    data = mergeKycEnrichment(
+      existingData,
+      data as unknown as Record<string, unknown>,
+      manuallyEdited
+    ) as unknown as KycData;
 
     const { error: upErr } = await admin.from('kyc_profiles').upsert(
       {
@@ -317,11 +362,12 @@ function pickPlace(places: PlaceResult[], name: string): PlaceResult | null {
 // --- crawl -----------------------------------------------------------------
 
 /** Homepage, then the Contact / About / Team pages linked from it. */
-async function crawlSite(website: string, data: KycData, errors: string[]) {
+async function crawlSite(website: string, data: KycData, errors: string[]): Promise<string[]> {
   const home = await fetchPage(website);
-  if (!home) return;
+  if (!home) return [];
 
   absorb(home.html, home.url, data);
+  const links = extractHttpsLinks(home.html, home.url);
 
   const subUrls = discoverSubPages(home.html, home.url).slice(0, MAX_SUBPAGES);
   const pages = await Promise.all(
@@ -333,21 +379,59 @@ async function crawlSite(website: string, data: KycData, errors: string[]) {
     )
   );
   for (const p of pages) {
-    if (p) absorb(p.html, p.url, data);
+    if (p) {
+      absorb(p.html, p.url, data);
+      links.push(...extractHttpsLinks(p.html, p.url));
+    }
   }
+  return [...new Set(links)];
 }
 
 async function fetchPage(url: string): Promise<{ html: string; url: string } | null> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KYC-enrichment-bot)' },
-    signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
-    redirect: 'follow',
-  });
-  if (!res.ok) return null;
-  const type = res.headers.get('content-type') ?? '';
-  if (!type.includes('html')) return null;
-  const html = (await res.text()).slice(0, MAX_PAGE_BYTES);
-  return { html, url: res.url || url };
+  let currentUrl = publicCareerPageUrl(url);
+  const originalHost = normalizedSiteHost(new URL(currentUrl).hostname);
+
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount++) {
+    await assertPublicDestination(currentUrl);
+    const res = await fetch(currentUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KYC-enrichment-bot)' },
+      signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+      redirect: 'manual',
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location || redirectCount === 5) return null;
+      const redirected = publicCareerPageUrl(new URL(location, currentUrl).toString());
+      if (normalizedSiteHost(new URL(redirected).hostname) !== originalHost) return null;
+      currentUrl = redirected;
+      continue;
+    }
+    if (!res.ok) return null;
+    const type = res.headers.get('content-type') ?? '';
+    if (!type.includes('html')) return null;
+    const html = (await res.text()).slice(0, MAX_PAGE_BYTES);
+    return { html, url: currentUrl };
+  }
+  return null;
+}
+
+async function assertPublicDestination(url: string): Promise<void> {
+  const hostname = new URL(url).hostname.replace(/^\[|\]$/g, '');
+  const addresses: string[] = [];
+  for (const recordType of ['A', 'AAAA'] as const) {
+    try {
+      addresses.push(...await Deno.resolveDns(hostname, recordType));
+    } catch {
+      // A public host may intentionally publish only one address family.
+    }
+  }
+  if (addresses.length === 0 || addresses.some(isPrivateNetworkAddress)) {
+    throw new Error('website does not resolve to a public network address');
+  }
+}
+
+function normalizedSiteHost(hostname: string): string {
+  return hostname.toLowerCase().replace(/^www\./, '');
 }
 
 const SUBPAGE_RE = /(contact|about|team|people|our-people|staff|impressum|kontakt)/i;

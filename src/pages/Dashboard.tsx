@@ -24,6 +24,7 @@ import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns, typ
 import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
 import { splitPropertiesByCoverage } from '../lib/propertyCoverage';
 import { importCompletionPercent, shouldShowImportReport } from '../lib/importReport';
+import { shouldShowLiveImport } from '../lib/importSession';
 import {
   importActivityText,
   importResponseTimestamp,
@@ -47,7 +48,9 @@ export function Dashboard() {
   const { state: importState, startImport, stopImport, dismissImportReport } = useHubspotImport();
   const importing = importState?.status === 'running';
   const importReport = importState?.report ?? null;
-  const live = importState?.live ?? null;
+  const live = shouldShowLiveImport(importState?.status, !!importState?.live)
+    ? importState?.live ?? null
+    : null;
   const settings = useSettings();
   const saveSettings = useSaveSettings();
   const companyCatalog = useHubspotPropertyCatalog('companies');

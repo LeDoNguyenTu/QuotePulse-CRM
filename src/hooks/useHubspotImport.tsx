@@ -111,6 +111,7 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
       const paused = {
         ...saved,
         status: 'paused' as const,
+        live: null,
         stopRequested: false,
         updatedAt: Date.now(),
         report: {
@@ -179,7 +180,7 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
             done: false,
             warnings: [...new Set([...report.warnings, 'Stopped early. Everything imported so far is saved — run the import again to resume.'])],
           };
-          writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'paused', report, live, stopRequested: false, updatedAt: Date.now() });
+          writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'paused', report, live: null, stopRequested: false, updatedAt: Date.now() });
           return;
         }
 
@@ -224,7 +225,7 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
             done: false,
             warnings: [...new Set([...report.warnings, 'Stopped early. Everything imported so far is saved â€” run the import again to resume.'])],
           };
-          writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'paused', report, live, stopRequested: false, updatedAt: Date.now() });
+          writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'paused', report, live: null, stopRequested: false, updatedAt: Date.now() });
           return;
         }
         writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'running', report, live, stopRequested: false, updatedAt: Date.now() });

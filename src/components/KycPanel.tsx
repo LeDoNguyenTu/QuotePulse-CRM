@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { JobSourceProvider, KycContact, KycEnrichedData, KycProfile } from '../lib/types';
+import type { JobSourceCandidate, JobSourceProvider, KycContact, KycEnrichedData, KycProfile } from '../lib/types';
 import { functions } from '../lib/functions';
 import {
   useCompanyJobOpportunities,
@@ -10,7 +10,15 @@ import {
   useSaveContact,
   useUpdateKyc,
 } from '../hooks/useCompany';
-import { portalAccessNotice, validSourceIdentifier } from '../lib/jobIntelligence';
+import {
+  DIRECT_JOB_PROVIDERS,
+  LINK_ONLY_JOB_PROVIDERS,
+  groupJobOpportunities,
+  isLinkOnlyProvider,
+  portalAccessNotice,
+  providerLabel,
+  validSourceIdentifier,
+} from '../lib/jobIntelligence';
 import { Modal } from './Modal';
 import { ErrorState } from './ui';
 
@@ -173,7 +181,7 @@ export function KycPanel({ companyId, kyc }: KycPanelProps) {
         </div>
       )}
 
-      <JobIntelligencePanel companyId={companyId} />
+      <JobIntelligencePanel companyId={companyId} kyc={kyc} />
 
       {kyc && (
         <KycEditModal
@@ -187,7 +195,7 @@ export function KycPanel({ companyId, kyc }: KycPanelProps) {
   );
 }
 
-function JobIntelligencePanel({ companyId }: { companyId: string }) {
+function JobIntelligencePanel({ companyId, kyc }: { companyId: string; kyc: KycProfile | null }) {
   const qc = useQueryClient();
   const sources = useCompanyJobSources(companyId);
   const opportunities = useCompanyJobOpportunities(companyId);
@@ -196,20 +204,31 @@ function JobIntelligencePanel({ companyId }: { companyId: string }) {
   const [provider, setProvider] = useState<JobSourceProvider>('greenhouse');
   const [identifier, setIdentifier] = useState('');
   const [label, setLabel] = useState('');
+  const [market, setMarket] = useState('Singapore');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   async function addSource() {
     const cleaned = identifier.trim();
-    if (!validSourceIdentifier(cleaned)) {
-      setError('Use the board token or site name from the official career URL (letters, numbers, hyphens, and underscores only).');
+    if (!validSourceIdentifier(cleaned, provider)) {
+      setError(provider === 'career_page'
+        ? 'Enter a public HTTPS employer careers URL.'
+        : isLinkOnlyProvider(provider)
+          ? 'Enter the company name to search for on this portal.'
+          : 'Use the company token or site name from the official career URL (letters, numbers, hyphens, and underscores only).');
       return;
     }
     setError(null);
     setNotice(null);
     try {
-      await createSource.mutateAsync({ provider, identifier: cleaned, label });
+      await createSource.mutateAsync({
+        provider,
+        identifier: cleaned,
+        label,
+        source_url: provider === 'career_page' ? cleaned : undefined,
+        market,
+      });
       setIdentifier('');
       setLabel('');
       setNotice('Source saved. Select Refresh jobs to load its current vacancies.');
@@ -246,43 +265,127 @@ function JobIntelligencePanel({ companyId }: { companyId: string }) {
     }
   }
 
-  const sourceNames = new Map((sources.data ?? []).map((source) => [source.id, source.label || `${source.provider}: ${source.identifier}`]));
+  async function confirmCandidate(candidate: JobSourceCandidate) {
+    setError(null);
+    setNotice(null);
+    try {
+      await createSource.mutateAsync({
+        provider: candidate.provider,
+        identifier: candidate.identifier,
+        label: candidate.label,
+        source_url: candidate.source_url,
+        market: 'Singapore',
+      });
+      setNotice(`${candidate.label} saved. Loading current vacancies…`);
+      await refreshJobs();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const sourceById = new Map((sources.data ?? []).map((source) => [source.id, source]));
+  const configuredKeys = new Set((sources.data ?? []).map((source) => `${source.provider}:${source.identifier.toLowerCase()}`));
+  const candidates = (kyc?.enriched_data?.job_source_candidates ?? []).filter(
+    (candidate) => !configuredKeys.has(`${candidate.provider}:${candidate.identifier.toLowerCase()}`)
+  );
+  const groupedJobs = groupJobOpportunities(opportunities.data ?? []);
+
+  const identifierPlaceholder = provider === 'greenhouse'
+    ? 'Greenhouse board token'
+    : provider === 'lever'
+      ? 'Lever site name'
+      : provider === 'smartrecruiters'
+        ? 'SmartRecruiters company ID'
+        : provider === 'ashby'
+          ? 'Ashby job board name'
+          : provider === 'career_page'
+            ? 'https://company.com/careers'
+            : 'Company name';
 
   return (
     <section className="card space-y-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold">Job Intelligence</h3>
-          <p className="text-sm text-slate-500">Find currently open roles from this company’s official MNC career board.</p>
+          <p className="text-sm text-slate-500">Find MNC vacancies from official career feeds and Singapore job-portal crossposts.</p>
         </div>
         <button className="btn-secondary" onClick={refreshJobs} disabled={running || (sources.data?.length ?? 0) === 0}>
           {running ? 'Refreshing jobs…' : 'Refresh jobs'}
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-5">
         <select className="input" value={provider} onChange={(event) => setProvider(event.target.value as JobSourceProvider)}>
-          <option value="greenhouse">Greenhouse</option>
-          <option value="lever">Lever</option>
+          <optgroup label="Official and employer sources">
+            {DIRECT_JOB_PROVIDERS.map((value) => <option key={value} value={value}>{providerLabel(value)}</option>)}
+          </optgroup>
+          <optgroup label="Singapore portal links">
+            {LINK_ONLY_JOB_PROVIDERS.map((value) => <option key={value} value={value}>{providerLabel(value)}</option>)}
+          </optgroup>
         </select>
-        <input className="input" placeholder={provider === 'greenhouse' ? 'Greenhouse board token' : 'Lever site name'} value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+        <input className="input" placeholder={identifierPlaceholder} value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+        <input className="input" placeholder="Market" value={market} onChange={(event) => setMarket(event.target.value)} />
         <input className="input" placeholder="Label (optional)" value={label} onChange={(event) => setLabel(event.target.value)} />
         <button className="btn-primary" onClick={addSource} disabled={createSource.isPending || !identifier.trim()}>
           {createSource.isPending ? 'Saving…' : 'Add source'}
         </button>
       </div>
       <p className="text-xs text-slate-500">
-        This is not a password or API key. Copy the last part of the public career URL: use <code>acme</code> from{' '}
-        <code>https://boards.greenhouse.io/acme</code> for Greenhouse, or from <code>https://jobs.lever.co/acme</code>{' '}
-        for Lever. Only public, official ATS feeds are connected.
+        {isLinkOnlyProvider(provider) ? (
+          <>Portal searches use public Google result links for the selected market. QuotePulse does not crawl the portal or automate applications.</>
+        ) : provider === 'career_page' ? (
+          <>Enter the company&apos;s public careers page. QuotePulse searches public indexed links on that employer domain; it does not crawl the site or automate applications.</>
+        ) : provider === 'greenhouse' ? (
+          <>
+            This is not a password or API key.{' '}
+            Enter only the board token from a real company&apos;s public Greenhouse career URL. For example, if the URL
+            format is <code>job-boards.greenhouse.io/&lt;board-token&gt;</code>, enter only <code>your-company</code>.{' '}
+            <a href="https://developers.greenhouse.io/job-board.html" target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">
+              Greenhouse documentation
+            </a>
+            .
+          </>
+        ) : provider === 'lever' ? (
+          <>
+            This is not a password or API key.{' '}
+            Enter only the site name from a real company&apos;s public Lever career URL. For example, if the URL format is{' '}
+            <code>jobs.lever.co/&lt;site-name&gt;</code>, enter only <code>your-company</code>.{' '}
+            <a href="https://github.com/lever/postings-api" target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">
+              Lever documentation
+            </a>
+            .
+          </>
+        ) : (
+          <>Enter the company identifier from its public {providerLabel(provider)} career URL. This is not a password or API key.</>
+        )}
       </p>
+
+      {candidates.length > 0 && (
+        <div className="rounded border border-brand-200 bg-brand-50 p-3">
+          <p className="text-sm font-medium text-brand-900">Career sources found by KYC</p>
+          <p className="mb-2 text-xs text-brand-700">Confirm a source to save it and load jobs in one step.</p>
+          <ul className="space-y-2">
+            {candidates.map((candidate) => (
+              <li key={`${candidate.provider}:${candidate.identifier}`} className="flex flex-wrap items-center gap-2 rounded bg-white px-2 py-2 text-sm">
+                <span className="font-medium">{candidate.label}</span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{candidate.access === 'direct' ? 'Official feed' : 'Link-only'}</span>
+                <a href={candidate.source_url} target="_blank" rel="noreferrer" className="text-xs text-brand-600 hover:underline">Verify source</a>
+                <button className="btn-secondary ml-auto" onClick={() => confirmCandidate(candidate)} disabled={createSource.isPending || running}>
+                  {createSource.isPending ? 'Saving…' : 'Add & refresh'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {(sources.data?.length ?? 0) > 0 && (
         <ul className="space-y-1 text-sm">
           {sources.data?.map((source) => (
             <li key={source.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 px-2 py-1.5">
               <span className="font-medium">{source.label || source.identifier}</span>
-              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{source.provider}</span>
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{providerLabel(source.provider)}</span>
+              <span className="text-xs text-slate-400">{source.market}</span>
               {source.last_checked_at && <span className="text-xs text-slate-400">Checked {new Date(source.last_checked_at).toLocaleString()}</span>}
               <button className="ml-auto text-xs text-red-600 hover:underline" onClick={() => removeSource(source.id)} disabled={deleteSource.isPending}>Remove</button>
             </li>
@@ -302,23 +405,33 @@ function JobIntelligencePanel({ companyId }: { companyId: string }) {
         <div className="label">Open roles</div>
         {opportunities.isLoading ? (
           <p className="text-sm text-slate-400">Loading jobs…</p>
-        ) : opportunities.data?.length ? (
+        ) : groupedJobs.length ? (
           <ul className="space-y-2">
-            {opportunities.data.map((job) => (
-              <li key={job.id} className="rounded border border-slate-200 p-3 text-sm">
+            {groupedJobs.map(({ key, primary, postings }) => (
+              <li key={key} className="rounded border border-slate-200 p-3 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium">{job.title}</p>
-                    <p className="text-slate-500">{[job.location, job.department, job.workplace_type].filter(Boolean).join(' · ') || 'Location not listed'}</p>
+                    <p className="font-medium">{primary.title}</p>
+                    <p className="text-slate-500">{[primary.location, primary.department, primary.workplace_type].filter(Boolean).join(' · ') || 'Location not listed'}</p>
                   </div>
-                  <a className="btn-secondary shrink-0" href={job.apply_url} target="_blank" rel="noreferrer">Apply on official site</a>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {postings.map((job) => {
+                      const source = sourceById.get(job.job_source_config_id);
+                      const sourceLabel = source ? providerLabel(source.provider) : 'Career source';
+                      return (
+                        <a key={job.id} className="btn-secondary shrink-0" href={job.apply_url} target="_blank" rel="noreferrer">
+                          {source && isLinkOnlyProvider(source.provider) ? `View on ${sourceLabel}` : `Apply via ${sourceLabel}`}
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">Source: {sourceNames.get(job.job_source_config_id) ?? 'Official career board'} · Last seen {new Date(job.last_seen_at).toLocaleString()}</p>
+                <p className="mt-1 text-xs text-slate-400">{postings.length} source{postings.length === 1 ? '' : 's'} · Last seen {new Date(primary.last_seen_at).toLocaleString()}</p>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-slate-400">Add an official Greenhouse or Lever source, then refresh to see open roles.</p>
+          <p className="text-sm text-slate-400">Run KYC to discover career sources, or add an official feed or Singapore portal search above.</p>
         )}
       </div>
     </section>
@@ -388,15 +501,16 @@ function KycEditModal({
       .filter((c) => c.name || c.email || c.phone);
     const enriched_data: KycEnrichedData = {
       ...(kyc.enriched_data ?? {}),
-      website: website.trim() || undefined,
-      linkedin: linkedin.trim() || undefined,
-      facebook: facebook.trim() || undefined,
-      phone: phone.trim() || undefined,
-      industry: industry.trim() || undefined,
-      address: address.trim() || undefined,
-      about: about.trim() || undefined,
+      website: website.trim(),
+      linkedin: linkedin.trim(),
+      facebook: facebook.trim(),
+      phone: phone.trim(),
+      industry: industry.trim(),
+      address: address.trim(),
+      about: about.trim(),
       other_links: links,
       contacts: cleaned,
+      manual_override_updated_at: new Date().toISOString(),
     };
     try {
       await update.mutateAsync({

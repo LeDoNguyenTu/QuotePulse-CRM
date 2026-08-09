@@ -21,7 +21,21 @@ export type SendStatus =
   | 'blocked'
   | 'deferred';
 export type EmailProvider = 'microsoft_graph' | 'brevo';
-export type JobSourceProvider = 'greenhouse' | 'lever';
+export type JobSourceProvider =
+  | 'greenhouse'
+  | 'lever'
+  | 'smartrecruiters'
+  | 'ashby'
+  | 'career_page'
+  | 'linkedin'
+  | 'mycareersfuture'
+  | 'jobstreet'
+  | 'indeed'
+  | 'foundit'
+  | 'fastjobs'
+  | 'glints'
+  | 'careersgov'
+  | 'workday';
 
 export interface Company {
   id: string;
@@ -154,7 +168,17 @@ export interface KycEnrichedData {
   address?: string;
   other_links?: string[];
   sources?: KycFieldSource[];
+  job_source_candidates?: JobSourceCandidate[];
+  manual_override_updated_at?: string;
   [key: string]: unknown;
+}
+
+export interface JobSourceCandidate {
+  provider: JobSourceProvider;
+  identifier: string;
+  label: string;
+  source_url: string;
+  access: 'direct' | 'link_only';
 }
 
 export interface KycProfile {
@@ -243,6 +267,8 @@ export interface JobSourceConfig {
   company_id: string;
   provider: JobSourceProvider;
   identifier: string;
+  source_url: string | null;
+  market: string;
   label: string | null;
   enabled: boolean;
   last_checked_at: string | null;
@@ -257,6 +283,7 @@ export interface JobOpportunity {
   job_source_config_id: string;
   external_id: string;
   fingerprint: string;
+  canonical_fingerprint: string;
   title: string;
   location: string | null;
   department: string | null;

@@ -4,6 +4,7 @@ import {
   emptyImportResult,
   normalizeImportResult,
   postImportStepAction,
+  shouldShowLiveImport,
 } from './importSession';
 import type { IngestResult } from './functions';
 
@@ -80,5 +81,13 @@ describe('HubSpot import session', () => {
     expect(postImportStepAction({ stepDone: false, stopRequested: true })).toBe('pause');
     expect(postImportStepAction({ stepDone: false, stopRequested: false })).toBe('continue');
     expect(postImportStepAction({ stepDone: true, stopRequested: true })).toBe('complete');
+  });
+
+  it('hides live timing and animation for every non-running status', () => {
+    expect(shouldShowLiveImport('running', true)).toBe(true);
+    expect(shouldShowLiveImport('paused', true)).toBe(false);
+    expect(shouldShowLiveImport('complete', true)).toBe(false);
+    expect(shouldShowLiveImport('failed', true)).toBe(false);
+    expect(shouldShowLiveImport('running', false)).toBe(false);
   });
 });

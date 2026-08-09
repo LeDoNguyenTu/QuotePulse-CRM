@@ -1,10 +1,21 @@
 import { errorResponse, handleOptions, json } from '../_shared/cors.ts';
 import {
+  canonicalJobFingerprint,
+  employerCareerSearchQuery,
+  isExhaustiveJobProvider,
+  normalizeAshbyJobs,
+  normalizeEmployerSearchJobs,
   normalizeGreenhouseJobs,
   normalizeLeverJobs,
+  normalizePortalSearchJobs,
+  normalizeSmartRecruitersJobs,
+  portalSearchQuery,
+  shouldContinueSmartRecruitersPage,
   supportedProvider,
   type DiscoveredJob,
   type JobProvider,
+  type PortalJobProvider,
+  type PortalSearchResult,
 } from '../_shared/jobSources.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
 
@@ -12,6 +23,7 @@ interface JobSourceConfig {
   id: string;
   provider: string;
   identifier: string;
+  market: string;
 }
 
 Deno.serve(async (req) => {
@@ -36,7 +48,7 @@ Deno.serve(async (req) => {
 
     const { data: sourceRows, error: sourceError } = await admin
       .from('job_source_configs')
-      .select('id, provider, identifier')
+      .select('id, provider, identifier, market')
       .eq('owner_id', userId)
       .eq('company_id', company_id)
       .eq('enabled', true);
@@ -52,7 +64,11 @@ Deno.serve(async (req) => {
       }
       sourcesChecked++;
       try {
-        const jobs = await fetchJobs(source.provider, source.identifier);
+        const jobs = await fetchJobs(
+          source.provider,
+          source.identifier,
+          source.market || 'Singapore'
+        );
         discovered += jobs.length;
         const seenAt = new Date().toISOString();
 
@@ -63,6 +79,7 @@ Deno.serve(async (req) => {
             job_source_config_id: source.id,
             external_id: job.externalId,
             fingerprint: `${source.provider}:${source.identifier.toLowerCase()}:${job.externalId}`,
+            canonical_fingerprint: canonicalJobFingerprint(job.title, job.location),
             title: job.title,
             location: job.location,
             department: job.department,
@@ -70,6 +87,7 @@ Deno.serve(async (req) => {
             apply_url: job.applyUrl,
             source_url: job.sourceUrl,
             posted_at: job.postedAt,
+            description: job.description,
             is_open: true,
             last_seen_at: seenAt,
           }));
@@ -81,13 +99,15 @@ Deno.serve(async (req) => {
 
         // Close only records absent from a successfully completed source scan.
         // Doing this after the upsert preserves the prior result set if a write fails.
-        const { error: closeError } = await admin
-          .from('job_opportunities')
-          .update({ is_open: false })
-          .eq('owner_id', userId)
-          .eq('job_source_config_id', source.id)
-          .lt('last_seen_at', seenAt);
-        if (closeError) throw closeError;
+        if (isExhaustiveJobProvider(source.provider)) {
+          const { error: closeError } = await admin
+            .from('job_opportunities')
+            .update({ is_open: false })
+            .eq('owner_id', userId)
+            .eq('job_source_config_id', source.id)
+            .lt('last_seen_at', seenAt);
+          if (closeError) throw closeError;
+        }
 
         const { error: sourceUpdateError } = await admin
           .from('job_source_configs')
@@ -106,19 +126,103 @@ Deno.serve(async (req) => {
   }
 });
 
-async function fetchJobs(provider: JobProvider, identifier: string): Promise<DiscoveredJob[]> {
+async function fetchJobs(
+  provider: JobProvider,
+  identifier: string,
+  market: string
+): Promise<DiscoveredJob[]> {
+  if (provider === 'smartrecruiters') return fetchSmartRecruitersJobs(identifier);
+  if (provider === 'career_page') return fetchEmployerCareerJobs(identifier, market);
+  if (!isExhaustiveJobProvider(provider)) {
+    return fetchPortalJobs(provider as PortalJobProvider, identifier, market);
+  }
+
   const url = provider === 'greenhouse'
     ? `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(identifier)}/jobs?content=false`
-    : `https://api.lever.co/v0/postings/${encodeURIComponent(identifier)}?mode=json`;
+    : provider === 'lever'
+      ? `https://api.lever.co/v0/postings/${encodeURIComponent(identifier)}?mode=json`
+      : `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(identifier)}`;
+  const payload = await fetchJson(url);
+  if (provider === 'greenhouse') return normalizeGreenhouseJobs(identifier, payload);
+  if (provider === 'lever') return normalizeLeverJobs(identifier, payload);
+  return normalizeAshbyJobs(identifier, payload);
+}
+
+async function fetchSmartRecruitersJobs(identifier: string): Promise<DiscoveredJob[]> {
+  const records: unknown[] = [];
+  const limit = 100;
+  for (let offset = 0; ; offset += limit) {
+    const list = asObject(await fetchJson(
+      `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(identifier)}/postings?limit=${limit}&offset=${offset}`
+    ));
+    const content = Array.isArray(list.content) ? list.content : [];
+    for (let start = 0; start < content.length; start += 10) {
+      const details = await Promise.all(content.slice(start, start + 10).map(async (value) => {
+        const row = asObject(value);
+        if (typeof row.applyUrl === 'string') return row;
+        const id = typeof row.id === 'string' || typeof row.id === 'number' ? String(row.id) : '';
+        if (!id) return row;
+        return fetchJson(
+          `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(identifier)}/postings/${encodeURIComponent(id)}`
+        );
+      }));
+      records.push(...details);
+    }
+    const total = typeof list.totalFound === 'number' ? list.totalFound : content.length;
+    if (!shouldContinueSmartRecruitersPage(offset, content.length, total)) break;
+  }
+  return normalizeSmartRecruitersJobs(identifier, { content: records });
+}
+
+async function fetchEmployerCareerJobs(identifier: string, market: string): Promise<DiscoveredJob[]> {
+  const results = await fetchSearchResults(employerCareerSearchQuery(identifier, market));
+  return normalizeEmployerSearchJobs(identifier, results, market);
+}
+
+async function fetchPortalJobs(
+  provider: PortalJobProvider,
+  companyName: string,
+  market: string
+): Promise<DiscoveredJob[]> {
+  const results = await fetchSearchResults(portalSearchQuery(provider, companyName, market));
+  return normalizePortalSearchJobs(provider, results).map((job) => ({
+    ...job,
+    location: job.location ?? market,
+  }));
+}
+
+async function fetchSearchResults(query: string): Promise<PortalSearchResult[]> {
+  const key = Deno.env.get('SEARCH_API_KEY');
+  if (!key) throw new Error('SEARCH_API_KEY is required for job discovery');
+  const response = await fetch(Deno.env.get('SEARCH_API_URL') ?? 'https://google.serper.dev/search', {
+    method: 'POST',
+    headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: query, num: 20, gl: 'sg', hl: 'en' }),
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) throw new Error(`search returned HTTP ${response.status}`);
+  const payload = asObject(await response.json());
+  return (Array.isArray(payload.organic) ? payload.organic : []).map((value) => {
+    const row = asObject(value);
+    return {
+      title: typeof row.title === 'string' ? row.title : '',
+      url: typeof row.link === 'string' ? row.link : '',
+      snippet: typeof row.snippet === 'string' ? row.snippet : '',
+    };
+  });
+}
+
+async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url, {
     headers: { Accept: 'application/json', 'User-Agent': 'QuotePulse-CRM Job Intelligence' },
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`source returned HTTP ${response.status}`);
-  const payload = await response.json();
-  return provider === 'greenhouse'
-    ? normalizeGreenhouseJobs(identifier, payload)
-    : normalizeLeverJobs(identifier, payload);
+  return response.json();
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
 function message(error: unknown): string {

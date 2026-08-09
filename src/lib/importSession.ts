@@ -62,3 +62,10 @@ export function postImportStepAction({
   if (stepDone) return 'complete';
   return stopRequested ? 'pause' : 'continue';
 }
+
+export function shouldShowLiveImport(
+  status: string | undefined,
+  hasLiveState: boolean
+): boolean {
+  return status === 'running' && hasLiveState;
+}

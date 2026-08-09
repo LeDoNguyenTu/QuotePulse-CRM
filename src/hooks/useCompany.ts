@@ -151,6 +151,8 @@ export interface JobSourceInput {
   provider: JobSourceProvider;
   identifier: string;
   label?: string;
+  source_url?: string;
+  market?: string;
 }
 
 export function useCreateJobSource(companyId: string | undefined) {
@@ -162,6 +164,8 @@ export function useCreateJobSource(companyId: string | undefined) {
         provider: input.provider,
         identifier: input.identifier.trim(),
         label: input.label?.trim() || null,
+        source_url: input.source_url?.trim() || null,
+        market: input.market?.trim() || 'Singapore',
       });
       if (error) throw error;
     },

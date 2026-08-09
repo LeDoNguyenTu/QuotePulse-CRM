@@ -43,6 +43,11 @@ import { associatedObjectIds } from '../_shared/hubspotAssociations.ts';
 import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import { formatHubspotError } from '../_shared/hubspotErrors.ts';
 import { canAdvanceIncrementalWatermark, pageFullyProcessed } from '../_shared/hubspotSync.ts';
+import { nullableHubspotTimestamp } from '../_shared/hubspotTimestamps.ts';
+import {
+  HUBSPOT_FILE_METADATA_ENABLED,
+  hubspotAttachmentPlaceholder,
+} from '../_shared/hubspotFiles.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 // Deliberately well under the ~150s Edge wall-time limit. Each invocation is one
@@ -176,7 +181,7 @@ Deno.serve(async (req) => {
       errors,
       warnings,
       assoc: await negotiateAssociations(hs, warnings),
-      filesAllowed: true,
+      filesAllowed: HUBSPOT_FILE_METADATA_ENABLED,
       deadline: Date.now() + TIME_BUDGET_MS,
       processed: 0,
       products: await loadProductDictionary(admin, userId),
@@ -190,9 +195,9 @@ Deno.serve(async (req) => {
       objectCache: new Map(),
     };
 
-    // A previous sync may have recorded attachments as file-<id> when the token
-    // lacked Files access. Retrying a small batch here repairs them automatically
-    // on the same Run HubSpot import button once that scope becomes available.
+    // A previous sync may have recorded attachments as file-<id>. This repair
+    // returns immediately while HUBSPOT_FILE_METADATA_ENABLED is false, so an
+    // account without Files scope never calls that API or emits its warning.
     await repairMissingAttachmentMetadata(ctx);
 
     // Are we still missing deals? Decide from LIVE COUNTS, not a stored phase flag.
@@ -920,8 +925,8 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
       // HubSpot's own timestamps — surfaced on the dashboard and used to sort
       // newest-first. hubspot_modified_at also lets the next import skip this deal
       // untouched (see onlyChanged).
-      hubspot_created_at: deal.properties.createdate ?? null,
-      hubspot_modified_at: deal.properties.hs_lastmodifieddate ?? null,
+      hubspot_created_at: nullableHubspotTimestamp(deal.properties.createdate),
+      hubspot_modified_at: nullableHubspotTimestamp(deal.properties.hs_lastmodifieddate),
       hubspot_properties: deal.properties,
       hubspot_properties_schema_version: ctx.propertyVersions.deals,
     },
@@ -982,7 +987,7 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
         const added = await saveAttachment(ctx, {
           deal_id: dealRowId,
           hubspot_attachment_id: fileId,
-          file_name: meta?.name ?? `file-${fileId}`,
+          file_name: meta?.name ?? hubspotAttachmentPlaceholder(fileId),
           file_url: meta?.url ?? null,
           source_type: isQuoteName(meta?.name) ? 'quote' : 'generic',
         });

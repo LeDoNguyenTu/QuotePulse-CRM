@@ -29,6 +29,25 @@ describe('HubSpot import session', () => {
     expect(next.done).toBe(true);
   });
 
+  it('keeps only the first copy of identical errors across retried slices', () => {
+    const failure = 'deal 6332608887: invalid input syntax for type timestamp with time zone';
+    const first = accumulateImportResult(emptyImportResult(), {
+      ...emptyImportResult(),
+      ok: false,
+      errors: [failure],
+    });
+    const next = accumulateImportResult(first, {
+      ...emptyImportResult(),
+      ok: false,
+      errors: [failure, 'deal 6334852391: invalid timestamp'],
+    });
+
+    expect(next.errors).toEqual([
+      failure,
+      'deal 6334852391: invalid timestamp',
+    ]);
+  });
+
   it('normalizes reports saved before property-backfill counts existed', () => {
     const legacy = {
       ...emptyImportResult(),
@@ -43,6 +62,18 @@ describe('HubSpot import session', () => {
     } as unknown as IngestResult;
 
     expect(normalizeImportResult(legacy).counts.properties_backfilled).toBe(0);
+  });
+
+  it('removes the retired Files-scope warning from persisted import reports', () => {
+    const legacy = {
+      ...emptyImportResult(),
+      warnings: [
+        'HubSpot key cannot read Files: attachments were imported without their real file names.',
+        'Keep this warning',
+      ],
+    };
+
+    expect(normalizeImportResult(legacy).warnings).toEqual(['Keep this warning']);
   });
 
   it('honors a stop requested while the server step was in flight', () => {

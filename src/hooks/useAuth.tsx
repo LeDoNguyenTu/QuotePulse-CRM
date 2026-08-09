@@ -8,12 +8,17 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { prepareLoginEmailChange } from '../lib/accountEmail';
 import { preparePasswordChange } from '../lib/accountPassword';
 import { useIdleTimeout } from './useIdleTimeout';
+import {
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  normalizeSessionTimeoutMinutes,
+  sessionTimeoutMs,
+} from '../lib/sessionTimeout';
 
 interface SignUpResult {
   /** false when Supabase requires the user to confirm their email first. */
@@ -27,6 +32,7 @@ interface AuthContextValue {
   /** True in the last minute before the idle timeout fires. */
   idleWarning: boolean;
   staySignedIn: () => void;
+  applySessionTimeoutMinutes: (minutes: number) => void;
   // captchaToken is required whenever Supabase Attack Protection has Turnstile
   // enabled; it is ignored server-side when captcha is off.
   signIn: (email: string, password: string, captchaToken?: string) => Promise<void>;
@@ -52,6 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const queryClient = useQueryClient();
   const previousUserId = useRef<string | null | undefined>(undefined);
+  const [runtimeTimeout, setRuntimeTimeout] = useState<{
+    userId: string;
+    minutes: number;
+  } | null>(null);
 
   useEffect(() => {
     const applySession = (nextSession: Session | null) => {
@@ -80,8 +90,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.assign('/login?reason=timeout');
   }, []);
 
+  const sessionUserId = session?.user.id ?? null;
+  const { data: storedTimeoutMinutes = DEFAULT_SESSION_TIMEOUT_MINUTES } = useQuery({
+    queryKey: ['session-timeout', sessionUserId],
+    enabled: !!sessionUserId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('session_timeout_minutes')
+        .eq('user_id', sessionUserId!)
+        .maybeSingle();
+      if (error) throw error;
+      return normalizeSessionTimeoutMinutes(data?.session_timeout_minutes);
+    },
+  });
+  const activeTimeoutMinutes =
+    runtimeTimeout?.userId === sessionUserId
+      ? runtimeTimeout.minutes
+      : storedTimeoutMinutes;
+  const activeTimeoutMs = sessionTimeoutMs(activeTimeoutMinutes);
+
   const { warning, staySignedIn } = useIdleTimeout({
-    enabled: !!session,
+    enabled: !!session && activeTimeoutMs !== null,
+    timeoutMs: activeTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MINUTES * 60 * 1000,
     onTimeout: handleIdleTimeout,
   });
 
@@ -92,6 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       idleWarning: warning,
       staySignedIn,
+      applySessionTimeoutMinutes(minutes) {
+        if (!sessionUserId) return;
+        setRuntimeTimeout({
+          userId: sessionUserId,
+          minutes: normalizeSessionTimeoutMinutes(minutes),
+        });
+      },
       async signIn(email, password, captchaToken) {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -157,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error;
       },
     }),
-    [session, loading, warning, staySignedIn, queryClient]
+    [session, sessionUserId, loading, warning, staySignedIn, queryClient]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

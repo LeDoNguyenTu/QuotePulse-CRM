@@ -217,6 +217,7 @@ export interface UserSettings {
   brevo_api_key: string | null;
   brevo_sender_email: string | null;
   brevo_sender_name: string | null;
+  session_timeout_minutes: number;
   table_column_preferences: import('./tablePreferences').TableColumnPreferences;
   created_at: string;
   updated_at: string;

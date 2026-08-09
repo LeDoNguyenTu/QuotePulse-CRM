@@ -5,7 +5,7 @@ import { useCaptcha } from '../components/Turnstile';
 import { ErrorState } from '../components/ui';
 
 const SIGNED_OUT_REASONS: Record<string, string> = {
-  timeout: 'You were signed out after 2 hours of inactivity.',
+  timeout: 'You were signed out after the configured period of inactivity.',
   expired: 'Your session expired. Please sign in again.',
 };
 

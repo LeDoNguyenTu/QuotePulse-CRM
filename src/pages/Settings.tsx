@@ -8,9 +8,16 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { functions } from '../lib/functions';
 import { ErrorState, Spinner } from '../components/ui';
+import {
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  MAX_SESSION_TIMEOUT_MINUTES,
+  MIN_SESSION_TIMEOUT_MINUTES,
+  normalizeSessionTimeoutMinutes,
+  parseSessionTimeoutDraft,
+} from '../lib/sessionTimeout';
 
 export function Settings() {
-  const { user, changeLoginEmail, changePassword } = useAuth();
+  const { user, changeLoginEmail, changePassword, applySessionTimeoutMinutes } = useAuth();
   const { data, isLoading } = useSettings();
   const save = useSaveSettings();
   const disconnectMs = useDisconnectMicrosoft();
@@ -18,6 +25,9 @@ export function Settings() {
   const [hubspotToken, setHubspotToken] = useState('');
   const [nvidiaKey, setNvidiaKey] = useState('');
   const [dailyLimit, setDailyLimit] = useState(50);
+  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState<number | ''>(
+    DEFAULT_SESSION_TIMEOUT_MINUTES
+  );
   const [emailProvider, setEmailProvider] = useState<'microsoft_graph' | 'brevo'>('microsoft_graph');
   const [brevoApiKey, setBrevoApiKey] = useState('');
   const [brevoSenderEmail, setBrevoSenderEmail] = useState('');
@@ -39,6 +49,9 @@ export function Settings() {
       setHubspotToken(data.hubspot_token ?? '');
       setNvidiaKey(data.nvidia_key ?? '');
       setDailyLimit(data.daily_send_limit ?? 50);
+      setSessionTimeoutMinutes(
+        normalizeSessionTimeoutMinutes(data.session_timeout_minutes)
+      );
       setEmailProvider(data.email_provider ?? 'microsoft_graph');
       setBrevoSenderEmail(data.brevo_sender_email ?? '');
       setBrevoSenderName(data.brevo_sender_name ?? '');
@@ -52,10 +65,17 @@ export function Settings() {
     setError(null);
     setSaved(false);
     try {
+      const normalizedTimeout = normalizeSessionTimeoutMinutes(sessionTimeoutMinutes);
+      if (normalizedTimeout !== sessionTimeoutMinutes) {
+        throw new Error(
+          `Automatic sign-out must be disabled or set from ${MIN_SESSION_TIMEOUT_MINUTES} to ${MAX_SESSION_TIMEOUT_MINUTES} minutes.`
+        );
+      }
       await save.mutateAsync({
         hubspot_token: hubspotToken || null,
         nvidia_key: nvidiaKey || null,
         daily_send_limit: dailyLimit,
+        session_timeout_minutes: normalizedTimeout,
         email_provider: emailProvider,
         brevo_sender_email: brevoSenderEmail || null,
         brevo_sender_name: brevoSenderName || null,
@@ -67,6 +87,7 @@ export function Settings() {
       });
       setBrevoApiKey('');
       setClearBrevoApiKey(false);
+      applySessionTimeoutMinutes(normalizedTimeout);
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -205,6 +226,55 @@ export function Settings() {
           {isChangingPassword ? 'Changing password…' : 'Change password'}
         </button>
         {passwordChangeMessage && <p className="text-sm text-emerald-700">{passwordChangeMessage}</p>}
+      </section>
+
+      <section className="card space-y-3 p-5">
+        <h2 className="font-semibold">Session timeout</h2>
+        <p className="text-sm text-slate-500">
+          Automatically sign out this account after a period with no keyboard, mouse, scroll, or
+          touch activity. Disable this during long unattended HubSpot imports.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={sessionTimeoutMinutes === 0}
+            onChange={(event) =>
+              setSessionTimeoutMinutes(
+                event.target.checked ? 0 : DEFAULT_SESSION_TIMEOUT_MINUTES
+              )
+            }
+          />
+          Disable automatic sign-out
+        </label>
+        {sessionTimeoutMinutes !== 0 && (
+          <div>
+            <label className="label" htmlFor="session-timeout-minutes">
+              Sign out after (minutes)
+            </label>
+            <input
+              id="session-timeout-minutes"
+              className="input max-w-[220px]"
+              type="number"
+              min={MIN_SESSION_TIMEOUT_MINUTES}
+              max={MAX_SESSION_TIMEOUT_MINUTES}
+              step={1}
+              value={sessionTimeoutMinutes}
+              onChange={(event) =>
+                setSessionTimeoutMinutes(parseSessionTimeoutDraft(event.target.value))
+              }
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Default: 120 minutes. Allowed range: 5 minutes to 7 days. Saving applies the new
+              timeout to this browser immediately.
+            </p>
+          </div>
+        )}
+        {sessionTimeoutMinutes === 0 && (
+          <p className="text-xs text-amber-700">
+            This browser will stay signed in until you sign out, the password changes, or Supabase
+            invalidates the session for another security reason.
+          </p>
+        )}
       </section>
 
       <section className="card space-y-3 p-5">

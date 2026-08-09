@@ -1,5 +1,7 @@
 import type { IngestResult } from './functions';
 
+const RETIRED_FILES_WARNING_PREFIX = 'HubSpot key cannot read Files:';
+
 export function emptyImportResult(): IngestResult {
   return {
     ok: true,
@@ -26,22 +28,27 @@ export function normalizeImportResult(result: IngestResult): IngestResult {
       ...result.counts,
       properties_backfilled: result.counts.properties_backfilled ?? 0,
     },
+    warnings: (result.warnings ?? []).filter(
+      (warning) => !warning.startsWith(RETIRED_FILES_WARNING_PREFIX)
+    ),
   };
 }
 
 export function accumulateImportResult(current: IngestResult, next: IngestResult): IngestResult {
-  const counts = { ...normalizeImportResult(current).counts };
+  const normalizedCurrent = normalizeImportResult(current);
+  const normalizedNext = normalizeImportResult(next);
+  const counts = { ...normalizedCurrent.counts };
   for (const key of Object.keys(counts) as (keyof IngestResult['counts'])[]) {
-    counts[key] += next.counts?.[key] ?? 0;
+    counts[key] += normalizedNext.counts?.[key] ?? 0;
   }
   return {
-    ...current,
-    ok: current.ok && next.ok,
+    ...normalizedCurrent,
+    ok: normalizedCurrent.ok && normalizedNext.ok,
     counts,
-    errors: [...current.errors, ...(next.errors ?? [])],
-    warnings: [...new Set([...current.warnings, ...(next.warnings ?? [])])],
-    done: next.done ?? current.done,
-    progress: next.progress ?? current.progress,
+    errors: [...new Set([...normalizedCurrent.errors, ...(normalizedNext.errors ?? [])])],
+    warnings: [...new Set([...normalizedCurrent.warnings, ...(normalizedNext.warnings ?? [])])],
+    done: normalizedNext.done ?? normalizedCurrent.done,
+    progress: normalizedNext.progress ?? normalizedCurrent.progress,
   };
 }
 

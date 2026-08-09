@@ -3,6 +3,11 @@ function postgresErrorCode(error: unknown): string | null {
   return typeof error.code === 'string' ? error.code : null;
 }
 
+/** Build a literal, anchored pattern for PostgREST's case-insensitive regex filter. */
+export function exactCaseInsensitivePattern(value: string): string {
+  return `^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+}
+
 /**
  * A functional unique index cannot be named through Supabase's column-list
  * `onConflict` option. Let PostgreSQL arbitrate concurrent inserts, then read

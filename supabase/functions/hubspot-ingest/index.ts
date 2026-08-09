@@ -49,6 +49,7 @@ import {
   hubspotAttachmentPlaceholder,
 } from '../_shared/hubspotFiles.ts';
 import {
+  exactCaseInsensitivePattern,
   planExistingCompany,
   recoverCompanyInsertConflict,
   type ExistingCompanyForMerge,
@@ -1046,7 +1047,7 @@ async function upsertCompany(
       .from('companies')
       .select('id, industry, website, hubspot_company_id, deleted_at')
       .eq('owner_id', ctx.userId)
-      .ilike('name_clean', escapeLike(input.name_clean))
+      .filter('name_clean', 'imatch', exactCaseInsensitivePattern(input.name_clean))
       .maybeSingle();
     if (error) throw error;
     return data as ExistingCompanyForMerge | null;
@@ -1502,7 +1503,7 @@ async function findOrCreateCompany(
     .from('companies')
     .select('id, deleted_at, industry')
     .eq('owner_id', userId)
-    .ilike('name_clean', escapeLike(input.name_clean))
+    .filter('name_clean', 'imatch', exactCaseInsensitivePattern(input.name_clean))
     .maybeSingle();
   if (findErr || !found) throw findErr ?? new Error(`company "${input.name_clean}" vanished`);
   if (found.deleted_at) {

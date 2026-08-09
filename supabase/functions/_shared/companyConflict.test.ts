@@ -1,8 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  exactCaseInsensitivePattern,
   planExistingCompany,
   recoverCompanyInsertConflict,
 } from './companyConflict.ts';
+
+describe('exactCaseInsensitivePattern', () => {
+  it('anchors and escapes literal company-name pattern characters', () => {
+    expect(exactCaseInsensitivePattern('Astar*')).toBe('^Astar\\*$');
+    expect(exactCaseInsensitivePattern('A.B (SG)')).toBe('^A\\.B \\(SG\\)$');
+  });
+});
 
 describe('recoverCompanyInsertConflict', () => {
   it('returns the company committed by a competing insert after 23505', async () => {

@@ -48,6 +48,11 @@ import {
   HUBSPOT_FILE_METADATA_ENABLED,
   hubspotAttachmentPlaceholder,
 } from '../_shared/hubspotFiles.ts';
+import {
+  planExistingCompany,
+  recoverCompanyInsertConflict,
+  type ExistingCompanyForMerge,
+} from '../_shared/companyConflict.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 // Deliberately well under the ~150s Edge wall-time limit. Each invocation is one
@@ -1036,32 +1041,35 @@ async function upsertCompany(
     hubspot_properties_schema_version?: string | null;
   }
 ): Promise<string | null> {
-  const { data: existing } = await ctx.admin
-    .from('companies')
-    .select('id, industry, website, hubspot_company_id, deleted_at')
-    .eq('owner_id', ctx.userId)
-    .ilike('name_clean', escapeLike(input.name_clean))
-    .maybeSingle();
+  const findExisting = async (): Promise<ExistingCompanyForMerge | null> => {
+    const { data, error } = await ctx.admin
+      .from('companies')
+      .select('id, industry, website, hubspot_company_id, deleted_at')
+      .eq('owner_id', ctx.userId)
+      .ilike('name_clean', escapeLike(input.name_clean))
+      .maybeSingle();
+    if (error) throw error;
+    return data as ExistingCompanyForMerge | null;
+  };
 
-  if (existing) {
-    if (existing.deleted_at) {
+  const useExisting = async (existing: ExistingCompanyForMerge): Promise<string | null> => {
+    const plan = planExistingCompany(existing, input);
+    if (plan.action === 'skip-trashed') {
       ctx.counts.skipped_trashed++;
       return null;
     }
-    await ctx.admin
+    const { error } = await ctx.admin
       .from('companies')
-      .update({
-        industry: input.industry ?? existing.industry,
-        website: input.website ?? existing.website,
-        hubspot_company_id: input.hubspot_company_id ?? existing.hubspot_company_id,
-        ...(input.hubspot_properties ? { hubspot_properties: input.hubspot_properties } : {}),
-        ...(input.hubspot_properties_schema_version
-          ? { hubspot_properties_schema_version: input.hubspot_properties_schema_version }
-          : {}),
-      })
-      .eq('id', existing.id)
+      .update(plan.fields)
+      .eq('id', plan.id)
       .eq('owner_id', ctx.userId);
-    return existing.id as string;
+    if (error) throw error;
+    return plan.id;
+  };
+
+  const existing = await findExisting();
+  if (existing) {
+    return useExisting(existing);
   }
 
   const { data, error } = await ctx.admin
@@ -1069,8 +1077,13 @@ async function upsertCompany(
     .insert({ ...input, owner_id: ctx.userId })
     .select('id')
     .single();
-  if (error) throw error;
-  return data!.id as string;
+  if (!error) return data!.id as string;
+
+  // Another invocation may insert this owner/name after our lookup but before
+  // our insert. PostgreSQL's unique index chooses the winner; use that row and
+  // preserve the same merge/recycle-bin behavior as the normal existing path.
+  const winner = await recoverCompanyInsertConflict(error, findExisting);
+  return useExisting(winner);
 }
 
 /**

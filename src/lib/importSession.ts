@@ -44,3 +44,14 @@ export function accumulateImportResult(current: IngestResult, next: IngestResult
     progress: next.progress ?? current.progress,
   };
 }
+
+export function postImportStepAction({
+  stepDone,
+  stopRequested,
+}: {
+  stepDone: boolean;
+  stopRequested: boolean;
+}): 'complete' | 'pause' | 'continue' {
+  if (stepDone) return 'complete';
+  return stopRequested ? 'pause' : 'continue';
+}

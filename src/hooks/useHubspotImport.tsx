@@ -12,7 +12,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import type { ImportProgress, IngestResult } from '../lib/functions';
 import { functions } from '../lib/functions';
-import { accumulateImportResult, emptyImportResult, normalizeImportResult } from '../lib/importSession';
+import {
+  accumulateImportResult,
+  emptyImportResult,
+  normalizeImportResult,
+  postImportStepAction,
+} from '../lib/importSession';
 import { useAuth } from './useAuth';
 
 const STALE_RUN_MS = 2 * 60 * 1000;
@@ -173,8 +178,25 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
         report = accumulateImportResult(report, result);
         live = { counts: { ...report.counts }, progress: result.progress ?? live.progress, startedAt, step };
         queryClient.invalidateQueries({ queryKey: ['account'] });
-        if (result.done ?? true) {
+        // Stop may be clicked while the request above is in flight. Re-read the
+        // shared state before writing anything, otherwise a stale false value
+        // erases the request and immediately starts another server slice.
+        const latest = readStoredState(user.id);
+        const action = postImportStepAction({
+          stepDone: result.done ?? true,
+          stopRequested: !!latest?.stopRequested,
+        });
+        if (action === 'complete') {
           writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: result.ok ? 'complete' : 'failed', report, live: null, stopRequested: false, updatedAt: Date.now() });
+          return;
+        }
+        if (action === 'pause') {
+          report = {
+            ...report,
+            done: false,
+            warnings: [...new Set([...report.warnings, 'Stopped early. Everything imported so far is saved â€” run the import again to resume.'])],
+          };
+          writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'paused', report, live, stopRequested: false, updatedAt: Date.now() });
           return;
         }
         writeState({ version: 1, ownerId: user.id, tabId: tabId.current, status: 'running', report, live, stopRequested: false, updatedAt: Date.now() });

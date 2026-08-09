@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { accumulateImportResult, emptyImportResult, normalizeImportResult } from './importSession';
+import {
+  accumulateImportResult,
+  emptyImportResult,
+  normalizeImportResult,
+  postImportStepAction,
+} from './importSession';
 import type { IngestResult } from './functions';
 
 describe('HubSpot import session', () => {
@@ -38,5 +43,11 @@ describe('HubSpot import session', () => {
     } as unknown as IngestResult;
 
     expect(normalizeImportResult(legacy).counts.properties_backfilled).toBe(0);
+  });
+
+  it('honors a stop requested while the server step was in flight', () => {
+    expect(postImportStepAction({ stepDone: false, stopRequested: true })).toBe('pause');
+    expect(postImportStepAction({ stepDone: false, stopRequested: false })).toBe('continue');
+    expect(postImportStepAction({ stepDone: true, stopRequested: true })).toBe('complete');
   });
 });

@@ -37,7 +37,7 @@ export interface ImportProgress {
   deals_in_hubspot: number | null;
   deals_imported: number;
   companies: number;
-  phase: 'backfill' | 'incremental';
+  phase: 'backfill' | 'incremental' | 'properties';
 }
 
 export interface IngestResult {
@@ -47,6 +47,8 @@ export interface IngestResult {
     deals: number;
     contacts: number;
     attachments: number;
+    /** Existing deal snapshots repaired with the full readable property set. */
+    properties_backfilled: number;
     skipped_trashed: number;
     /** Already held and unchanged in HubSpot — not re-read. */
     skipped_existing: number;

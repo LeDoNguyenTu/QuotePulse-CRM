@@ -12,7 +12,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import type { ImportProgress, IngestResult } from '../lib/functions';
 import { functions } from '../lib/functions';
-import { accumulateImportResult, emptyImportResult } from '../lib/importSession';
+import { accumulateImportResult, emptyImportResult, normalizeImportResult } from '../lib/importSession';
 import { useAuth } from './useAuth';
 
 const STALE_RUN_MS = 2 * 60 * 1000;
@@ -55,7 +55,18 @@ function readStoredState(ownerId: string): StoredImportState | null {
     const raw = localStorage.getItem(storageKey(ownerId));
     if (!raw) return null;
     const value = JSON.parse(raw) as StoredImportState;
-    return value.version === 1 && value.ownerId === ownerId ? value : null;
+    if (value.version !== 1 || value.ownerId !== ownerId) return null;
+    return {
+      ...value,
+      report: value.report ? normalizeImportResult(value.report) : null,
+      live: value.live ? {
+        ...value.live,
+        counts: normalizeImportResult({
+          ...emptyImportResult(),
+          counts: value.live.counts,
+        }).counts,
+      } : null,
+    };
   } catch {
     return null;
   }
@@ -218,7 +229,10 @@ export function HubspotImportToast() {
   return (
     <div className="fixed bottom-5 right-5 z-50 w-[min(24rem,calc(100vw-2.5rem))] rounded-lg border border-emerald-200 bg-white p-4 shadow-xl">
       <p className="font-medium text-emerald-800">HubSpot sync complete</p>
-      <p className="mt-1 text-sm text-slate-600">{state.report.counts.deals.toLocaleString()} deals and {state.report.counts.companies.toLocaleString()} companies updated.</p>
+      <p className="mt-1 text-sm text-slate-600">
+        {state.report.counts.deals.toLocaleString()} deals updated and{' '}
+        {state.report.counts.properties_backfilled.toLocaleString()} historic property snapshots repaired.
+      </p>
       <button className="mt-3 text-sm text-brand-700 underline" onClick={dismissImportReport}>Acknowledge</button>
     </div>
   );

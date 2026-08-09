@@ -14,6 +14,7 @@ interface CompaniesTableProps {
   selected: Set<string>;
   onToggle: (id: string) => void;
   onToggleAll: (ids: string[], value: boolean) => void;
+  visibleColumns?: string[];
   extraColumns?: Array<{ id: string; label: string }>;
 }
 
@@ -22,10 +23,15 @@ export function CompaniesTable({
   selected,
   onToggle,
   onToggleAll,
+  visibleColumns = [
+    'name_clean', 'products', 'industry', 'hubspot_created_at',
+    'hubspot_last_modified_at', 'source_priority', 'primary_contact', 'flags', 'last_email',
+  ],
   extraColumns = [],
 }: CompaniesTableProps) {
   const navigate = useNavigate();
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const shown = new Set(visibleColumns);
 
   return (
     <div className="card overflow-x-auto">
@@ -39,15 +45,15 @@ export function CompaniesTable({
                 onChange={(e) => onToggleAll(rows.map((r) => r.id), e.target.checked)}
               />
             </th>
-            <th className="px-3 py-2">Company</th>
-            <th className="px-3 py-2">Products</th>
-            <th className="px-3 py-2">Industry</th>
-            <th className="px-3 py-2">HubSpot created</th>
-            <th className="px-3 py-2">HubSpot last modified</th>
-            <th className="px-3 py-2">Source</th>
-            <th className="px-3 py-2">Primary contact</th>
-            <th className="px-3 py-2">Flags</th>
-            <th className="px-3 py-2">Last email</th>
+            {shown.has('name_clean') && <th className="px-3 py-2">Company</th>}
+            {shown.has('products') && <th className="px-3 py-2">Products</th>}
+            {shown.has('industry') && <th className="px-3 py-2">Industry</th>}
+            {shown.has('hubspot_created_at') && <th className="px-3 py-2">HubSpot created</th>}
+            {shown.has('hubspot_last_modified_at') && <th className="px-3 py-2">HubSpot last modified</th>}
+            {shown.has('source_priority') && <th className="px-3 py-2">Source</th>}
+            {shown.has('primary_contact') && <th className="px-3 py-2">Primary contact</th>}
+            {shown.has('flags') && <th className="px-3 py-2">Flags</th>}
+            {shown.has('last_email') && <th className="px-3 py-2">Last email</th>}
             {extraColumns.map((column) => <th key={column.id} className="px-3 py-2">{column.label}</th>)}
           </tr>
         </thead>
@@ -65,31 +71,31 @@ export function CompaniesTable({
                   onChange={() => onToggle(r.id)}
                 />
               </td>
-              <td className="px-3 py-2">
+              {shown.has('name_clean') && <td className="px-3 py-2">
                 <div className="font-medium text-slate-800">{r.name_clean}</div>
                 {r.name_raw && r.name_raw !== r.name_clean && (
                   <div className="text-xs text-slate-400">{r.name_raw}</div>
                 )}
-              </td>
-              <td className="px-3 py-2">
+              </td>}
+              {shown.has('products') && <td className="px-3 py-2">
                 <ProductTags value={r.products} />
-              </td>
-              <td className="px-3 py-2 text-slate-600">{r.industry ?? '—'}</td>
-              <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+              </td>}
+              {shown.has('industry') && <td className="px-3 py-2 text-slate-600">{r.industry ?? '—'}</td>}
+              {shown.has('hubspot_created_at') && <td className="px-3 py-2 whitespace-nowrap text-slate-600">
                 <RelativeDate value={r.last_hubspot_created_at} />
-              </td>
-              <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+              </td>}
+              {shown.has('hubspot_last_modified_at') && <td className="px-3 py-2 whitespace-nowrap text-slate-600">
                 <RelativeDate value={r.last_hubspot_modified_at} />
                 {r.deal_count ? (
                   <div className="text-xs text-slate-400">
                     {r.deal_count} deal{r.deal_count === 1 ? '' : 's'}
                   </div>
                 ) : null}
-              </td>
-              <td className="px-3 py-2">
+              </td>}
+              {shown.has('source_priority') && <td className="px-3 py-2">
                 <PriorityBadge value={r.source_priority} />
-              </td>
-              <td className="px-3 py-2">
+              </td>}
+              {shown.has('primary_contact') && <td className="px-3 py-2">
                 {r.primary_contact_name || r.primary_contact_email ? (
                   <div>
                     <div className="text-slate-700">{r.primary_contact_name ?? '—'}</div>
@@ -101,21 +107,21 @@ export function CompaniesTable({
                 ) : (
                   <span className="text-slate-400">—</span>
                 )}
-              </td>
-              <td className="px-3 py-2">
+              </td>}
+              {shown.has('flags') && <td className="px-3 py-2">
                 <div className="flex flex-wrap gap-1">
                   <Flag on={r.has_quote} label="Quote" />
                   <Flag on={r.has_kyc} label="KYC" />
                 </div>
-              </td>
-              <td className="px-3 py-2">
+              </td>}
+              {shown.has('last_email') && <td className="px-3 py-2">
                 <StatusBadge value={r.last_email_status} />
                 {r.last_email_sent_at && (
                   <div className="text-xs text-slate-400">
                     {new Date(r.last_email_sent_at).toLocaleDateString()}
                   </div>
                 )}
-              </td>
+              </td>}
               {extraColumns.map((column) => (
                 <td key={column.id} className="max-w-56 truncate px-3 py-2" title={r.hubspot_properties[column.id] ?? ''}>
                   {r.hubspot_properties[column.id] ?? '—'}

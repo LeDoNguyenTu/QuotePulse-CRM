@@ -25,6 +25,16 @@ describe('table preferences', () => {
     });
   });
 
+  it('keeps independent saved selections for all three dashboard views', () => {
+    const companies = saveVisibleColumns(null, 'companies', ['name_clean', 'industry']);
+    const deals = saveVisibleColumns(companies, 'deals', ['deal_name_raw', 'custom_region']);
+    const contacts = saveVisibleColumns(deals, 'contacts', ['full_name', 'email']);
+
+    expect(resolveVisibleColumns('companies', contacts)).toEqual(['name_clean', 'industry']);
+    expect(resolveVisibleColumns('deals', contacts)).toEqual(['deal_name_raw', 'custom_region']);
+    expect(resolveVisibleColumns('contacts', contacts)).toEqual(['full_name', 'email']);
+  });
+
   it('restores the current default set when a saved selection is removed', () => {
     expect(resolveVisibleColumns('contacts', { contacts: ['email'] })).toEqual(['email']);
     expect(saveVisibleColumns({ contacts: ['email'] }, 'contacts', null)).toEqual({});

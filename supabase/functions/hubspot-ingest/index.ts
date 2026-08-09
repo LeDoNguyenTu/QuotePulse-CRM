@@ -1,6 +1,6 @@
 // Edge Function: hubspot-ingest
 // Pulls HubSpot CRM data into Supabase in priority order:
-//   1) recycled/archived deals  2) deleted accounts  3) active deals
+//   1) active deals  2) historic property repair  3) archived/deleted records
 // Cleans deal names into canonical companies and links deals/contacts/attachments.
 //
 // Three things this function used to get wrong, all of which looked like
@@ -29,13 +29,20 @@ import {
 } from '../_shared/hubspot.ts';
 import {
   chunkPropertyNames,
+  filterPropertyBackfillCandidates,
   mergeHubspotProperties,
+  propertyBackfillStream,
+  propertyCataloguesComplete,
+  propertyCoverageStream,
+  propertyNamesWithValues,
   propertySchemaVersion,
+  syncCompletedRecently,
   type HubspotPropertyDefinition,
 } from '../_shared/hubspotProperties.ts';
 import { associatedObjectIds } from '../_shared/hubspotAssociations.ts';
 import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import { formatHubspotError } from '../_shared/hubspotErrors.ts';
+import { canAdvanceIncrementalWatermark, pageFullyProcessed } from '../_shared/hubspotSync.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 // Deliberately well under the ~150s Edge wall-time limit. Each invocation is one
@@ -44,6 +51,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 const TIME_BUDGET_MS = 30_000;
 const PAGE_SIZE = 100;
 const MAX_OBJECTS_PER_RUN = 5000; // safety valve
+const ARCHIVE_COMPLETION_WINDOW_MS = 120_000;
 
 const DEAL_PROPS = [
   'dealname',
@@ -71,6 +79,7 @@ interface Counts {
   deals: number;
   contacts: number;
   attachments: number;
+  properties_backfilled: number;
   skipped_trashed: number;
   /** Deals HubSpot returned that we already hold unchanged — not re-read. */
   skipped_existing: number;
@@ -98,6 +107,11 @@ interface Ctx {
 
 type ImportObjectType = 'deals' | 'companies' | 'contacts';
 
+interface PropertyDefinitionLoad {
+  definitions: Record<ImportObjectType, HubspotPropertyDefinition[]>;
+  complete: Record<ImportObjectType, boolean>;
+}
+
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
   if (pre) return pre;
@@ -107,6 +121,7 @@ Deno.serve(async (req) => {
     deals: 0,
     contacts: 0,
     attachments: 0,
+    properties_backfilled: 0,
     skipped_trashed: 0,
     skipped_existing: 0,
   };
@@ -140,7 +155,19 @@ Deno.serve(async (req) => {
       return errorResponse(e instanceof Error ? e.message : String(e), 400);
     }
 
-    const propertyDefinitions = await loadPropertyDefinitions(hs, admin, userId, warnings);
+    const propertyLoad = await loadPropertyDefinitions(hs, admin, userId, warnings);
+    if (!propertyCataloguesComplete(propertyLoad.complete)) {
+      return json({
+        ok: false,
+        counts,
+        warnings,
+        errors: [
+          'HubSpot property discovery did not complete, so the sync stopped before changing CRM snapshots. Try again after the HubSpot API recovers or check the token read scopes.',
+        ],
+        done: false,
+      }, 502);
+    }
+    const propertyDefinitions = propertyLoad.definitions;
     const ctx: Ctx = {
       hs,
       admin,
@@ -176,26 +203,54 @@ Deno.serve(async (req) => {
     const caughtUp = await dealsCaughtUp(ctx);
 
     // Active deals: backfill until caught up, then cheap incremental catch-up.
-    await sweepDeals(ctx, {
+    const activeDealsDone = await sweepDeals(ctx, {
       archived: false,
       priority: 'current',
       stream: 'deals:current',
       caughtUp,
     });
 
-    // Archived records are invisible to the Search API, so those streams re-page
-    // from the top on EVERY run. Sweeping them before the main backfill is caught
-    // up would burn each 30s slice re-reading the recycle bin while brand-new deals
-    // waited. Only touch them once the active backfill has landed.
-    if (caughtUp && !outOfBudget(ctx)) {
-      await sweepDeals(ctx, { archived: true, priority: 'recycled', stream: 'deals:recycled' });
-      await sweepArchivedCompanies(ctx);
+    // Property repair runs before archive maintenance so a large recycle bin can
+    // never consume every invocation's shared budget and starve the repair cursor.
+    let propertyBackfillDone = false;
+    let storedCoverageDone = false;
+    let archivedDealsDone = false;
+    let archivedCompaniesDone = false;
+    if (caughtUp && activeDealsDone && !outOfBudget(ctx)) {
+      propertyBackfillDone = await sweepDealPropertyBackfill(ctx);
+      if (propertyBackfillDone && !outOfBudget(ctx)) {
+        const companyCoverageDone = await sweepStoredPropertyCoverage(ctx, 'companies');
+        const contactCoverageDone = companyCoverageDone && !outOfBudget(ctx)
+          ? await sweepStoredPropertyCoverage(ctx, 'contacts')
+          : false;
+        const archivedDealCoverageDone = contactCoverageDone && !outOfBudget(ctx)
+          ? await sweepStoredPropertyCoverage(ctx, 'deals')
+          : false;
+        storedCoverageDone =
+          companyCoverageDone && contactCoverageDone && archivedDealCoverageDone;
+      }
+
+      // Archived records are maintained only after active property repair and
+      // existing-value discovery have advanced, so neither can be starved.
+      if (propertyBackfillDone && storedCoverageDone && !outOfBudget(ctx)) {
+        archivedDealsDone = await sweepDeals(ctx, {
+          archived: true,
+          priority: 'recycled',
+          stream: 'deals:recycled',
+        });
+        archivedCompaniesDone = archivedDealsDone && !outOfBudget(ctx)
+          ? await sweepArchivedCompanies(ctx)
+          : false;
+      }
     }
 
-    const done = Date.now() < ctx.deadline && ctx.processed < MAX_OBJECTS_PER_RUN;
+    const done =
+      activeDealsDone && propertyBackfillDone && storedCoverageDone &&
+      archivedDealsDone && archivedCompaniesDone;
 
     const importedNothing =
-      counts.companies === 0 && counts.deals === 0 && counts.contacts === 0;
+      counts.companies === 0 && counts.deals === 0 && counts.contacts === 0 &&
+      counts.properties_backfilled === 0;
 
     // Do NOT report success when every call failed. The old version returned
     // ok:true here, so a total auth failure rendered as "import complete: 0 companies".
@@ -203,7 +258,19 @@ Deno.serve(async (req) => {
       return json({ ok: false, counts, errors, warnings, done: false }, 502);
     }
 
-    return json({ ok: true, counts, errors, warnings, done, progress: await progress(ctx) });
+    return json({
+      ok: true,
+      counts,
+      errors,
+      warnings,
+      done,
+      progress: await progress(
+        ctx,
+        caughtUp && activeDealsDone && (!propertyBackfillDone || !storedCoverageDone)
+          ? 'properties'
+          : undefined
+      ),
+    });
   } catch (e) {
     return json(
       {
@@ -274,8 +341,13 @@ async function loadPropertyDefinitions(
   admin: SupabaseClient,
   userId: string,
   warnings: string[]
-): Promise<Record<ImportObjectType, HubspotPropertyDefinition[]>> {
+): Promise<PropertyDefinitionLoad> {
   const loaded = {} as Record<ImportObjectType, HubspotPropertyDefinition[]>;
+  const complete: Record<ImportObjectType, boolean> = {
+    deals: false,
+    companies: false,
+    contacts: false,
+  };
   for (const objectType of ['deals', 'companies', 'contacts'] as const) {
     try {
       const definitions = await hs.listProperties(objectType);
@@ -295,14 +367,15 @@ async function loadPropertyDefinitions(
       );
       if (error) throw error;
       loaded[objectType] = definitions;
+      complete[objectType] = true;
     } catch (error) {
       warnings.push(
-        `Could not read all HubSpot ${objectType} properties; retaining the existing core fields only. ${msg(error)}`
+        `Could not read all HubSpot ${objectType} properties; the sync will stop rather than replace complete snapshots with core fields only. ${msg(error)}`
       );
       loaded[objectType] = FALLBACK_PROPERTY_DEFINITIONS[objectType];
     }
   }
-  return loaded;
+  return { definitions: loaded, complete };
 }
 
 /** Hydrates a regular HubSpot page (up to 100 objects) through efficient batch reads. */
@@ -321,7 +394,29 @@ async function hydrateProperties(
       if (current) current.properties = mergeHubspotProperties(current.properties, result.properties);
     }
   }
+  await markPropertyCoverage(ctx, objectType, objects);
   return objects;
+}
+
+/** Mark coverage monotonically; a later blank value never erases earlier evidence. */
+async function markPropertyCoverage(
+  ctx: Ctx,
+  objectType: ImportObjectType,
+  objects: HsObject[]
+): Promise<void> {
+  const names = propertyNamesWithValues(objects);
+  for (let start = 0; start < names.length; start += 100) {
+    const { error } = await ctx.admin
+      .from('hubspot_property_catalog')
+      .update({ has_value: true })
+      .eq('owner_id', ctx.userId)
+      .eq('object_type', objectType)
+      .in('property_name', names.slice(start, start + 100));
+    if (error) {
+      ctx.warnings.push(`Could not update ${objectType} property coverage: ${error.message}`);
+      throw new Error(`Could not persist ${objectType} property coverage: ${error.message}`);
+    }
+  }
 }
 
 /**
@@ -375,9 +470,15 @@ async function sweepDeals(
     /** Active stream only: have we already imported (nearly) every deal? */
     caughtUp?: boolean;
   }
-) {
+): Promise<boolean> {
   try {
     const state = await loadSyncState(ctx.admin, ctx.userId, opts.stream);
+    if (
+      opts.archived && state.phase === 'incremental' &&
+      syncCompletedRecently(state.last_synced_at, Date.now(), ARCHIVE_COMPLETION_WINDOW_MS)
+    ) {
+      return true;
+    }
 
     // INCREMENTAL — only when the active backfill has genuinely caught up. Pulls
     // just the deals modified since the watermark, which is cheap. Never taken
@@ -385,8 +486,9 @@ async function sweepDeals(
     if (!opts.archived && opts.caughtUp && state.last_synced_at) {
       const startedAt = new Date().toISOString();
       let after: string | undefined;
+      let failedObjects = 0;
       do {
-        if (outOfBudget(ctx)) return;
+        if (outOfBudget(ctx)) return false;
         const pageRes = await ctx.hs.searchModifiedSince(
           'deals',
           state.last_synced_at,
@@ -402,18 +504,21 @@ async function sweepDeals(
             await processDeal(ctx, completeDeal ?? deal, opts.priority);
           } catch (e) {
             ctx.errors.push(`deal ${hit.id}: ${msg(e)}`);
+            failedObjects++;
           }
           ctx.processed++;
         }
         after = pageRes.after;
       } while (after);
 
+      if (!canAdvanceIncrementalWatermark(failedObjects)) return false;
+
       await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
         phase: 'incremental',
         page_cursor: null,
         last_synced_at: startedAt,
       });
-      return;
+      return true;
     }
 
     // BACKFILL — page through everything, persisting the cursor so the next run
@@ -432,7 +537,7 @@ async function sweepDeals(
           page_cursor: cursor ?? null,
           last_synced_at: state.last_synced_at,
         });
-        return;
+        return false;
       }
 
       const pageRes = await ctx.hs.page('deals', {
@@ -446,14 +551,25 @@ async function sweepDeals(
       const changedDeals = await onlyChanged(ctx, pageRes.results);
       const hydratedDeals = await hydrateProperties(ctx, 'deals', changedDeals);
       await prefetchAssociatedObjects(ctx, hydratedDeals);
+      let processedInPage = 0;
       for (const deal of hydratedDeals) {
         if (outOfBudget(ctx)) break;
         try {
           await processDeal(ctx, deal, opts.priority);
+          processedInPage++;
         } catch (e) {
           ctx.errors.push(`deal ${deal.id}: ${msg(e)}`);
         }
         ctx.processed++;
+      }
+
+      if (!pageFullyProcessed(processedInPage, hydratedDeals.length)) {
+        await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
+          phase: 'backfill',
+          page_cursor: cursor ?? null,
+          last_synced_at: state.last_synced_at,
+        });
+        return false;
       }
 
       cursor = pageRes.after;
@@ -465,8 +581,9 @@ async function sweepDeals(
     // backfill with a null cursor so the next run re-pages from the top and picks
     // up whatever was missed (deals added mid-crawl, transient failures, or a
     // listing that did not surface every record in one pass). Archived streams
-    // have no incremental mode and simply re-sweep.
-    let phase: 'backfill' | 'incremental' = 'backfill';
+    // retain a short completion marker so the next invocation in the same UI
+    // session can advance to archived companies instead of restarting at page 1.
+    let phase: 'backfill' | 'incremental' = opts.archived ? 'incremental' : 'backfill';
     if (!opts.archived) {
       const caughtUp = await dealsCaughtUp(ctx);
       // Also stop when a full re-page (top → end, all in this one run) turned up
@@ -481,9 +598,169 @@ async function sweepDeals(
       page_cursor: null,
       last_synced_at: phase === 'incremental' ? startedAt : state.last_synced_at,
     });
+    return true;
   } catch (e) {
     ctx.errors.push(`deals(${opts.priority}): ${msg(e)}`);
+    return false;
   }
+}
+
+/**
+ * Repair historic property snapshots without replaying notes, attachments,
+ * company parsing, or contact extraction. The stream is tied to the readable
+ * property schema, so adding a HubSpot field automatically creates a new pass.
+ */
+async function sweepDealPropertyBackfill(ctx: Ctx): Promise<boolean> {
+  const schemaVersion = ctx.propertyVersions.deals;
+  const stream = propertyBackfillStream('deals', schemaVersion);
+  const state = await loadSyncState(ctx.admin, ctx.userId, stream);
+  const repairEveryHeldSnapshot = state.last_synced_at == null;
+
+  if (state.phase === 'incremental' && !(await hasDealsNeedingPropertyBackfill(ctx, schemaVersion))) {
+    return true;
+  }
+
+  let cursor = state.phase === 'incremental' ? undefined : state.page_cursor ?? undefined;
+  for (;;) {
+    if (outOfBudget(ctx)) {
+      await saveSyncState(ctx.admin, ctx.userId, stream, {
+        phase: 'backfill',
+        page_cursor: cursor ?? null,
+        last_synced_at: state.last_synced_at,
+      });
+      return false;
+    }
+
+    const pageRes = await ctx.hs.page('deals', {
+      archived: false,
+      properties: DEAL_PROPS,
+      limit: PAGE_SIZE,
+      after: cursor,
+    });
+    const candidates = await dealPropertyBackfillCandidates(
+      ctx,
+      pageRes.results,
+      schemaVersion,
+      repairEveryHeldSnapshot
+    );
+    const hydrated = await hydrateProperties(ctx, 'deals', candidates);
+
+    if (hydrated.length > 0) {
+      const { data, error } = await ctx.admin.rpc('apply_hubspot_deal_property_snapshots', {
+        p_owner_id: ctx.userId,
+        p_schema_version: schemaVersion,
+        p_rows: hydrated.map((deal) => ({
+          hubspot_deal_id: deal.id,
+          properties: deal.properties,
+        })),
+      });
+      if (error) {
+        ctx.errors.push(`deal property backfill: ${error.message}`);
+        await saveSyncState(ctx.admin, ctx.userId, stream, {
+          phase: 'backfill',
+          page_cursor: cursor ?? null,
+          last_synced_at: state.last_synced_at,
+        });
+        return false;
+      }
+      ctx.counts.properties_backfilled += Number(data ?? hydrated.length);
+    }
+
+    ctx.processed += pageRes.results.length;
+    cursor = pageRes.after;
+    if (!cursor) break;
+  }
+
+  await saveSyncState(ctx.admin, ctx.userId, stream, {
+    phase: 'incremental',
+    page_cursor: null,
+    last_synced_at: new Date().toISOString(),
+  });
+  return true;
+}
+
+async function dealPropertyBackfillCandidates(
+  ctx: Ctx,
+  deals: HsObject[],
+  schemaVersion: string,
+  includeCurrent: boolean
+): Promise<HsObject[]> {
+  if (deals.length === 0) return deals;
+  const { data, error } = await ctx.admin
+    .from('deals')
+    .select('hubspot_deal_id, hubspot_properties_schema_version')
+    .eq('owner_id', ctx.userId)
+    .in('hubspot_deal_id', deals.map((deal) => deal.id));
+  if (error) throw error;
+
+  const heldVersions = new Map<string, string | null>(
+    (data ?? []).map((row) => [
+      String(row.hubspot_deal_id),
+      row.hubspot_properties_schema_version as string | null,
+    ])
+  );
+  return filterPropertyBackfillCandidates(deals, heldVersions, schemaVersion, includeCurrent);
+}
+
+async function hasDealsNeedingPropertyBackfill(ctx: Ctx, schemaVersion: string): Promise<boolean> {
+  const { data, error } = await ctx.admin.rpc('hubspot_deal_property_backfill_needed', {
+    p_owner_id: ctx.userId,
+    p_schema_version: schemaVersion,
+  });
+  if (error) {
+    ctx.warnings.push(`Could not verify historic deal property coverage: ${error.message}`);
+    return true;
+  }
+  return data === true;
+}
+
+/**
+ * Discover values that were already stored before has_value existed. This reads
+ * bounded owner-scoped pages from Postgres and never calls or mutates HubSpot.
+ */
+async function sweepStoredPropertyCoverage(
+  ctx: Ctx,
+  objectType: ImportObjectType
+): Promise<boolean> {
+  const stream = propertyCoverageStream(objectType === 'deals' ? 'archived-deals' : objectType);
+  const state = await loadSyncState(ctx.admin, ctx.userId, stream);
+  if (state.phase === 'incremental') return true;
+  if (outOfBudget(ctx)) return false;
+
+  const pageSize = 1_000;
+  let query = ctx.admin
+    .from(objectType)
+    .select('id, hubspot_properties')
+    .eq('owner_id', ctx.userId)
+    .order('id', { ascending: true })
+    .limit(pageSize);
+  if (objectType === 'deals') query = query.eq('is_archived', true);
+  if (state.page_cursor) query = query.gt('id', state.page_cursor);
+
+  const { data, error } = await query;
+  if (error) {
+    ctx.errors.push(`${objectType} stored property coverage: ${error.message}`);
+    return false;
+  }
+
+  const rows = (data ?? []) as Array<{
+    id: string;
+    hubspot_properties: Record<string, string | null> | null;
+  }>;
+  await markPropertyCoverage(
+    ctx,
+    objectType,
+    rows.map((row) => ({ id: row.id, properties: row.hubspot_properties ?? {} }))
+  );
+  ctx.processed += rows.length;
+
+  const complete = rows.length < pageSize;
+  await saveSyncState(ctx.admin, ctx.userId, stream, {
+    phase: complete ? 'incremental' : 'backfill',
+    page_cursor: complete ? null : rows.at(-1)?.id ?? state.page_cursor,
+    last_synced_at: complete ? new Date().toISOString() : state.last_synced_at,
+  });
+  return complete;
 }
 
 /** True once we hold within CATCHUP_SLACK of HubSpot's active-deal count. */
@@ -493,10 +770,16 @@ async function dealsCaughtUp(ctx: Ctx): Promise<boolean> {
   return have >= ctx.dealTotal - CATCHUP_SLACK;
 }
 
-async function sweepArchivedCompanies(ctx: Ctx) {
+async function sweepArchivedCompanies(ctx: Ctx): Promise<boolean> {
   const stream = 'companies:deleted';
   try {
     const state = await loadSyncState(ctx.admin, ctx.userId, stream);
+    if (
+      state.phase === 'incremental' &&
+      syncCompletedRecently(state.last_synced_at, Date.now(), ARCHIVE_COMPLETION_WINDOW_MS)
+    ) {
+      return true;
+    }
     let cursor = state.page_cursor ?? undefined;
 
     for (;;) {
@@ -506,7 +789,7 @@ async function sweepArchivedCompanies(ctx: Ctx) {
           page_cursor: cursor ?? null,
           last_synced_at: state.last_synced_at,
         });
-        return;
+        return false;
       }
 
       const pageRes = await ctx.hs.page('companies', {
@@ -516,6 +799,7 @@ async function sweepArchivedCompanies(ctx: Ctx) {
         after: cursor,
       });
 
+      let processedInPage = 0;
       for (const co of await hydrateProperties(ctx, 'companies', pageRes.results)) {
         if (outOfBudget(ctx)) break;
         const name = co.properties.name ?? 'Unknown';
@@ -532,10 +816,20 @@ async function sweepArchivedCompanies(ctx: Ctx) {
             hubspot_properties_schema_version: ctx.propertyVersions.companies,
           });
           if (id) ctx.counts.companies++;
+          processedInPage++;
         } catch (e) {
           ctx.errors.push(`archived company ${co.id}: ${msg(e)}`);
         }
         ctx.processed++;
+      }
+
+      if (!pageFullyProcessed(processedInPage, pageRes.results.length)) {
+        await saveSyncState(ctx.admin, ctx.userId, stream, {
+          phase: 'backfill',
+          page_cursor: cursor ?? null,
+          last_synced_at: state.last_synced_at,
+        });
+        return false;
       }
 
       cursor = pageRes.after;
@@ -543,12 +837,14 @@ async function sweepArchivedCompanies(ctx: Ctx) {
     }
 
     await saveSyncState(ctx.admin, ctx.userId, stream, {
-      phase: 'backfill',
+      phase: 'incremental',
       page_cursor: null,
       last_synced_at: new Date().toISOString(),
     });
+    return true;
   } catch (e) {
     ctx.errors.push(`archived companies: ${msg(e)}`);
+    return false;
   }
 }
 
@@ -979,7 +1275,7 @@ async function loadProductDictionary(
  * Search API (which reports a `total` for any query) and the numerator from our
  * own table, so the figure survives across the many invocations one import takes.
  */
-async function progress(ctx: Ctx) {
+async function progress(ctx: Ctx, phaseOverride?: 'properties') {
   const [dealsImported, companies, state] = await Promise.all([
     countActiveDeals(ctx.admin, ctx.userId),
     countCompanies(ctx.admin, ctx.userId),
@@ -989,7 +1285,7 @@ async function progress(ctx: Ctx) {
     deals_in_hubspot: ctx.dealTotal, // already counted once this invocation
     deals_imported: dealsImported,
     companies,
-    phase: state.phase,
+    phase: phaseOverride ?? state.phase,
   };
 }
 

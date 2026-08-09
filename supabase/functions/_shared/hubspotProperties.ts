@@ -9,6 +9,11 @@ export interface HubspotPropertyDefinition {
   archived?: boolean;
 }
 
+interface HubspotObjectWithProperties {
+  id: string;
+  properties: Record<string, string | null | undefined>;
+}
+
 /** Keep URL query strings comfortably below HubSpot's request-size limit. */
 export function chunkPropertyNames(names: string[], maxLength = 2_500): string[][] {
   const chunks: string[][] = [];
@@ -44,4 +49,55 @@ export function propertySchemaVersion(definitions: HubspotPropertyDefinition[]):
     }
   }
   return `v${(hash >>> 0).toString(16)}`;
+}
+
+/** Property names for which at least one object carries a useful value. */
+export function propertyNamesWithValues(objects: HubspotObjectWithProperties[]): string[] {
+  const names = new Set<string>();
+  for (const object of objects) {
+    for (const [name, value] of Object.entries(object.properties)) {
+      if (value == null) continue;
+      const normalized = String(value).trim();
+      if (normalized && normalized.toLowerCase() !== 'null') names.add(name);
+    }
+  }
+  return [...names].sort();
+}
+
+/** A changed property catalogue automatically starts an independent backfill. */
+export function propertyBackfillStream(objectType: string, schemaVersion: string): string {
+  return `${objectType}:properties:${schemaVersion}`;
+}
+
+/** One-time owner-scoped scan for values already present before coverage tracking existed. */
+export function propertyCoverageStream(objectType: string): string {
+  return `${objectType}:coverage:v1`;
+}
+
+export function propertyCataloguesComplete(
+  loaded: Record<'deals' | 'companies' | 'contacts', boolean>
+): boolean {
+  return loaded.deals && loaded.companies && loaded.contacts;
+}
+
+export function syncCompletedRecently(
+  lastSyncedAt: string | null,
+  now = Date.now(),
+  windowMs = 120_000
+): boolean {
+  if (!lastSyncedAt) return false;
+  const completedAt = Date.parse(lastSyncedAt);
+  return Number.isFinite(completedAt) && completedAt <= now && now - completedAt < windowMs;
+}
+
+/** Repair only objects already present locally; the normal sync owns new objects. */
+export function filterPropertyBackfillCandidates<T extends HubspotObjectWithProperties>(
+  objects: T[],
+  heldVersions: ReadonlyMap<string, string | null>,
+  schemaVersion: string,
+  includeCurrent = false
+): T[] {
+  return objects.filter((object) =>
+    heldVersions.has(object.id) && (includeCurrent || heldVersions.get(object.id) !== schemaVersion)
+  );
 }

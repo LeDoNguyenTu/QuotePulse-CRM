@@ -11,6 +11,7 @@ import { SearchBar } from '../components/SearchBar';
 import { Filters } from '../components/Filters';
 import { CompaniesTable } from '../components/CompaniesTable';
 import { ColumnSelector } from '../components/ColumnSelector';
+import { HubspotObjectsPanel } from '../components/HubspotObjectsPanel';
 import { BulkSendPanel } from '../components/BulkSendPanel';
 import { Modal } from '../components/Modal';
 import { ErrorState, Spinner } from '../components/ui';
@@ -19,7 +20,7 @@ import { cleanDealName } from '../lib/dealName';
 import type { SourcePriority } from '../lib/types';
 import { useSettings, useSaveSettings } from '../hooks/useSettings';
 import { useHubspotPropertyCatalog, useHubspotPropertyCoverage } from '../hooks/useHubspotPropertyCatalog';
-import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns } from '../lib/tablePreferences';
+import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns, type ConfigurableTable } from '../lib/tablePreferences';
 import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
 import { splitPropertiesByCoverage } from '../lib/propertyCoverage';
 import { importCompletionPercent, shouldShowImportReport } from '../lib/importReport';
@@ -28,6 +29,7 @@ const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
 
 export function Dashboard() {
+  const [activeTable, setActiveTable] = useState<ConfigurableTable>('companies');
   const [filters, setFilters] = useState<CompanyFilters>({ page: 0, pageSize: PAGE_SIZE });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -266,13 +268,14 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Companies</h1>
+        <h1 className="text-2xl font-semibold">HubSpot CRM</h1>
         <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={handleImportAll} disabled={importing}>
+            {importing ? 'Importing…' : 'Sync HubSpot (new + changed + missing fields)'}
+          </button>
+          {activeTable === 'companies' && <>
           <button className="btn-secondary" onClick={() => setNewOpen(true)}>
             + New company
-          </button>
-          <button className="btn-secondary" onClick={handleImportAll} disabled={importing}>
-            {importing ? 'Importing…' : 'Sync HubSpot (new + changed)'}
           </button>
           <button
             className="btn-secondary"
@@ -299,6 +302,7 @@ export function Dashboard() {
           >
             Bulk send ({selected.size})
           </button>
+          </>}
         </div>
       </div>
 
@@ -320,17 +324,39 @@ export function Dashboard() {
         <ImportReport report={importReport} onDismiss={dismissImportReport} />
       )}
 
+      <div className="flex gap-1 border-b border-slate-200" role="tablist" aria-label="HubSpot object type">
+        {(['companies', 'deals', 'contacts'] as ConfigurableTable[]).map((table) => (
+          <button
+            key={table}
+            role="tab"
+            aria-selected={activeTable === table}
+            className={`border-b-2 px-4 py-2 text-sm font-medium capitalize ${
+              activeTable === table
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+            onClick={() => setActiveTable(table)}
+          >
+            {table}
+          </button>
+        ))}
+      </div>
+
+      {activeTable === 'companies' ? <>
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar value={filters.search ?? ''} onChange={(v) => patch({ search: v, page: 0 })} />
         <Filters filters={filters} onChange={patch} />
         <div className="order-1">
           <ColumnSelector
             options={[
-              ...visibleColumns
-                .filter((id) => DEFAULT_VISIBLE_COLUMNS.companies.includes(id))
+              ...DEFAULT_VISIBLE_COLUMNS.companies
                 .map((id) => ({ id, label: id.replace(/_/g, ' ') })),
-              ...companyFields.available.map((field) => ({ id: field.property_name, label: field.label })),
-              ...companyFields.hidden.map((field) => ({ id: field.property_name, label: field.label, group: 'hidden' as const })),
+              ...companyFields.available
+                .filter((field) => !DEFAULT_VISIBLE_COLUMNS.companies.includes(field.property_name))
+                .map((field) => ({ id: field.property_name, label: field.label })),
+              ...companyFields.hidden
+                .filter((field) => !DEFAULT_VISIBLE_COLUMNS.companies.includes(field.property_name))
+                .map((field) => ({ id: field.property_name, label: field.label, group: 'hidden' as const })),
             ]}
             visible={visibleColumns}
             onChange={(columns) => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, 'companies', columns) })}
@@ -345,7 +371,7 @@ export function Dashboard() {
         <Spinner label="Loading companies…" />
       ) : (
         <div className="relative">
-          <CompaniesTable rows={rows} selected={selected} onToggle={toggle} onToggleAll={toggleAll} extraColumns={customColumns.map((field) => ({ id: field.property_name, label: field.label }))} />
+          <CompaniesTable rows={rows} selected={selected} onToggle={toggle} onToggleAll={toggleAll} visibleColumns={visibleColumns} extraColumns={customColumns.map((field) => ({ id: field.property_name, label: field.label }))} />
           {isFetching && (
             <div className="absolute inset-0 grid place-items-center bg-white/65" aria-live="polite">
               <Spinner label={`Loading page ${page + 1}…`} />
@@ -380,6 +406,7 @@ export function Dashboard() {
           )}
         </div>
       </div>
+      </> : <HubspotObjectsPanel key={activeTable} objectType={activeTable} />}
 
       <BulkSendPanel
         open={bulkOpen}
@@ -408,6 +435,7 @@ function ImportProgressPanel({
   const total = progress?.deals_in_hubspot ?? null;
   const imported = progress?.deals_imported ?? 0;
   const remaining = total != null ? Math.max(0, total - imported) : null;
+  const repairingProperties = progress?.phase === 'properties';
 
   // Hold at 99% until the function actually reports done: HubSpot's total counts
   // only active deals, so archived ones can push the ratio past 1.
@@ -423,7 +451,9 @@ function ImportProgressPanel({
     <div className="space-y-2 rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-900">
       <div className="flex items-center justify-between gap-3">
         <span className="font-medium">
-          {percent != null ? `Importing from HubSpot — ${percent}%` : 'Importing from HubSpot…'}
+          {repairingProperties
+            ? 'Repairing historical HubSpot fields — 99%'
+            : percent != null ? `Importing from HubSpot — ${percent}%` : 'Importing from HubSpot…'}
         </span>
         <button className="text-xs underline" onClick={onStop} disabled={stopping}>
           {stopping ? 'Stopping after this step…' : 'Stop'}
@@ -444,7 +474,12 @@ function ImportProgressPanel({
       </div>
 
       <p className="text-xs">
-        {total != null ? (
+        {repairingProperties ? (
+          <>
+            Normal sync is caught up. Full readable properties are being added to historic deals;
+            this cursor is saved after every page and resumes automatically.
+          </>
+        ) : total != null ? (
           <>
             <b>{imported.toLocaleString()}</b> of <b>{total.toLocaleString()}</b> deals imported ·{' '}
             <b>{remaining?.toLocaleString()}</b> remaining · {progress?.companies.toLocaleString()}{' '}
@@ -459,7 +494,8 @@ function ImportProgressPanel({
       <p className="text-xs text-brand-700">
         This run: +{counts.deals.toLocaleString()} deals, +{counts.companies.toLocaleString()}{' '}
         companies, +{counts.contacts.toLocaleString()} contacts, +
-        {counts.attachments.toLocaleString()} attachments
+        {counts.attachments.toLocaleString()} attachments, +
+        {counts.properties_backfilled.toLocaleString()} historic property snapshots
         {progress?.phase === 'incremental' && ' · catching up on recent changes only'}
       </p>
     </div>
@@ -491,7 +527,7 @@ function ImportReport({
       <div className="flex items-start justify-between gap-3">
         <p className="font-medium">
           {ok
-            ? `HubSpot import ${done ? 'complete' : 'paused'}: ${counts.companies} companies, ${counts.deals} deals, ${counts.contacts} contacts, ${counts.attachments} attachments.`
+            ? `HubSpot import ${done ? 'complete' : 'paused'}: ${counts.companies} companies, ${counts.deals} deals, ${counts.contacts} contacts, ${counts.attachments} attachments, ${counts.properties_backfilled} historic property snapshots repaired.`
             : 'HubSpot import failed — nothing was imported.'}
         </p>
         <button className="text-xs underline" onClick={onDismiss}>
@@ -508,6 +544,14 @@ function ImportReport({
           {counts.skipped_existing.toLocaleString()} deal
           {counts.skipped_existing === 1 ? ' was' : 's were'} already up to date and left
           untouched — only new and changed deals are pulled.
+        </p>
+      )}
+
+      {counts.properties_backfilled > 0 && (
+        <p className="text-xs">
+          Repaired the full readable HubSpot field snapshot for{' '}
+          {counts.properties_backfilled.toLocaleString()} historic deal
+          {counts.properties_backfilled === 1 ? '' : 's'} without replaying notes or files.
         </p>
       )}
 

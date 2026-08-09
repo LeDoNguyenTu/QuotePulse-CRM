@@ -232,6 +232,7 @@ export interface HubspotPropertyCatalogEntry {
   group_name: string | null;
   display_order: number | null;
   hubspot_defined: boolean;
+  has_value: boolean;
   updated_at: string;
 }
 

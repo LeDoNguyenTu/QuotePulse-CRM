@@ -67,7 +67,7 @@ Match suggestions run asynchronously after upload/mapping change:
 2. exact normalized company name against owned companies;
 3. exact normalized contact name plus exact normalized company name.
 
-Each row reports `Matched`, `Unmatched`, or `Needs review`. A matched row links to the exact internal CRM target: `/company/:id` for company-backed rows and the appropriate existing object view when a direct company link is unavailable. No row may cross tenants.
+Each row reports `Matched`, `Unmatched`, or `Needs review`. When the matched record retains its HubSpot object ID and the user's HubSpot account metadata is available, the row links directly to that HubSpot record view using the standard object type IDs (contacts `0-1`, companies `0-2`, deals `0-3`). It falls back to the exact internal CRM target, such as `/company/:id`, when a HubSpot record link cannot be formed. No row may cross tenants.
 
 ### Merge wizard
 

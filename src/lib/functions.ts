@@ -2,6 +2,7 @@
 // function's JSON body (or throws with a useful message). The user's auth token
 // is attached automatically by supabase-js.
 import { supabase } from './supabase';
+import type { ExportScope } from './exportScope';
 
 async function invoke<T>(name: string, body?: unknown): Promise<T> {
   // On a cold page load (notably the OAuth redirect landing on /ms-auth-callback)
@@ -132,19 +133,14 @@ export const functions = {
       state,
     }),
 
+  mergeUploadedFile: (file_id: string, policy: { companies: string; contacts: string; deals: string }) =>
+    invoke<{ ok: boolean; counts: { created: number; updated: number; failed: number }; errors: string[] }>('uploaded-file-merge', { file_id, policy }),
+
 };
 
 // Excel export needs the raw bytes, not JSON, so it uses a direct fetch to the
 // function endpoint with the user's access token.
-export async function exportXlsx(filters: {
-  search?: string;
-  industry?: string;
-  source_priority?: string;
-  has_quote?: boolean;
-  has_kyc?: boolean;
-  activity_from?: string;
-  activity_to?: string;
-}): Promise<Blob> {
+export async function exportXlsx(scope: ExportScope): Promise<Blob> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -158,7 +154,7 @@ export async function exportXlsx(filters: {
       Authorization: `Bearer ${session.access_token}`,
       apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
     },
-    body: JSON.stringify(filters),
+    body: JSON.stringify(scope),
   });
   if (!res.ok) {
     throw new Error(`export-xlsx failed: ${await res.text()}`);

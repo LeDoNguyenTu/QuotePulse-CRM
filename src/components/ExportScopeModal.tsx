@@ -1,0 +1,8 @@
+import { useState } from 'react';
+import { Modal } from './Modal';
+import { validateExportScope, type ExportScope } from '../lib/exportScope';
+
+export function ExportScopeModal({ open, onClose, onExport, busy }: { open: boolean; onClose: () => void; onExport: (scope: ExportScope) => void; busy: boolean }) {
+  const [mode, setMode] = useState<ExportScope['mode']>('all'); const [from, setFrom] = useState(''); const [to, setTo] = useState(''); const scope: ExportScope = mode === 'all' ? { mode } : { mode, from, to }; const error = validateExportScope(scope).error;
+  return <Modal open={open} onClose={onClose} title="Export CRM"><div className="space-y-3"><label className="flex gap-2 text-sm"><input type="radio" checked={mode === 'all'} onChange={() => setMode('all')} /> Entire CRM database</label><label className="flex gap-2 text-sm"><input type="radio" checked={mode === 'hubspot_activity_range'} onChange={() => setMode('hubspot_activity_range')} /> HubSpot last activity date range</label>{mode === 'hubspot_activity_range' && <div className="grid grid-cols-2 gap-2"><label className="text-sm">From<input className="input mt-1" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label><label className="text-sm">To<input className="input mt-1" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label></div>}{error && <p className="text-sm text-red-600">{error}</p>}<div className="flex justify-end gap-2"><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy || !!error} onClick={() => onExport(scope)}>{busy ? 'Exporting…' : 'Export'}</button></div></div></Modal>;
+}

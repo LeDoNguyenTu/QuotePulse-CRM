@@ -60,3 +60,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.export-xlsx]
 verify_jwt = true
+
+[functions.uploaded-file-merge]
+verify_jwt = true

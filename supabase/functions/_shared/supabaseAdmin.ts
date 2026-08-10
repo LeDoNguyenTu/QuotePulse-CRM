@@ -36,6 +36,8 @@ export interface UserSettingsRow {
   brevo_api_key: string | null;
   brevo_sender_email: string | null;
   brevo_sender_name: string | null;
+  hubspot_portal_id?: string | null;
+  hubspot_ui_domain?: string | null;
 }
 
 export async function getUserSettings(

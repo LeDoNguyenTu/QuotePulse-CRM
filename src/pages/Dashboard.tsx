@@ -16,6 +16,8 @@ import { BulkSendPanel } from '../components/BulkSendPanel';
 import { Modal } from '../components/Modal';
 import { ErrorState, Spinner } from '../components/ui';
 import { exportXlsx, functions } from '../lib/functions';
+import type { ExportScope } from '../lib/exportScope';
+import { ExportScopeModal } from '../components/ExportScopeModal';
 import { cleanDealName } from '../lib/dealName';
 import type { SourcePriority } from '../lib/types';
 import { useSettings, useSaveSettings } from '../hooks/useSettings';
@@ -41,6 +43,7 @@ export function Dashboard() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
 
@@ -96,24 +99,17 @@ export function Dashboard() {
     });
   }
 
-  async function handleExport() {
+  async function handleExport(scope: ExportScope) {
     setExporting(true);
     try {
-      const blob = await exportXlsx({
-        search: filters.search,
-        industry: filters.industry,
-        source_priority: filters.source_priority,
-        has_quote: filters.has_quote,
-        has_kyc: filters.has_kyc,
-        activity_from: filters.activity_from,
-        activity_to: filters.activity_to,
-      });
+      const blob = await exportXlsx(scope);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `companies-${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
+      setExportOpen(false);
     } catch (e) {
       setBanner(e instanceof Error ? e.message : String(e));
     } finally {
@@ -293,8 +289,8 @@ export function Dashboard() {
           >
             {rebuilding ? 'Re-linking…' : 'Fix company names'}
           </button>
-          <button className="btn-secondary" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exporting…' : 'Export current view'}
+          <button className="btn-secondary" onClick={() => setExportOpen(true)} disabled={exporting}>
+            {exporting ? 'Exporting…' : 'Export'}
           </button>
           <button
             className="btn-secondary text-red-600 disabled:text-slate-400"
@@ -422,6 +418,7 @@ export function Dashboard() {
         companies={selectedRows}
       />
       <NewCompanyModal open={newOpen} onClose={() => setNewOpen(false)} />
+      <ExportScopeModal open={exportOpen} onClose={() => setExportOpen(false)} onExport={handleExport} busy={exporting} />
     </div>
   );
 }

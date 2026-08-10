@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Attachment } from '../lib/types';
 import { functions } from '../lib/functions';
 import { EmptyState, ErrorState } from './ui';
+import { useSettings } from '../hooks/useSettings';
+import { hubspotFilePreviewUrl } from '../lib/hubspotLinks';
 
 export function AttachmentList({
   attachments,
@@ -11,13 +13,14 @@ export function AttachmentList({
   attachments: Attachment[];
   companyId: string;
 }) {
+  const settings = useSettings();
   if (attachments.length === 0) {
     return <EmptyState>No attachments imported yet.</EmptyState>;
   }
   return (
     <div className="space-y-2">
       {attachments.map((a) => (
-        <AttachmentRow key={a.id} attachment={a} companyId={companyId} />
+        <AttachmentRow key={a.id} attachment={a} companyId={companyId} portalId={settings.data?.hubspot_portal_id} uiDomain={settings.data?.hubspot_ui_domain} />
       ))}
     </div>
   );
@@ -26,9 +29,13 @@ export function AttachmentList({
 function AttachmentRow({
   attachment,
   companyId,
+  portalId,
+  uiDomain,
 }: {
   attachment: Attachment;
   companyId: string;
+  portalId?: string | null;
+  uiDomain?: string | null;
 }) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -49,6 +56,7 @@ function AttachmentRow({
   }
 
   const s = attachment.parsed_summary;
+  const preview = attachment.source_type !== 'quote' ? hubspotFilePreviewUrl(portalId, uiDomain, attachment.hubspot_attachment_id) : null;
 
   return (
     <div className="rounded-md border border-slate-200 p-3">
@@ -71,6 +79,8 @@ function AttachmentRow({
             >
               {attachment.file_url}
             </a>
+          ) : preview ? (
+            <a href={preview} target="_blank" rel="noreferrer" className="text-xs text-brand-600 underline">Open in HubSpot</a>
           ) : attachment.hubspot_attachment_id ? (
             // Private HubSpot files have no durable URL — the download link is
             // minted on demand when we parse them.

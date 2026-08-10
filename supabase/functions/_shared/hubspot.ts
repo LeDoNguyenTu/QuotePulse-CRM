@@ -281,6 +281,19 @@ export class HubSpotClient {
     return { name, url: isPublic ? (f.url ?? null) : null };
   }
 
+  /** Account metadata is used only for browser navigation, never as a data source. */
+  async getAccountDetails(): Promise<{ portalId: string; uiDomain: string | null }> {
+    try {
+      const detail = await this.get<{ portalId?: string | number; uiDomain?: string }>('/account-info/v3/details');
+      if (detail.portalId != null) return { portalId: String(detail.portalId), uiDomain: detail.uiDomain ?? null };
+    } catch (e) {
+      if (!(e instanceof HubSpotApiError && e.status === 404)) throw e;
+    }
+    const legacy = await this.get<{ portalId?: string | number }>('/integrations/v1/me');
+    if (legacy.portalId == null) throw new Error('HubSpot account details contained no portal id.');
+    return { portalId: String(legacy.portalId), uiDomain: null };
+  }
+
   /**
    * A short-lived signed URL for the file's bytes — the only way to download a
    * PRIVATE file, which is what every CRM attachment is. It expires within

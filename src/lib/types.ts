@@ -243,6 +243,8 @@ export interface UserSettings {
   brevo_sender_name: string | null;
   session_timeout_minutes: number;
   table_column_preferences: import('./tablePreferences').TableColumnPreferences;
+  hubspot_portal_id: string | null;
+  hubspot_ui_domain: string | null;
   created_at: string;
   updated_at: string;
 }

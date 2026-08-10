@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
+  { to: '/uploaded-files', label: 'Uploaded files' },
   { to: '/templates', label: 'Templates' },
   { to: '/trash', label: 'Recycle bin' },
   { to: '/settings', label: 'Settings' },

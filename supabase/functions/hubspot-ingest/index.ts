@@ -165,6 +165,16 @@ Deno.serve(async (req) => {
     } catch (e) {
       return errorResponse(e instanceof Error ? e.message : String(e), 400);
     }
+    try {
+      const account = await hs.getAccountDetails();
+      const { error: accountError } = await admin
+        .from('user_settings')
+        .update({ hubspot_portal_id: account.portalId, hubspot_ui_domain: account.uiDomain })
+        .eq('user_id', userId);
+      if (accountError) warnings.push(`HubSpot navigation metadata was not saved: ${accountError.message}`);
+    } catch (e) {
+      warnings.push(`HubSpot navigation metadata is unavailable: ${msg(e)}`);
+    }
 
     const propertyLoad = await loadPropertyDefinitions(hs, admin, userId, warnings);
     if (!propertyCataloguesComplete(propertyLoad.complete)) {

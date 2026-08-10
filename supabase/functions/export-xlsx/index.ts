@@ -5,15 +5,7 @@ import { corsHeaders, handleOptions, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
 import ExcelJS from 'npm:exceljs@4.4.0';
 
-interface Filters {
-  search?: string;
-  industry?: string;
-  source_priority?: string;
-  has_quote?: boolean;
-  has_kyc?: boolean;
-  activity_from?: string;
-  activity_to?: string;
-}
+type ExportScope = { mode?: 'all' | 'hubspot_activity_range'; from?: string; to?: string };
 
 Deno.serve(async (req) => {
   const pre = handleOptions(req);
@@ -21,31 +13,14 @@ Deno.serve(async (req) => {
   try {
     const userId = await getUserId(req);
     const admin = getAdminClient();
-    const filters = ((await safeJson(req)) ?? {}) as Filters;
+    const scope = ((await safeJson(req)) ?? {}) as ExportScope;
 
     // The admin client uses the service role, which bypasses RLS — the owner
     // filter must be explicit here or this exports every user's companies.
     let query = admin.from('company_dashboard').select('*').eq('owner_id', userId);
-    if (filters.search?.trim()) {
-      const term = `%${filters.search.trim()}%`;
-      query = query.or(
-        [
-          `name_clean.ilike.${term}`,
-          `name_raw.ilike.${term}`,
-          `industry.ilike.${term}`,
-          `primary_contact_name.ilike.${term}`,
-          `primary_contact_email.ilike.${term}`,
-        ].join(',')
-      );
-    }
-    if (filters.industry) query = query.eq('industry', filters.industry);
-    if (filters.source_priority) query = query.eq('source_priority', filters.source_priority);
-    if (filters.has_quote) query = query.eq('has_quote', true);
-    if (filters.has_kyc) query = query.eq('has_kyc', true);
-    if (filters.activity_from) query = query.gte('last_deal_at', `${filters.activity_from}T00:00:00.000Z`);
-    if (filters.activity_to) {
-      const endExclusive = nextUtcDay(filters.activity_to);
-      if (endExclusive) query = query.lt('last_deal_at', endExclusive);
+    if (scope.mode === 'hubspot_activity_range') {
+      if (!validDate(scope.from) || !validDate(scope.to) || scope.from! > scope.to!) return errorResponse('Choose a valid start and end activity date.', 400);
+      query = query.gte('last_deal_at', `${scope.from}T00:00:00.000Z`).lt('last_deal_at', nextUtcDay(scope.to!)!);
     }
     query = query.order('name_clean', { ascending: true }).limit(5000);
 
@@ -90,7 +65,7 @@ Deno.serve(async (req) => {
         ...corsHeaders,
         'Content-Type':
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': 'attachment; filename="companies.xlsx"',
+        'Content-Disposition': `attachment; filename="companies-${scope.mode === 'hubspot_activity_range' ? `activity-${scope.from}-to-${scope.to}` : 'all'}.xlsx"`,
       },
     });
   } catch (e) {
@@ -113,3 +88,5 @@ function nextUtcDay(date: string): string | null {
   value.setUTCDate(value.getUTCDate() + 1);
   return value.toISOString();
 }
+
+function validDate(value: string | undefined): value is string { return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !!nextUtcDay(value); }

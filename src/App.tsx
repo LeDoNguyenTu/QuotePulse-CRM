@@ -12,6 +12,8 @@ import { Settings } from './pages/Settings';
 import { Trash } from './pages/Trash';
 import { MsAuthCallback } from './pages/MsAuthCallback';
 import { AuthCallback } from './pages/AuthCallback';
+import { UploadedFiles } from './pages/UploadedFiles';
+import { UploadedFileDetail } from './pages/UploadedFileDetail';
 
 export default function App() {
   return (
@@ -74,6 +76,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/uploaded-files" element={<ProtectedRoute><Layout><UploadedFiles /></Layout></ProtectedRoute>} />
+        <Route path="/uploaded-files/:id" element={<ProtectedRoute><Layout><UploadedFileDetail /></Layout></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

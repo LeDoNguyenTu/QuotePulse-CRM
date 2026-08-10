@@ -86,9 +86,9 @@ The confirmation must state that only the selected record types and policy will 
 
 For imported attachments with a HubSpot file ID, the UI presents a `Open in HubSpot` link using:
 
-`https://app.hubspot.com/file-preview/{portalId}/file/{hubspotFileId}/`
+`https://{uiDomain}/file-preview/{portalId}/file/{hubspotFileId}/`
 
-The portal ID is loaded from authenticated HubSpot account metadata during sync and stored in the current user's private settings. If it is unavailable, the UI leaves the link absent and continues to show on-demand parsing behavior. It never treats this browser link as a server-download URL.
+The portal ID and UI domain are loaded from authenticated HubSpot account metadata during sync and stored in the current user's private settings. The link falls back to `app.hubspot.com` only when HubSpot does not provide a UI domain. If account metadata is unavailable, the UI leaves the link absent and continues to show on-demand parsing behavior. It never treats this browser link as a server-download URL.
 
 ### Export
 

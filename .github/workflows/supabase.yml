@@ -69,9 +69,9 @@ jobs:
           fi
           echo "All three secrets are present."
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: 2.113.0
 
       - name: Link project
         run: supabase link --project-ref "$PROJECT_REF"
@@ -82,7 +82,7 @@ jobs:
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx; do
+          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx uploaded-file-merge; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF"
             echo "::endgroup::"

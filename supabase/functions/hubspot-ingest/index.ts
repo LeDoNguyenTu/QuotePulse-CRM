@@ -40,6 +40,7 @@ import {
   type HubspotPropertyDefinition,
 } from '../_shared/hubspotProperties.ts';
 import { associatedObjectIds } from '../_shared/hubspotAssociations.ts';
+import { dealArchiveKey, putVerifiedArchive } from '../_shared/r2Archive.ts';
 import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import { formatHubspotError } from '../_shared/hubspotErrors.ts';
 import { canAdvanceIncrementalWatermark, pageFullyProcessed } from '../_shared/hubspotSync.ts';
@@ -951,6 +952,24 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
   if (dealErr) throw dealErr;
   ctx.counts.deals++;
   const dealRowId = dealRow!.id as string;
+
+  // R2 is the durable copy of the full HubSpot snapshot. Only clear Postgres
+  // after the client reads the object back and verifies its checksum.
+  try {
+    const archived = await putVerifiedArchive(
+      dealArchiveKey(ctx.userId, dealRowId, deal.properties.hs_lastmodifieddate ?? new Date().toISOString()),
+      { hubspot_deal_id: deal.id, properties: deal.properties }
+    );
+    const { error } = await ctx.admin.from('deals').update({
+      hubspot_properties: {},
+      r2_archive_key: archived.key,
+      r2_archive_sha256: archived.checksum,
+      r2_archived_at: new Date().toISOString(),
+    }).eq('id', dealRowId).eq('owner_id', ctx.userId);
+    if (error) throw error;
+  } catch (error) {
+    ctx.warnings.push(`deal ${deal.id}: R2 archive failed; the Postgres snapshot was retained (${msg(error)})`);
+  }
 
   // Associated contacts.
   for (const c of deal.associations?.contacts?.results ?? []) {

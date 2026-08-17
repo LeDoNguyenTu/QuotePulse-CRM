@@ -106,6 +106,10 @@ export interface MsAuthStartResult {
   url: string;
 }
 
+export interface CompanyAttachmentsResult {
+  attachments: import('./types').Attachment[];
+}
+
 export const functions = {
   hubspotIngest: (opts?: { company_id?: string }) =>
     invoke<IngestResult>('hubspot-ingest', opts ?? {}),
@@ -120,6 +124,9 @@ export const functions = {
 
   parseQuote: (attachment_id: string) =>
     invoke<ParseResult>('parse-quote', { attachment_id }),
+
+  companyAttachments: async (company_id: string) =>
+    (await invoke<CompanyAttachmentsResult>('company-attachments', { company_id })).attachments,
 
   msAuthStart: () =>
     invoke<MsAuthStartResult>('ms-auth-start', {

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { accountQueryKey } from '../lib/accountQueryScope';
 import { useAuth } from './useAuth';
+import { functions } from '../lib/functions';
 import type {
   Attachment,
   Company,
@@ -74,23 +75,7 @@ export function useCompanyAttachments(companyId: string | undefined) {
   return useQuery<Attachment[]>({
     queryKey: accountQueryKey(user?.id, ['company-attachments', companyId]),
     enabled: !!companyId && !!user,
-    queryFn: async () => {
-      // attachments -> deals -> company. Two-step to keep it simple/typed.
-      const { data: deals, error: dErr } = await supabase
-        .from('deals')
-        .select('id')
-        .eq('company_id', companyId!);
-      if (dErr) throw dErr;
-      const dealIds = (deals ?? []).map((d) => d.id);
-      if (dealIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from('attachments')
-        .select('*')
-        .in('deal_id', dealIds)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as Attachment[];
-    },
+    queryFn: () => functions.companyAttachments(companyId!),
   });
 }
 

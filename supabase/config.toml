@@ -63,3 +63,9 @@ verify_jwt = true
 
 [functions.uploaded-file-merge]
 verify_jwt = true
+
+[functions.company-attachments]
+verify_jwt = true
+
+[functions.archive-hubspot-data]
+verify_jwt = true

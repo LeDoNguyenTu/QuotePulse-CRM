@@ -1,7 +1,8 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { CompanyDashboardRow } from '../lib/types';
 import { formatDate, formatRelative } from '../lib/dates';
 import { Flag, PriorityBadge, StatusBadge } from './ui';
+import { detailNavigationState, saveScrollPosition } from '../lib/returnNavigation';
 
 /** Relative label ("3d ago") with the absolute date on hover; em dash when empty. */
 function RelativeDate({ value }: { value: string | null }) {
@@ -30,6 +31,7 @@ export function CompaniesTable({
   extraColumns = [],
 }: CompaniesTableProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const shown = new Set(visibleColumns);
 
@@ -62,7 +64,11 @@ export function CompaniesTable({
             <tr
               key={r.id}
               className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
-              onClick={() => navigate(`/company/${r.id}`)}
+              onClick={() => {
+                const state = detailNavigationState(location, window.scrollY);
+                saveScrollPosition(window.sessionStorage, state.from, state.scrollY);
+                navigate(`/company/${r.id}`, { state });
+              }}
             >
               <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                 <input

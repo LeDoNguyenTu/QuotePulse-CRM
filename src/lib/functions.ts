@@ -114,6 +114,38 @@ export interface DealArchivePropertiesResult {
   properties: Record<string, Record<string, string | null>>;
 }
 
+export interface StorageServiceStatus {
+  usedBytes?: number;
+  limitBytes: number;
+  error?: string;
+}
+
+export interface StorageStatusResult {
+  ok: true;
+  measuredAt: string;
+  database: StorageServiceStatus;
+  r2: StorageServiceStatus & {
+    objectCount?: number;
+    measuredAt?: string;
+    source?: 'cloudflare-analytics' | 'r2-inventory';
+    cached?: boolean;
+  };
+}
+
+async function getStorageStatus(): Promise<StorageStatusResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/storage-status`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+    },
+  });
+  if (!response.ok) throw new Error(`storage-status failed: ${await response.text()}`);
+  return response.json() as Promise<StorageStatusResult>;
+}
+
 export const functions = {
   hubspotIngest: (opts?: { company_id?: string }) =>
     invoke<IngestResult>('hubspot-ingest', opts ?? {}),
@@ -134,6 +166,8 @@ export const functions = {
 
   dealArchiveProperties: async (deal_ids: string[]) =>
     (await invoke<DealArchivePropertiesResult>('deal-archive-properties', { deal_ids })).properties,
+
+  storageStatus: getStorageStatus,
 
   msAuthStart: () =>
     invoke<MsAuthStartResult>('ms-auth-start', {

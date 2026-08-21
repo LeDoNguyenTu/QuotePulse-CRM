@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useHubspotPropertyCatalog } from '../hooks/useHubspotPropertyCatalog';
 import { useHubspotObjects } from '../hooks/useHubspotObjects';
 import { useSaveSettings, useSettings } from '../hooks/useSettings';
@@ -8,12 +8,20 @@ import { ColumnSelector } from './ColumnSelector';
 import { HubspotObjectTable } from './HubspotObjectTable';
 import { SearchBar } from './SearchBar';
 import { ErrorState, Spinner } from './ui';
+import { clampPage, type ObjectListState } from '../lib/dashboardState';
 
 const PAGE_SIZE = 25;
 
-export function HubspotObjectsPanel({ objectType }: { objectType: HubspotObjectTableType }) {
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+export function HubspotObjectsPanel({
+  objectType,
+  state,
+  onChange,
+}: {
+  objectType: HubspotObjectTableType;
+  state: ObjectListState;
+  onChange: (next: Partial<ObjectListState>) => void;
+}) {
+  const { search, page } = state;
   const settings = useSettings();
   const saveSettings = useSaveSettings();
   const catalog = useHubspotPropertyCatalog(objectType);
@@ -28,15 +36,15 @@ export function HubspotObjectsPanel({ objectType }: { objectType: HubspotObjectT
   const pageCount = Math.max(1, Math.ceil(count / PAGE_SIZE));
 
   useEffect(() => {
-    if (page >= pageCount) setPage(pageCount - 1);
+    const nextPage = clampPage(page, query.data?.count, PAGE_SIZE);
+    if (nextPage !== page) onChange({ page: nextPage });
   }, [page, pageCount]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <SearchBar value={search} onChange={(value) => {
-          setSearch(value);
-          setPage(0);
+          onChange({ search: value, page: 0 });
         }} />
         <ColumnSelector
           options={options}
@@ -83,8 +91,8 @@ export function HubspotObjectsPanel({ objectType }: { objectType: HubspotObjectT
       <div className="flex items-center justify-between text-sm text-slate-600">
         <span>{count.toLocaleString()} {objectType} · page {page + 1} of {pageCount}</span>
         <div className="flex gap-2">
-          <button className="btn-secondary" disabled={page === 0 || query.isFetching} onClick={() => setPage((value) => value - 1)}>Prev</button>
-          <button className="btn-secondary" disabled={page + 1 >= pageCount || query.isFetching} onClick={() => setPage((value) => value + 1)}>Next</button>
+          <button className="btn-secondary" disabled={page === 0 || query.isFetching} onClick={() => onChange({ page: page - 1 })}>Prev</button>
+          <button className="btn-secondary" disabled={page + 1 >= pageCount || query.isFetching} onClick={() => onChange({ page: page + 1 })}>Next</button>
         </div>
       </div>
 

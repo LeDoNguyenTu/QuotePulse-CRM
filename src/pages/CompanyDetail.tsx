@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useCompany,
@@ -16,6 +16,7 @@ import { CompanyEditModal, ContactsEditor } from '../components/CustomerEditor';
 import { Modal } from '../components/Modal';
 import { EmptyState, ErrorState, PriorityBadge, Spinner, StatusBadge } from '../components/ui';
 import type { EmailSend } from '../lib/types';
+import { HistoryBackLink } from '../components/HistoryBackLink';
 
 type Tab = 'hubspot' | 'kyc' | 'emails';
 
@@ -59,9 +60,7 @@ export function CompanyDetail() {
 
   return (
     <div className="space-y-4">
-      <Link to="/" className="text-sm text-brand-600 hover:underline">
-        ← Back to dashboard
-      </Link>
+      <HistoryBackLink fallback="/">← Back to previous view</HistoryBackLink>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

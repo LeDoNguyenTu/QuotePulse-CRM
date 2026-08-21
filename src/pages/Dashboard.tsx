@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   useCompanies,
   useCreateCompany,
@@ -32,13 +33,19 @@ import {
   importResponseTimestamp,
   recentImportEtaMinutes,
 } from '../lib/importProgress';
+import { clampPage, readDashboardState, writeDashboardState, type ObjectListState } from '../lib/dashboardState';
+import { consumeScrollPosition, routePath } from '../lib/returnNavigation';
+import { StorageStatusPanel } from '../components/StorageStatusPanel';
 
 const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
 
 export function Dashboard() {
-  const [activeTable, setActiveTable] = useState<ConfigurableTable>('companies');
-  const [filters, setFilters] = useState<CompanyFilters>({ page: 0, pageSize: PAGE_SIZE });
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dashboardState = useMemo(() => readDashboardState(searchParams), [searchParams]);
+  const activeTable = dashboardState.view;
+  const filters = dashboardState.companies;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -71,9 +78,40 @@ export function Dashboard() {
   const pageSize = filters.pageSize ?? PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
+  function setDashboardState(next: typeof dashboardState) {
+    setSearchParams(writeDashboardState(next), { replace: true });
+  }
+
+  function setActiveTable(view: ConfigurableTable) {
+    setDashboardState({ ...dashboardState, view });
+  }
+
   useEffect(() => {
-    if (countQuery.data != null && page >= pageCount) setFilters((f) => ({ ...f, page: pageCount - 1 }));
-  }, [countQuery.data, page, pageCount]);
+    const nextPage = clampPage(page, countQuery.data, pageSize);
+    if (nextPage !== page) {
+      setDashboardState({
+        ...dashboardState,
+        companies: { ...filters, page: nextPage },
+      });
+    }
+  }, [countQuery.data, page, pageCount, pageSize]);
+
+  useEffect(() => {
+    const currentRoute = routePath(location);
+    const scrollY = consumeScrollPosition(window.sessionStorage, currentRoute);
+    if (scrollY == null) return;
+    let frame = 0;
+    let attempts = 0;
+    const restore = () => {
+      window.scrollTo({ top: scrollY, behavior: 'auto' });
+      attempts += 1;
+      if (attempts < 20 && Math.abs(window.scrollY - scrollY) > 2) {
+        frame = window.requestAnimationFrame(restore);
+      }
+    };
+    frame = window.requestAnimationFrame(restore);
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.key]);
 
   const selectedRows = useMemo(
     () => rows.filter((r) => selected.has(r.id)),
@@ -81,7 +119,14 @@ export function Dashboard() {
   );
 
   function patch(next: Partial<CompanyFilters>) {
-    setFilters((f) => ({ ...f, ...next }));
+    setDashboardState({ ...dashboardState, companies: { ...filters, ...next } });
+  }
+
+  function patchObject(objectType: 'deals' | 'contacts', next: Partial<ObjectListState>) {
+    setDashboardState({
+      ...dashboardState,
+      [objectType]: { ...dashboardState[objectType], ...next },
+    });
   }
 
   function toggle(id: string) {
@@ -310,6 +355,8 @@ export function Dashboard() {
         </div>
       </div>
 
+      <StorageStatusPanel />
+
       {banner && (
         <div className="rounded-md border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800">
           {banner}
@@ -410,7 +457,11 @@ export function Dashboard() {
           )}
         </div>
       </div>
-      </> : <HubspotObjectsPanel key={activeTable} objectType={activeTable} />}
+      </> : <HubspotObjectsPanel
+        objectType={activeTable}
+        state={dashboardState[activeTable]}
+        onChange={(next) => patchObject(activeTable, next)}
+      />}
 
       <BulkSendPanel
         open={bulkOpen}

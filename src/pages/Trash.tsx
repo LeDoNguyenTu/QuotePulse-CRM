@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   TRASH_TTL_DAYS,
   useHardDeleteCompanies,
@@ -8,6 +7,7 @@ import {
   useTrashedCompanies,
 } from '../hooks/useCompanies';
 import { EmptyState, ErrorState, Spinner } from '../components/ui';
+import { HistoryBackLink } from '../components/HistoryBackLink';
 
 function daysLeft(deletedAt: string | null): number {
   if (!deletedAt) return TRASH_TTL_DAYS;
@@ -87,9 +87,7 @@ export function Trash() {
             removed to save space. Restore anything before then.
           </p>
         </div>
-        <Link to="/" className="text-sm text-brand-600 hover:underline">
-          ← Back to dashboard
-        </Link>
+        <HistoryBackLink fallback="/">← Back to previous view</HistoryBackLink>
       </div>
 
       {banner && (

@@ -1,10 +1,11 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { formatDate } from '../lib/dates';
 import {
   hubspotObjectCellValue,
   type HubspotObjectColumn,
 } from '../lib/hubspotObjectTable';
 import type { HubspotObjectRow } from '../hooks/useHubspotObjects';
+import { detailNavigationState, saveScrollPosition } from '../lib/returnNavigation';
 
 const DATE_COLUMNS = new Set([
   'hubspot_created_at',
@@ -34,6 +35,7 @@ export function HubspotObjectTable({
   emptyLabel: string;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   return (
     <div className="card overflow-x-auto">
       <table className="min-w-full text-sm">
@@ -49,7 +51,12 @@ export function HubspotObjectTable({
               <tr
                 key={row.id}
                 className={`border-b border-slate-100 ${companyId ? 'cursor-pointer hover:bg-slate-50' : ''}`}
-                onClick={() => companyId && navigate(`/company/${companyId}`)}
+                onClick={() => {
+                  if (!companyId) return;
+                  const state = detailNavigationState(location, window.scrollY);
+                  saveScrollPosition(window.sessionStorage, state.from, state.scrollY);
+                  navigate(`/company/${companyId}`, { state });
+                }}
               >
                 {columns.map((column) => {
                   const rendered = displayValue(hubspotObjectCellValue(row, column.id), column.id);

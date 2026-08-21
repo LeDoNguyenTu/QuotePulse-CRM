@@ -130,6 +130,16 @@ export interface StorageStatusResult {
     source?: 'cloudflare-analytics' | 'r2-inventory';
     cached?: boolean;
   };
+  archiveAutomation: {
+    status: 'succeeded' | 'degraded' | 'failed';
+    pressure: 'warning' | 'critical';
+    databaseBytes: number;
+    ownersProcessed: number;
+    dealsArchived: number;
+    genericAttachmentsArchived: number;
+    error: string | null;
+    finishedAt: string;
+  } | null;
 }
 
 async function getStorageStatus(): Promise<StorageStatusResult> {

@@ -5,12 +5,24 @@ export interface StorageCache extends R2Usage {
   refreshedAt: string;
 }
 
+export interface ArchiveAutomationStatus {
+  status: 'succeeded' | 'degraded' | 'failed';
+  pressure: 'warning' | 'critical';
+  databaseBytes: number;
+  ownersProcessed: number;
+  dealsArchived: number;
+  genericAttachmentsArchived: number;
+  error: string | null;
+  finishedAt: string;
+}
+
 export interface StorageStatusDependencies {
   authenticate: (request: Request) => Promise<string>;
   databaseBytes: () => Promise<number>;
   readCache: () => Promise<StorageCache | null>;
   writeCache: (usage: R2Usage, refreshedAt: string) => Promise<void>;
   r2Usage: () => Promise<R2Usage>;
+  readArchiveAutomation: () => Promise<ArchiveAutomationStatus | null>;
   now: () => Date;
   databaseLimitBytes: number;
   r2LimitBytes: number;
@@ -64,6 +76,8 @@ export function createStorageStatusHandler(dependencies: StorageStatusDependenci
       }
     })();
 
-    return json({ ok: true, measuredAt: now.toISOString(), database, r2 });
+    const archiveAutomation = await dependencies.readArchiveAutomation().catch(() => null);
+
+    return json({ ok: true, measuredAt: now.toISOString(), database, r2, archiveAutomation });
   };
 }

@@ -13,6 +13,16 @@ function dependencies(overrides: Record<string, unknown> = {}) {
       measuredAt: '2026-08-21T12:00:00.000Z',
       source: 'r2-inventory',
     }),
+    readArchiveAutomation: vi.fn().mockResolvedValue({
+      status: 'succeeded',
+      pressure: 'warning',
+      databaseBytes: 360_000_000,
+      ownersProcessed: 2,
+      dealsArchived: 6,
+      genericAttachmentsArchived: 4,
+      error: null,
+      finishedAt: '2026-08-21T12:04:00.000Z',
+    }),
     now: () => new Date('2026-08-21T12:05:00.000Z'),
     databaseLimitBytes: 500_000_000,
     r2LimitBytes: 10_000_000_000,
@@ -63,5 +73,20 @@ describe('storage status handler', () => {
     expect(response.status).toBe(200);
     expect(payload.database).toEqual({ limitBytes: 500_000_000, error: 'database unavailable' });
     expect(payload.r2).toMatchObject({ usedBytes: 2_000_000_000, limitBytes: 10_000_000_000, cached: false });
+  });
+
+  it('includes the latest automatic archive run', async () => {
+    const response = await createStorageStatusHandler(dependencies())(
+      new Request('https://example.test/storage-status'),
+    );
+    expect(await response.json()).toMatchObject({
+      archiveAutomation: {
+        status: 'succeeded',
+        pressure: 'warning',
+        ownersProcessed: 2,
+        dealsArchived: 6,
+        genericAttachmentsArchived: 4,
+      },
+    });
   });
 });

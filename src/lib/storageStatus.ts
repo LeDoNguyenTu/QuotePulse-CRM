@@ -1,5 +1,16 @@
 export type CapacityTone = 'safe' | 'warning' | 'critical';
 
+export interface ArchiveAutomationSummaryInput {
+  status: 'succeeded' | 'degraded' | 'failed';
+  pressure: 'warning' | 'critical';
+  databaseBytes: number;
+  ownersProcessed: number;
+  dealsArchived: number;
+  genericAttachmentsArchived: number;
+  error: string | null;
+  finishedAt: string;
+}
+
 export interface CapacityStatus {
   usedBytes: number;
   limitBytes: number;
@@ -19,8 +30,14 @@ export function capacityStatus(usedBytes: number, limitBytes: number): CapacityS
     remainingBytes: Math.max(0, limit - used),
     percent,
     progressPercent: Math.min(100, percent),
-    tone: percent >= 90 ? 'critical' : percent >= 75 ? 'warning' : 'safe',
+    tone: percent >= 85 ? 'critical' : percent >= 70 ? 'warning' : 'safe',
   };
+}
+
+export function archiveAutomationSummary(run: ArchiveAutomationSummaryInput): string {
+  if (run.status === 'failed') return `Automatic archive failed: ${run.error ?? 'unknown error'}`;
+  if (run.status === 'degraded') return 'Automatic archive completed with warnings and will retry remaining data.';
+  return `Archived ${run.dealsArchived.toLocaleString()} deal snapshots and ${run.genericAttachmentsArchived.toLocaleString()} attachment records across ${run.ownersProcessed.toLocaleString()} accounts.`;
 }
 
 export function formatBytes(bytes: number): string {

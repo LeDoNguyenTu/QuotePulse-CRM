@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     const userId = await resolveArchiveOwner(
       req,
       body.owner_id,
-      Deno.env.get('ARCHIVE_ADMIN_SECRET') ?? '',
+      Deno.env.get('ARCHIVE_ADMIN_SECRET') ?? Deno.env.get('STORAGE_CRON_SECRET') ?? Deno.env.get('QUEUE_CRON_SECRET') ?? '',
       getUserId,
     );
     const requested = Number(body.limit ?? 50);

@@ -81,7 +81,7 @@ jobs:
           set -euo pipefail
           names="$(supabase secrets list --project-ref "$PROJECT_REF" --output json | jq -r '.[].name')"
           missing=""
-          for secret in R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+          for secret in R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY QUEUE_CRON_SECRET; do
             grep -Fxq "$secret" <<<"$names" || missing="$missing $secret"
           done
           if [ -n "$missing" ]; then
@@ -95,8 +95,25 @@ jobs:
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status; do
+          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status storage-maintenance; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF"
             echo "::endgroup::"
           done
+
+      - name: Verify storage archive schedule
+        run: |
+          supabase db query --linked "do \$\$ begin
+            if not exists (
+              select 1 from vault.decrypted_secrets
+              where name = 'queue_worker_url'
+                and regexp_replace(decrypted_secret, '/process-email-queue/?$', '/storage-maintenance') ~ '/storage-maintenance$'
+            ) then raise exception 'Valid queue_worker_url is required for storage maintenance'; end if;
+            if not exists (
+              select 1 from vault.decrypted_secrets
+              where name = 'queue_cron_secret' and length(decrypted_secret) >= 16
+            ) then raise exception 'Valid queue_cron_secret is required for storage maintenance'; end if;
+            if not exists (
+              select 1 from cron.job where jobname = 'storage-pressure-r2-archive' and active
+            ) then raise exception 'storage-pressure-r2-archive cron job is not active'; end if;
+          end \$\$;"

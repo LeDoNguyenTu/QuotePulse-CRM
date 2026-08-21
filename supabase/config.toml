@@ -75,3 +75,6 @@ verify_jwt = false # function validates a user JWT or x-archive-secret itself
 
 [functions.storage-status]
 verify_jwt = true
+
+[functions.storage-maintenance]
+verify_jwt = false # cron-secret protected; invokes the owner-scoped archive worker

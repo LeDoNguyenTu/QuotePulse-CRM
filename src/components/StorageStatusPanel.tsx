@@ -1,5 +1,5 @@
 import type { StorageServiceStatus, StorageStatusResult } from '../lib/functions';
-import { capacityStatus, formatBytes, type CapacityTone } from '../lib/storageStatus';
+import { archiveAutomationSummary, capacityStatus, formatBytes, type CapacityTone } from '../lib/storageStatus';
 import { useStorageStatus } from '../hooks/useStorageStatus';
 import { Spinner } from './ui';
 
@@ -93,6 +93,17 @@ export function StorageStatusPanel() {
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <ServiceCapacity label="Supabase database" service={query.data.database} />
         <ServiceCapacity label="Cloudflare R2" service={query.data.r2} detail={r2Detail(query.data.r2)} />
+      </div>
+      <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <span className="font-medium text-slate-700">Automatic R2 archive:</span>{' '}
+        {query.data.archiveAutomation
+          ? archiveAutomationSummary(query.data.archiveAutomation)
+          : 'Ready. It activates at 70% database usage.'}
+        {query.data.archiveAutomation && (
+          <span className="ml-1 text-slate-400">
+            Last run {new Date(query.data.archiveAutomation.finishedAt).toLocaleString()}.
+          </span>
+        )}
       </div>
     </section>
   );

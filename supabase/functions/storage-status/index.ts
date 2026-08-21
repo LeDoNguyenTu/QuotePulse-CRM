@@ -58,6 +58,26 @@ const handler = createStorageStatusHandler({
     secretAccessKey: required('R2_SECRET_ACCESS_KEY'),
     analyticsToken: Deno.env.get('CLOUDFLARE_API_TOKEN'),
   }),
+  readArchiveAutomation: async () => {
+    const { data, error } = await admin
+      .from('storage_archive_runs')
+      .select('status, pressure, database_bytes, owners_processed, deals_archived, generic_attachments_archived, finished_at')
+      .order('finished_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return {
+      status: data.status as 'succeeded' | 'degraded' | 'failed',
+      pressure: data.pressure as 'warning' | 'critical',
+      databaseBytes: Number(data.database_bytes),
+      ownersProcessed: Number(data.owners_processed),
+      dealsArchived: Number(data.deals_archived),
+      genericAttachmentsArchived: Number(data.generic_attachments_archived),
+      error: data.status === 'failed' ? 'One or more archive batches failed. The system will retry automatically.' : null,
+      finishedAt: data.finished_at as string,
+    };
+  },
   now: () => new Date(),
   databaseLimitBytes: positiveLimit('DATABASE_SIZE_LIMIT_BYTES', 500_000_000),
   r2LimitBytes: positiveLimit('R2_STORAGE_LIMIT_BYTES', 10_000_000_000),

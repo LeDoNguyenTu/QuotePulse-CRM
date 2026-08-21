@@ -50,7 +50,6 @@ import {
   hubspotAttachmentPlaceholder,
 } from '../_shared/hubspotFiles.ts';
 import {
-  exactCaseInsensitivePattern,
   planExistingCompany,
   recoverCompanyInsertConflict,
   type ExistingCompanyForMerge,
@@ -1082,10 +1081,10 @@ async function upsertCompany(
 ): Promise<string | null> {
   const findExisting = async (): Promise<ExistingCompanyForMerge | null> => {
     const { data, error } = await ctx.admin
-      .from('companies')
-      .select('id, industry, website, hubspot_company_id, deleted_at')
-      .eq('owner_id', ctx.userId)
-      .filter('name_clean', 'imatch', exactCaseInsensitivePattern(input.name_clean))
+      .rpc('find_company_by_normalized_name', {
+        p_owner_id: ctx.userId,
+        p_name: input.name_clean,
+      })
       .maybeSingle();
     if (error) throw error;
     return data as ExistingCompanyForMerge | null;
@@ -1538,23 +1537,24 @@ async function findOrCreateCompany(
   // The name is taken. It may be a row sitting in the recycle bin — it owns deals
   // again now, so bring it back rather than leaving those deals invisible.
   const { data: found, error: findErr } = await admin
-    .from('companies')
-    .select('id, deleted_at, industry')
-    .eq('owner_id', userId)
-    .filter('name_clean', 'imatch', exactCaseInsensitivePattern(input.name_clean))
+    .rpc('find_company_by_normalized_name', {
+      p_owner_id: userId,
+      p_name: input.name_clean,
+    })
     .maybeSingle();
   if (findErr || !found) throw findErr ?? new Error(`company "${input.name_clean}" vanished`);
-  if (found.deleted_at) {
+  const existing = found as { id: string; deleted_at: string | null; industry: string | null };
+  if (existing.deleted_at) {
     await admin
       .from('companies')
       .update({ deleted_at: null })
-      .eq('id', found.id)
+      .eq('id', existing.id)
       .eq('owner_id', userId);
   }
   return {
-    id: found.id as string,
+    id: existing.id,
     created: false,
-    industry: (found.industry as string | null) ?? null,
+    industry: existing.industry ?? null,
   };
 }
 

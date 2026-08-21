@@ -5,6 +5,7 @@ import { resolveArchiveOwner } from '../_shared/archiveAuth.ts';
 import { assertCompanyArchivePointer, attachmentsForCompany, mergeAttachmentRecords, type AttachmentRecord } from '../_shared/attachmentArchive.ts';
 
 const MAX_BATCH = 1_000;
+const MAX_DEALS_PER_BATCH = 200;
 const MAX_COMPANIES_PER_BATCH = 200;
 
 type DealCandidate = {
@@ -24,6 +25,14 @@ type CompanyAttachmentBatch = {
   attachments: AttachmentRecord[];
 };
 
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return fallback;
+}
+
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
   if (preflight) return preflight;
@@ -42,7 +51,7 @@ Deno.serve(async (req) => {
 
     const { data: deals, error: dealsError } = await admin.rpc('deal_archive_candidates', {
       p_owner_id: userId,
-      p_limit: limit,
+      p_limit: Math.min(limit, MAX_DEALS_PER_BATCH),
     });
     if (dealsError) throw dealsError;
     if ((deals ?? []).length > 0) {
@@ -69,7 +78,7 @@ Deno.serve(async (req) => {
           counts.warnings.push(`${archiveRows.length - counts.deals_archived} deal snapshot(s) changed concurrently and will be retried.`);
         }
       } catch (error) {
-        counts.warnings.push(`deal batch: ${error instanceof Error ? error.message : 'archive failed'}`);
+        counts.warnings.push(`deal batch: ${errorMessage(error, 'archive failed')}`);
       }
     }
 
@@ -150,7 +159,7 @@ Deno.serve(async (req) => {
           counts.generic_attachments_archived = Number(removed ?? 0);
         }
       } catch (error) {
-        counts.warnings.push(`attachment batch: ${error instanceof Error ? error.message : 'archive failed'}`);
+        counts.warnings.push(`attachment batch: ${errorMessage(error, 'archive failed')}`);
       }
     }
     const attempted = (deals?.length ?? 0) + companyIds.length;

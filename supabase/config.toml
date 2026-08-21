@@ -67,5 +67,8 @@ verify_jwt = true
 [functions.company-attachments]
 verify_jwt = true
 
+[functions.deal-archive-properties]
+verify_jwt = true
+
 [functions.archive-hubspot-data]
 verify_jwt = false # function validates a user JWT or x-archive-secret itself

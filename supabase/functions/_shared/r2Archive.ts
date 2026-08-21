@@ -8,6 +8,12 @@ type R2Config = {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+function arrayBuffer(value: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy.buffer;
+}
+
 function env(name: string): string | undefined {
   return (globalThis as { Deno?: { env?: { get: (key: string) => string | undefined } } }).Deno?.env?.get(name);
 }
@@ -28,13 +34,21 @@ export function dealArchiveKey(ownerId: string, dealId: string, modifiedAt: stri
   return `owners/${ownerId}/deals/${dealId}/${version}.json.gz`;
 }
 
-export function companyAttachmentArchiveKey(ownerId: string, companyId: string): string {
-  return `owners/${ownerId}/companies/${companyId}/generic-attachments.json.gz`;
+export function dealBatchArchiveKey(ownerId: string, batchId: string): string {
+  return `owners/${ownerId}/deal-batches/${encodeURIComponent(batchId)}.json.gz`;
+}
+
+export function companyAttachmentArchiveKey(ownerId: string, companyId: string, version: string): string {
+  return `owners/${ownerId}/companies/${companyId}/generic-attachments/${encodeURIComponent(version)}.json.gz`;
+}
+
+export function companyAttachmentBatchArchiveKey(ownerId: string, batchId: string): string {
+  return `owners/${ownerId}/attachment-batches/${encodeURIComponent(batchId)}.json.gz`;
 }
 
 export async function sha256Hex(value: string | Uint8Array): Promise<string> {
   const bytes = typeof value === 'string' ? encoder.encode(value) : value;
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest('SHA-256', arrayBuffer(bytes));
   return [...new Uint8Array(digest)].map((part) => part.toString(16).padStart(2, '0')).join('');
 }
 
@@ -60,7 +74,7 @@ export function archiveObjectHeaders(): Record<string, string> {
 }
 
 async function hmac(key: Uint8Array, value: string): Promise<Uint8Array> {
-  const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const cryptoKey = await crypto.subtle.importKey('raw', arrayBuffer(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(value)));
 }
 
@@ -77,7 +91,7 @@ async function gzip(value: string): Promise<Uint8Array> {
 }
 
 async function gunzip(value: Uint8Array): Promise<string> {
-  const stream = new Blob([value]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const stream = new Blob([arrayBuffer(value)]).stream().pipeThrough(new DecompressionStream('gzip'));
   return new Response(stream).text();
 }
 
@@ -105,7 +119,7 @@ async function signedRequest(method: 'GET' | 'PUT', key: string, body?: Uint8Arr
       'x-amz-date': amzDate,
       authorization,
     },
-    body: body,
+    body: body ? arrayBuffer(body) : undefined,
   });
 }
 

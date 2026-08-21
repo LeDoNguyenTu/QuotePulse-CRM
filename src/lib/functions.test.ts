@@ -22,4 +22,12 @@ describe('company attachment function wrapper', () => {
       body: { company_id: 'company-id' },
     }));
   });
+
+  it('loads archived deal properties through the authenticated endpoint', async () => {
+    invoke.mockResolvedValue({ data: { properties: { 'deal-id': { custom: 'value' } } }, error: null });
+    await functions.dealArchiveProperties(['deal-id']);
+    expect(invoke).toHaveBeenCalledWith('deal-archive-properties', expect.objectContaining({
+      body: { deal_ids: ['deal-id'] },
+    }));
+  });
 });

@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import type { Contact, Deal } from '../lib/types';
 import type { HubspotObjectTableType } from '../lib/hubspotObjectTable';
 import { useAuth } from './useAuth';
+import { functions } from '../lib/functions';
+import { restoreArchivedDealProperties } from '../lib/hubspotObjectsArchive';
 
 export type HubspotObjectRow = Deal | Contact;
 
@@ -49,7 +51,11 @@ export function useHubspotObjects(
 
       const { data, count, error } = await query.range(from, from + filters.pageSize - 1);
       if (error) throw error;
-      return { rows: (data ?? []) as HubspotObjectRow[], count: count ?? 0 };
+      const rows = (data ?? []) as HubspotObjectRow[];
+      if (objectType === 'deals' && rows.length > 0) {
+        await restoreArchivedDealProperties(rows as Deal[], functions.dealArchiveProperties);
+      }
+      return { rows, count: count ?? 0 };
     },
   });
 }

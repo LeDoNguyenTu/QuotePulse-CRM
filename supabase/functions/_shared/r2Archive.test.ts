@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   archiveObjectHeaders,
+  companyAttachmentBatchArchiveKey,
   companyAttachmentArchiveKey,
+  dealBatchArchiveKey,
   dealArchiveKey,
   sha256Hex,
   verifyArchivePayload,
@@ -17,9 +19,19 @@ describe('R2 cold archive keys and verification', () => {
       .toMatch(/^owners\/owner-a\/deals\/deal-b\//);
   });
 
+  it('uses one owner-scoped object for a migration batch', () => {
+    expect(dealBatchArchiveKey('owner-a', 'batch-b'))
+      .toBe('owners/owner-a/deal-batches/batch-b.json.gz');
+  });
+
   it('keeps generic attachment manifests inside the owner and company scope', () => {
-    expect(companyAttachmentArchiveKey('owner-a', 'company-b'))
-      .toBe('owners/owner-a/companies/company-b/generic-attachments.json.gz');
+    expect(companyAttachmentArchiveKey('owner-a', 'company-b', 'batch-c'))
+      .toBe('owners/owner-a/companies/company-b/generic-attachments/batch-c.json.gz');
+  });
+
+  it('uses one owner-scoped object for a generic attachment migration batch', () => {
+    expect(companyAttachmentBatchArchiveKey('owner-a', 'batch-b'))
+      .toBe('owners/owner-a/attachment-batches/batch-b.json.gz');
   });
 
   it('rejects an archive payload with a different checksum', async () => {

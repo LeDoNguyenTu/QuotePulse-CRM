@@ -76,13 +76,26 @@ jobs:
       - name: Link project
         run: supabase link --project-ref "$PROJECT_REF"
 
+      - name: Check R2 Edge Function secrets
+        run: |
+          set -euo pipefail
+          names="$(supabase secrets list --project-ref "$PROJECT_REF" --output json | jq -r '.[].name')"
+          missing=""
+          for secret in R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            grep -Fxq "$secret" <<<"$names" || missing="$missing $secret"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing Supabase Edge Function secret(s):$missing"
+            exit 1
+          fi
+
       - name: Apply migrations
         run: supabase db push
 
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx uploaded-file-merge company-attachments archive-hubspot-data; do
+          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF"
             echo "::endgroup::"

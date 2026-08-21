@@ -110,6 +110,10 @@ export interface CompanyAttachmentsResult {
   attachments: import('./types').Attachment[];
 }
 
+export interface DealArchivePropertiesResult {
+  properties: Record<string, Record<string, string | null>>;
+}
+
 export const functions = {
   hubspotIngest: (opts?: { company_id?: string }) =>
     invoke<IngestResult>('hubspot-ingest', opts ?? {}),
@@ -127,6 +131,9 @@ export const functions = {
 
   companyAttachments: async (company_id: string) =>
     (await invoke<CompanyAttachmentsResult>('company-attachments', { company_id })).attachments,
+
+  dealArchiveProperties: async (deal_ids: string[]) =>
+    (await invoke<DealArchivePropertiesResult>('deal-archive-properties', { deal_ids })).properties,
 
   msAuthStart: () =>
     invoke<MsAuthStartResult>('ms-auth-start', {

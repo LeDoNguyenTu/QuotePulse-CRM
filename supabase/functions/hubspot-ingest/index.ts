@@ -518,7 +518,7 @@ async function sweepDeals(
           after
         );
         for (const hit of pageRes.results) {
-          if (outOfBudget(ctx)) return;
+          if (outOfBudget(ctx)) return false;
           try {
             // Search doesn't return associations — hydrate each changed deal.
             const deal = await ctx.hs.getOne('deals', hit.id, DEAL_PROPS, ctx.assoc);
@@ -946,6 +946,12 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
       hubspot_modified_at: nullableHubspotTimestamp(deal.properties.hs_lastmodifieddate),
       hubspot_properties: deal.properties,
       hubspot_properties_schema_version: ctx.propertyVersions.deals,
+      // A changed snapshot supersedes the previous object. Clearing the pointer
+      // makes a failed upload visible to the resumable migration instead of
+      // leaving bulky properties in Postgres indefinitely.
+      r2_archive_key: null,
+      r2_archive_sha256: null,
+      r2_archived_at: null,
     },
     { onConflict: 'owner_id,hubspot_deal_id' }
   ).select('id').single();
@@ -960,13 +966,16 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
       dealArchiveKey(ctx.userId, dealRowId, deal.properties.hs_lastmodifieddate ?? new Date().toISOString()),
       { hubspot_deal_id: deal.id, properties: deal.properties }
     );
-    const { error } = await ctx.admin.from('deals').update({
-      hubspot_properties: {},
-      r2_archive_key: archived.key,
-      r2_archive_sha256: archived.checksum,
-      r2_archived_at: new Date().toISOString(),
-    }).eq('id', dealRowId).eq('owner_id', ctx.userId);
+    const { data: finalized, error } = await ctx.admin.rpc('finalize_deal_archive', {
+      p_owner_id: ctx.userId,
+      p_deal_id: dealRowId,
+      p_expected_modified_at: nullableHubspotTimestamp(deal.properties.hs_lastmodifieddate),
+      p_expected_properties: deal.properties,
+      p_r2_key: archived.key,
+      p_r2_sha256: archived.checksum,
+    });
     if (error) throw error;
+    if (!finalized) throw new Error('deal changed concurrently; archive will retry on the next sync');
   } catch (error) {
     ctx.warnings.push(`deal ${deal.id}: R2 archive failed; the Postgres snapshot was retained (${msg(error)})`);
   }

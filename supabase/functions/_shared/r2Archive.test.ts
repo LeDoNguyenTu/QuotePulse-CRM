@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  archiveObjectHeaders,
   companyAttachmentArchiveKey,
   dealArchiveKey,
   sha256Hex,
@@ -7,6 +8,10 @@ import {
 } from './r2Archive.ts';
 
 describe('R2 cold archive keys and verification', () => {
+  it('stores gzip bytes as an object payload without HTTP auto-decompression metadata', () => {
+    expect(archiveObjectHeaders()).toEqual({ 'content-type': 'application/gzip' });
+  });
+
   it('keeps deal archives inside the owner scope', () => {
     expect(dealArchiveKey('owner-a', 'deal-b', '2026-08-18T00:00:00Z'))
       .toMatch(/^owners\/owner-a\/deals\/deal-b\//);

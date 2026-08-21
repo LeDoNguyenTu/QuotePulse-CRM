@@ -52,6 +52,13 @@ function encodeKey(key: string): string {
   return key.split('/').map(encodeURIComponent).join('/');
 }
 
+export function archiveObjectHeaders(): Record<string, string> {
+  // Do not use Content-Encoding: gzip here. Fetch implementations commonly
+  // decompress that response automatically, which would make our explicit
+  // checksum read-back try to gunzip already-decoded JSON.
+  return { 'content-type': 'application/gzip' };
+}
+
 async function hmac(key: Uint8Array, value: string): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(value)));
@@ -82,9 +89,9 @@ async function signedRequest(method: 'GET' | 'PUT', key: string, body?: Uint8Arr
   const host = `${config.accountId}.r2.cloudflarestorage.com`;
   const canonicalUri = `/${encodeURIComponent(config.bucket)}/${encodeKey(key)}`;
   const payloadHash = await sha256Hex(body ?? new Uint8Array());
-  const isUpload = method === 'PUT';
-  const canonicalHeaders = `${isUpload ? 'content-encoding:gzip\n' : ''}content-type:application/json\nhost:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
-  const signedHeaders = `${isUpload ? 'content-encoding;' : ''}content-type;host;x-amz-content-sha256;x-amz-date`;
+  const contentType = method === 'PUT' ? archiveObjectHeaders()['content-type'] : 'application/json';
+  const canonicalHeaders = `content-type:${contentType}\nhost:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date';
   const canonicalRequest = `${method}\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
   const scope = `${day}/auto/s3/aws4_request`;
   const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${await sha256Hex(canonicalRequest)}`;
@@ -93,8 +100,7 @@ async function signedRequest(method: 'GET' | 'PUT', key: string, body?: Uint8Arr
   return fetch(`https://${host}${canonicalUri}`, {
     method,
     headers: {
-      'content-type': 'application/json',
-      ...(isUpload ? { 'content-encoding': 'gzip' } : {}),
+      'content-type': contentType,
       'x-amz-content-sha256': payloadHash,
       'x-amz-date': amzDate,
       authorization,

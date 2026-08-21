@@ -1,6 +1,7 @@
 import { errorResponse, handleOptions, json } from '../_shared/cors.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
 import { companyAttachmentArchiveKey, dealArchiveKey, putVerifiedArchive } from '../_shared/r2Archive.ts';
+import { resolveArchiveOwner } from '../_shared/archiveAuth.ts';
 
 const MAX_BATCH = 100;
 
@@ -8,8 +9,14 @@ Deno.serve(async (req) => {
   const preflight = handleOptions(req);
   if (preflight) return preflight;
   try {
-    const userId = await getUserId(req);
-    const requested = Number((await req.json().catch(() => ({})) as { limit?: number }).limit ?? 50);
+    const body = await req.json().catch(() => ({})) as { limit?: number; owner_id?: string };
+    const userId = await resolveArchiveOwner(
+      req,
+      body.owner_id,
+      Deno.env.get('ARCHIVE_ADMIN_SECRET') ?? '',
+      getUserId,
+    );
+    const requested = Number(body.limit ?? 50);
     const limit = Math.min(Math.max(1, requested), MAX_BATCH);
     const admin = getAdminClient();
     const counts = { deals_archived: 0, generic_attachments_archived: 0, warnings: [] as string[] };

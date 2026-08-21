@@ -68,4 +68,4 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.archive-hubspot-data]
-verify_jwt = true
+verify_jwt = false # function validates a user JWT or x-archive-secret itself

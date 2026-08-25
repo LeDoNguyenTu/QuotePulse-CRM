@@ -41,6 +41,22 @@ export function accumulateImportResult(current: IngestResult, next: IngestResult
   for (const key of Object.keys(counts) as (keyof IngestResult['counts'])[]) {
     counts[key] += normalizedNext.counts?.[key] ?? 0;
   }
+  const progress = normalizedNext.progress && normalizedCurrent.progress
+    ? {
+        ...normalizedNext.progress,
+        deals_in_hubspot:
+          normalizedNext.progress.deals_in_hubspot ?? normalizedCurrent.progress.deals_in_hubspot,
+        deals_imported:
+          normalizedNext.progress.deals_imported ??
+          ((normalizedCurrent.progress.deals_imported ?? 0) > 0
+            ? normalizedCurrent.progress.deals_imported
+            : null),
+        companies: normalizedNext.progress.companies ??
+          ((normalizedCurrent.progress.companies ?? 0) > 0
+            ? normalizedCurrent.progress.companies
+            : null),
+      }
+    : normalizedNext.progress ?? normalizedCurrent.progress;
   return {
     ...normalizedCurrent,
     ok: normalizedCurrent.ok && normalizedNext.ok,
@@ -48,7 +64,7 @@ export function accumulateImportResult(current: IngestResult, next: IngestResult
     errors: [...new Set([...normalizedCurrent.errors, ...(normalizedNext.errors ?? [])])],
     warnings: [...new Set([...normalizedCurrent.warnings, ...(normalizedNext.warnings ?? [])])],
     done: normalizedNext.done ?? normalizedCurrent.done,
-    progress: normalizedNext.progress ?? normalizedCurrent.progress,
+    progress,
   };
 }
 

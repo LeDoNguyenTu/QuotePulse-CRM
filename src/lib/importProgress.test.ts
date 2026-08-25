@@ -28,6 +28,7 @@ describe('HubSpot import progress timing', () => {
     expect(liveImportPercent(1_000, 1_000, 'backfill')).toBe(99);
     expect(liveImportPercent(1_000, 1_000, 'properties')).toBe(100);
     expect(liveImportPercent(null, 0, 'backfill')).toBeNull();
+    expect(liveImportPercent(1_000, null, 'backfill')).toBeNull();
   });
 
   it('changes the activity message at the slow-step boundary', () => {

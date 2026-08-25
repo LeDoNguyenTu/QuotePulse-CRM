@@ -15,10 +15,33 @@ export function shouldSkipUnchangedDeal(input: {
 }
 
 export function isDealCountCaughtUp(
-  imported: number,
+  imported: number | null,
   remoteTotal: number | null,
   slack: number,
 ): boolean {
-  if (remoteTotal == null) return false;
+  if (imported == null || remoteTotal == null) return false;
   return imported >= remoteTotal - slack;
+}
+
+const VERIFIED_TOTAL_PREFIX = 'verified-total:';
+
+export function encodeVerifiedDealTotal(total: number | null): string | null {
+  if (total == null || !Number.isSafeInteger(total) || total < 0) return null;
+  return `${VERIFIED_TOTAL_PREFIX}${total}`;
+}
+
+export function decodeVerifiedDealTotal(cursor: string | null): number | null {
+  if (!cursor?.startsWith(VERIFIED_TOTAL_PREFIX)) return null;
+  const total = Number(cursor.slice(VERIFIED_TOTAL_PREFIX.length));
+  return Number.isSafeInteger(total) && total >= 0 ? total : null;
+}
+
+export function isVerifiedIncrementalTotalCurrent(
+  cursor: string | null,
+  remoteTotal: number | null,
+  slack: number,
+): boolean {
+  const verifiedTotal = decodeVerifiedDealTotal(cursor);
+  if (verifiedTotal == null || remoteTotal == null) return false;
+  return remoteTotal <= verifiedTotal + slack;
 }

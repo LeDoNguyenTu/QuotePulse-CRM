@@ -496,8 +496,8 @@ function ImportProgressPanel({
 
   const { counts, progress, startedAt } = live;
   const total = progress?.deals_in_hubspot ?? null;
-  const imported = progress?.deals_imported ?? 0;
-  const remaining = total != null ? Math.max(0, total - imported) : null;
+  const imported = progress?.deals_imported ?? null;
+  const remaining = total != null && imported != null ? Math.max(0, total - imported) : null;
   const repairingProperties = progress?.phase === 'properties';
 
   // Normal catch-up stays below 100 until the backend confirms it. The property
@@ -559,12 +559,18 @@ function ImportProgressPanel({
             Normal sync is caught up. Full readable properties are being added to historic deals;
             new and modified deals remain prioritized, and this maintenance cursor resumes automatically.
           </>
-        ) : total != null ? (
+        ) : total != null && imported != null ? (
           <>
             <b>{imported.toLocaleString()}</b> of <b>{total.toLocaleString()}</b> deals imported ·{' '}
-            <b>{remaining?.toLocaleString()}</b> remaining · {progress?.companies.toLocaleString()}{' '}
-            companies
+            <b>{remaining?.toLocaleString()}</b> remaining ·{' '}
+            {progress?.companies == null
+              ? 'company count temporarily unavailable'
+              : `${progress.companies.toLocaleString()} companies`}
             {etaMin != null && ` · about ${etaMin} min left`}
+          </>
+        ) : total != null ? (
+          <>
+            <b>{total.toLocaleString()}</b> deals in HubSpot · local count temporarily unavailable
           </>
         ) : (
           'Starting…'

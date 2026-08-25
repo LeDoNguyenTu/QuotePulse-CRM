@@ -187,7 +187,9 @@ export function HubspotImportProvider({ children }: { children: ReactNode }) {
         const result = await functions.hubspotIngest();
         report = accumulateImportResult(report, result);
         const completedAt = Date.now();
-        const nextProgress = result.progress ?? live.progress;
+        // Accumulation preserves the last known row counts when a busy Nano
+        // database cannot provide a fresh estimate for this particular slice.
+        const nextProgress = report.progress ?? live.progress;
         const previousImported = live.progress?.deals_imported;
         const currentImported = nextProgress?.deals_imported;
         const recentRate = previousImported != null && currentImported != null

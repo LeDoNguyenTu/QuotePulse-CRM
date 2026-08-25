@@ -36,8 +36,9 @@ async function invoke<T>(name: string, body?: unknown): Promise<T> {
 export interface ImportProgress {
   /** Total deals in HubSpot. null when the count could not be read. */
   deals_in_hubspot: number | null;
-  deals_imported: number;
-  companies: number;
+  /** Fast local estimate. null when Postgres is too busy to provide one. */
+  deals_imported: number | null;
+  companies: number | null;
   phase: 'backfill' | 'incremental' | 'properties';
 }
 

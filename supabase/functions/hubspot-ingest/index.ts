@@ -45,7 +45,10 @@ import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import { formatHubspotError } from '../_shared/hubspotErrors.ts';
 import {
   canAdvanceIncrementalWatermark,
+  decodeVerifiedDealTotal,
+  encodeVerifiedDealTotal,
   isDealCountCaughtUp,
+  isVerifiedIncrementalTotalCurrent,
   pageFullyProcessed,
   shouldSkipUnchangedDeal,
 } from '../_shared/hubspotSync.ts';
@@ -82,6 +85,9 @@ const DEAL_PROPS = [
 // own deal count. Slack absorbs the handful of deals that get archived or deleted
 // in HubSpot between the count and the crawl.
 const CATCHUP_SLACK = 25;
+const PORTAL_GROWTH_RECHECK_THRESHOLD = 1_000;
+const PROGRESS_COUNT_STREAM = 'deals:progress-count';
+const PROGRESS_COUNT_CACHE_MS = 15 * 60 * 1000;
 const COMPANY_PROPS = ['name', 'domain', 'industry', 'website'];
 const CONTACT_PROPS = ['firstname', 'lastname', 'email', 'phone', 'jobtitle'];
 const NOTE_PROPS = ['hs_note_body', 'hs_attachment_ids'];
@@ -116,9 +122,10 @@ interface Ctx {
   products: Set<string>;
   /** HubSpot's total active-deal count, fetched once per invocation (null if unknown). */
   dealTotal: number | null;
-  /** Exact local counts captured once at invocation start and reused for decisions/progress. */
-  activeDealCount: number;
-  companyCount: number;
+  /** Fast local estimates captured once at invocation start; null when Postgres is throttled. */
+  activeDealCount: number | null;
+  activeDealCountExact: boolean;
+  companyCount: number | null;
   propertyDefinitions: Record<ImportObjectType, HubspotPropertyDefinition[]>;
   propertyVersions: Record<ImportObjectType, string>;
   objectCache: Map<string, HsObject>;
@@ -197,11 +204,11 @@ Deno.serve(async (req) => {
       }, 502);
     }
     const propertyDefinitions = propertyLoad.definitions;
-    const [products, dealTotal, activeDealCount, companyCount] = await Promise.all([
+    const [products, dealTotal, activeDealSnapshot, companyCount] = await Promise.all([
       loadProductDictionary(admin, userId),
       hs.countAll('deals'),
-      countActiveDeals(admin, userId),
-      countCompanies(admin, userId),
+      loadActiveDealCount(admin, userId, warnings),
+      countCompanies(admin, userId, warnings),
     ]);
     const ctx: Ctx = {
       hs,
@@ -216,7 +223,8 @@ Deno.serve(async (req) => {
       processed: 0,
       products,
       dealTotal,
-      activeDealCount,
+      activeDealCount: activeDealSnapshot.count,
+      activeDealCountExact: activeDealSnapshot.exact,
       companyCount,
       propertyDefinitions,
       propertyVersions: {
@@ -232,12 +240,20 @@ Deno.serve(async (req) => {
     // account without Files scope never calls that API or emits its warning.
     await repairMissingAttachmentMetadata(ctx);
 
-    // Are we still missing deals? Decide from LIVE COUNTS, not a stored phase flag.
-    // The stored flag stranded 127k deals: an earlier (smaller) portal's backfill
-    // finished and latched phase='incremental'; after a bigger portal was connected,
-    // every run only pulled recently-modified deals and never the older historical
-    // ones. Counting on each run means a real gap always forces a backfill.
-    const caughtUp = await dealsCaughtUp(ctx);
+    // Incremental mode is reusable only when it records the HubSpot total that
+    // was verified at graduation. A larger replacement portal invalidates the
+    // marker and re-enters backfill without a full local count on every slice.
+    const activeState = await loadSyncState(admin, userId, 'deals:current');
+    const verifiedPortalStillCurrent = isVerifiedIncrementalTotalCurrent(
+      activeState.page_cursor,
+      dealTotal,
+      PORTAL_GROWTH_RECHECK_THRESHOLD,
+    );
+    const freshCountShowsNoLargeGap = !activeDealSnapshot.exact || dealTotal == null ||
+      activeDealSnapshot.count == null ||
+      activeDealSnapshot.count >= dealTotal - PORTAL_GROWTH_RECHECK_THRESHOLD;
+    const caughtUp = activeState.phase === 'incremental' && verifiedPortalStillCurrent &&
+      freshCountShowsNoLargeGap;
 
     // Active deals: backfill until caught up, then cheap incremental catch-up.
     const activeDealsDone = await sweepDeals(ctx, {
@@ -552,7 +568,7 @@ async function sweepDeals(
 
       await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
         phase: 'incremental',
-        page_cursor: null,
+        page_cursor: encodeVerifiedDealTotal(ctx.dealTotal) ?? state.page_cursor,
         last_synced_at: startedAt,
       });
       return true;
@@ -622,7 +638,7 @@ async function sweepDeals(
     // session can advance to archived companies instead of restarting at page 1.
     let phase: 'backfill' | 'incremental' = opts.archived ? 'incremental' : 'backfill';
     if (!opts.archived) {
-      const caughtUp = await dealsCaughtUp(ctx);
+      const caughtUp = await confirmDealsCaughtUp(ctx);
       // Also stop when a full re-page (top → end, all in this one run) turned up
       // nothing new: the count may never reach total if a few deals perpetually
       // error, and re-paging forever would waste every run. If we saw the whole
@@ -632,7 +648,9 @@ async function sweepDeals(
     }
     await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
       phase,
-      page_cursor: null,
+      page_cursor: phase === 'incremental'
+        ? encodeVerifiedDealTotal(ctx.dealTotal ?? ctx.activeDealCount)
+        : null,
       last_synced_at: phase === 'incremental' ? startedAt : state.last_synced_at,
     });
     return true;
@@ -801,8 +819,16 @@ async function sweepStoredPropertyCoverage(
 }
 
 /** True once we hold within CATCHUP_SLACK of HubSpot's active-deal count. */
-async function dealsCaughtUp(ctx: Ctx): Promise<boolean> {
-  return isDealCountCaughtUp(ctx.activeDealCount, ctx.dealTotal, CATCHUP_SLACK);
+async function confirmDealsCaughtUp(ctx: Ctx): Promise<boolean> {
+  if (ctx.activeDealCountExact) {
+    return isDealCountCaughtUp(ctx.activeDealCount, ctx.dealTotal, CATCHUP_SLACK);
+  }
+  const exactCount = await countActiveDeals(ctx.admin, ctx.userId, ctx.warnings);
+  if (exactCount == null) return false;
+  ctx.activeDealCount = exactCount;
+  ctx.activeDealCountExact = true;
+  await cacheActiveDealCount(ctx.admin, ctx.userId, exactCount);
+  return isDealCountCaughtUp(exactCount, ctx.dealTotal, CATCHUP_SLACK);
 }
 
 async function sweepArchivedCompanies(ctx: Ctx): Promise<boolean> {
@@ -1346,9 +1372,8 @@ async function progress(ctx: Ctx, phaseOverride?: 'properties') {
   const state = await loadSyncState(ctx.admin, ctx.userId, 'deals:current');
   return {
     deals_in_hubspot: ctx.dealTotal, // already counted once this invocation
-    // These exact counts are intentionally invocation-start snapshots. Reusing
-    // them avoids rescanning 184k+ rows at the end of every 30-second slice; the
-    // next slice refreshes them and advances the visible progress.
+    // The exact local count is cached for 15 minutes. This keeps the display
+    // stable without rescanning 184k+ rows at the end of every server slice.
     deals_imported: ctx.activeDealCount,
     companies: ctx.companyCount,
     phase: phaseOverride ?? state.phase,
@@ -1356,22 +1381,73 @@ async function progress(ctx: Ctx, phaseOverride?: 'properties') {
 }
 
 /** Matches HubSpot's own total, which likewise excludes archived deals. */
-async function countActiveDeals(admin: SupabaseClient, userId: string): Promise<number> {
-  const { count } = await admin
+async function countActiveDeals(
+  admin: SupabaseClient,
+  userId: string,
+  warnings: string[],
+): Promise<number | null> {
+  const { count, error } = await admin
     .from('deals')
     .select('id', { count: 'exact', head: true })
     .eq('owner_id', userId)
     .eq('is_archived', false);
-  return count ?? 0;
+  if (error || count == null) {
+    warnings.push(
+      'Supabase is too busy to refresh the deal count. Import is still running and will retry after the count cache expires.',
+    );
+    return null;
+  }
+  return count;
 }
 
-async function countCompanies(admin: SupabaseClient, userId: string): Promise<number> {
-  const { count } = await admin
+async function loadActiveDealCount(
+  admin: SupabaseClient,
+  userId: string,
+  warnings: string[],
+): Promise<{ count: number | null; exact: boolean }> {
+  const cached = await loadSyncState(admin, userId, PROGRESS_COUNT_STREAM);
+  if (syncCompletedRecently(cached.last_synced_at, Date.now(), PROGRESS_COUNT_CACHE_MS)) {
+    return { count: decodeVerifiedDealTotal(cached.page_cursor), exact: false };
+  }
+
+  const count = await countActiveDeals(admin, userId, warnings);
+  await saveSyncState(admin, userId, PROGRESS_COUNT_STREAM, {
+    phase: 'incremental',
+    page_cursor: encodeVerifiedDealTotal(count),
+    last_synced_at: new Date().toISOString(),
+  });
+  return { count, exact: count != null };
+}
+
+async function cacheActiveDealCount(
+  admin: SupabaseClient,
+  userId: string,
+  count: number,
+): Promise<void> {
+  await saveSyncState(admin, userId, PROGRESS_COUNT_STREAM, {
+    phase: 'incremental',
+    page_cursor: encodeVerifiedDealTotal(count),
+    last_synced_at: new Date().toISOString(),
+  });
+}
+
+async function countCompanies(
+  admin: SupabaseClient,
+  userId: string,
+  warnings: string[],
+): Promise<number | null> {
+  const { count, error } = await admin
     .from('companies')
-    .select('id', { count: 'exact', head: true })
+    .select('id', { count: 'planned', head: true })
     .eq('owner_id', userId)
     .is('deleted_at', null);
-  return count ?? 0;
+  if (error || count == null) {
+    warnings.push(
+      'Supabase is too busy to estimate the company count. Import is still running and will retry the count next step.',
+    );
+    return null;
+  }
+  return count;
 }
 
 // --- rebuild ----------------------------------------------------------------

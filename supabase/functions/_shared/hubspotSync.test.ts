@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAdvanceIncrementalWatermark,
+  encodeVerifiedDealTotal,
   isDealCountCaughtUp,
+  isVerifiedIncrementalTotalCurrent,
   pageFullyProcessed,
   shouldSkipUnchangedDeal,
 } from './hubspotSync';
@@ -42,6 +44,16 @@ describe('HubSpot sync cursor guards', () => {
   it('requires a known remote total and respects the catch-up slack boundary', () => {
     expect(isDealCountCaughtUp(975, 1_000, 25)).toBe(true);
     expect(isDealCountCaughtUp(974, 1_000, 25)).toBe(false);
+    expect(isDealCountCaughtUp(null, 1_000, 25)).toBe(false);
     expect(isDealCountCaughtUp(1_000, null, 25)).toBe(false);
+  });
+
+  it('reuses incremental verification only while the HubSpot total remains close', () => {
+    const cursor = encodeVerifiedDealTotal(186_700);
+    expect(cursor).toBe('verified-total:186700');
+    expect(isVerifiedIncrementalTotalCurrent(cursor, 186_723, 25)).toBe(true);
+    expect(isVerifiedIncrementalTotalCurrent(cursor, 186_726, 25)).toBe(false);
+    expect(isVerifiedIncrementalTotalCurrent(null, 186_723, 25)).toBe(false);
+    expect(isVerifiedIncrementalTotalCurrent('17364384361', 186_723, 25)).toBe(false);
   });
 });

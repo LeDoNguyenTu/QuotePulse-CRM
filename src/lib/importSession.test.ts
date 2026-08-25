@@ -49,6 +49,58 @@ describe('HubSpot import session', () => {
     ]);
   });
 
+  it('keeps the last known progress counts when a throttled slice cannot count rows', () => {
+    const first = accumulateImportResult(emptyImportResult(), {
+      ...emptyImportResult(),
+      progress: {
+        deals_in_hubspot: 186_723,
+        deals_imported: 184_809,
+        companies: 62_110,
+        phase: 'backfill',
+      },
+    });
+    const next = accumulateImportResult(first, {
+      ...emptyImportResult(),
+      progress: {
+        deals_in_hubspot: 186_723,
+        deals_imported: null,
+        companies: null,
+        phase: 'backfill',
+      },
+    });
+
+    expect(next.progress).toEqual({
+      deals_in_hubspot: 186_723,
+      deals_imported: 184_809,
+      companies: 62_110,
+      phase: 'backfill',
+    });
+  });
+
+  it('does not preserve a legacy false-zero snapshot when the next count is unavailable', () => {
+    const first = accumulateImportResult(emptyImportResult(), {
+      ...emptyImportResult(),
+      progress: {
+        deals_in_hubspot: 186_723,
+        deals_imported: 0,
+        companies: 0,
+        phase: 'backfill',
+      },
+    });
+    const next = accumulateImportResult(first, {
+      ...emptyImportResult(),
+      progress: {
+        deals_in_hubspot: 186_723,
+        deals_imported: null,
+        companies: null,
+        phase: 'backfill',
+      },
+    });
+
+    expect(next.progress?.deals_imported).toBeNull();
+    expect(next.progress?.companies).toBeNull();
+  });
+
   it('normalizes reports saved before property-backfill counts existed', () => {
     const legacy = {
       ...emptyImportResult(),

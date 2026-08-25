@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   importActivityText,
+  liveImportPercent,
   importResponseTimestamp,
   recentDealsPerSecond,
   recentImportEtaMinutes,
@@ -20,6 +21,13 @@ describe('HubSpot import progress timing', () => {
     expect(recentImportEtaMinutes(600, 2, 'backfill')).toBe(5);
     expect(recentImportEtaMinutes(600, null, 'backfill')).toBeNull();
     expect(recentImportEtaMinutes(600, 2, 'properties')).toBeNull();
+  });
+
+  it('shows core sync as complete while historical property maintenance continues', () => {
+    expect(liveImportPercent(1_000, 999, 'backfill')).toBe(99);
+    expect(liveImportPercent(1_000, 1_000, 'backfill')).toBe(99);
+    expect(liveImportPercent(1_000, 1_000, 'properties')).toBe(100);
+    expect(liveImportPercent(null, 0, 'backfill')).toBeNull();
   });
 
   it('changes the activity message at the slow-step boundary', () => {

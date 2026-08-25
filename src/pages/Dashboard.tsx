@@ -30,6 +30,7 @@ import { importCompletionPercent, shouldShowImportReport } from '../lib/importRe
 import { shouldShowLiveImport } from '../lib/importSession';
 import {
   importActivityText,
+  liveImportPercent,
   importResponseTimestamp,
   recentImportEtaMinutes,
 } from '../lib/importProgress';
@@ -499,10 +500,10 @@ function ImportProgressPanel({
   const remaining = total != null ? Math.max(0, total - imported) : null;
   const repairingProperties = progress?.phase === 'properties';
 
-  // Hold at 99% until the function actually reports done: HubSpot's total counts
-  // only active deals, so archived ones can push the ratio past 1.
-  const percent =
-    total && total > 0 ? Math.min(99, Math.round((imported / total) * 100)) : null;
+  // Normal catch-up stays below 100 until the backend confirms it. The property
+  // phase is entered only after active deals are caught up, so it can truthfully
+  // show core synchronization at 100 while historic field maintenance continues.
+  const percent = liveImportPercent(total, imported, progress?.phase);
 
   const etaMin = recentImportEtaMinutes(
     remaining,
@@ -518,7 +519,7 @@ function ImportProgressPanel({
       <div className="flex items-center justify-between gap-3">
         <span className="font-medium">
           {repairingProperties
-            ? 'Repairing historical HubSpot fields — 99%'
+            ? 'Core deal sync complete — 100%'
             : percent != null ? `Importing from HubSpot — ${percent}%` : 'Importing from HubSpot…'}
         </span>
         <button className="text-xs underline" onClick={onStop} disabled={stopping}>
@@ -556,7 +557,7 @@ function ImportProgressPanel({
         {repairingProperties ? (
           <>
             Normal sync is caught up. Full readable properties are being added to historic deals;
-            this cursor is saved after every page and resumes automatically.
+            new and modified deals remain prioritized, and this maintenance cursor resumes automatically.
           </>
         ) : total != null ? (
           <>

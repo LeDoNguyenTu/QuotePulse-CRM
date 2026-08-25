@@ -1,5 +1,16 @@
 import type { ImportProgress } from './functions';
 
+export function liveImportPercent(
+  total: number | null,
+  imported: number,
+  phase: ImportProgress['phase'] | null | undefined,
+): number | null {
+  if (phase === 'properties') return 100;
+  if (total == null || !Number.isFinite(total) || total <= 0) return null;
+  const ratio = Number.isFinite(imported) ? imported / total : 0;
+  return Math.max(0, Math.min(99, Math.round(ratio * 100)));
+}
+
 export function recentDealsPerSecond(
   previousImported: number,
   currentImported: number,

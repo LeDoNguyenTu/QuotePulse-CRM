@@ -43,7 +43,12 @@ import { associatedObjectIds } from '../_shared/hubspotAssociations.ts';
 import { dealArchiveKey, putVerifiedArchive } from '../_shared/r2Archive.ts';
 import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import { formatHubspotError } from '../_shared/hubspotErrors.ts';
-import { canAdvanceIncrementalWatermark, pageFullyProcessed } from '../_shared/hubspotSync.ts';
+import {
+  canAdvanceIncrementalWatermark,
+  isDealCountCaughtUp,
+  pageFullyProcessed,
+  shouldSkipUnchangedDeal,
+} from '../_shared/hubspotSync.ts';
 import { nullableHubspotTimestamp } from '../_shared/hubspotTimestamps.ts';
 import {
   HUBSPOT_FILE_METADATA_ENABLED,
@@ -111,6 +116,9 @@ interface Ctx {
   products: Set<string>;
   /** HubSpot's total active-deal count, fetched once per invocation (null if unknown). */
   dealTotal: number | null;
+  /** Exact local counts captured once at invocation start and reused for decisions/progress. */
+  activeDealCount: number;
+  companyCount: number;
   propertyDefinitions: Record<ImportObjectType, HubspotPropertyDefinition[]>;
   propertyVersions: Record<ImportObjectType, string>;
   objectCache: Map<string, HsObject>;
@@ -189,6 +197,12 @@ Deno.serve(async (req) => {
       }, 502);
     }
     const propertyDefinitions = propertyLoad.definitions;
+    const [products, dealTotal, activeDealCount, companyCount] = await Promise.all([
+      loadProductDictionary(admin, userId),
+      hs.countAll('deals'),
+      countActiveDeals(admin, userId),
+      countCompanies(admin, userId),
+    ]);
     const ctx: Ctx = {
       hs,
       admin,
@@ -200,8 +214,10 @@ Deno.serve(async (req) => {
       filesAllowed: HUBSPOT_FILE_METADATA_ENABLED,
       deadline: Date.now() + TIME_BUDGET_MS,
       processed: 0,
-      products: await loadProductDictionary(admin, userId),
-      dealTotal: await hs.countAll('deals'),
+      products,
+      dealTotal,
+      activeDealCount,
+      companyCount,
       propertyDefinitions,
       propertyVersions: {
         deals: propertySchemaVersion(propertyDefinitions.deals),
@@ -786,9 +802,7 @@ async function sweepStoredPropertyCoverage(
 
 /** True once we hold within CATCHUP_SLACK of HubSpot's active-deal count. */
 async function dealsCaughtUp(ctx: Ctx): Promise<boolean> {
-  if (ctx.dealTotal == null) return false; // count unknown → keep backfilling
-  const have = await countActiveDeals(ctx.admin, ctx.userId);
-  return have >= ctx.dealTotal - CATCHUP_SLACK;
+  return isDealCountCaughtUp(ctx.activeDealCount, ctx.dealTotal, CATCHUP_SLACK);
 }
 
 async function sweepArchivedCompanies(ctx: Ctx): Promise<boolean> {
@@ -1266,7 +1280,7 @@ async function onlyChanged(ctx: Ctx, deals: HsObject[]): Promise<HsObject[]> {
 
   const { data, error } = await ctx.admin
     .from('deals')
-    .select('hubspot_deal_id, hubspot_modified_at, hubspot_properties_schema_version')
+    .select('hubspot_deal_id, hubspot_modified_at')
     .eq('owner_id', ctx.userId)
     .in(
       'hubspot_deal_id',
@@ -1274,25 +1288,22 @@ async function onlyChanged(ctx: Ctx, deals: HsObject[]): Promise<HsObject[]> {
     );
   if (error) return deals; // a failed lookup must never lose data — just re-import
 
-  const held = new Map<string, { modifiedAt: string | null; schemaVersion: string | null }>(
-    (data ?? []).map((r) => [String(r.hubspot_deal_id), {
-      modifiedAt: r.hubspot_modified_at as string | null,
-      schemaVersion: r.hubspot_properties_schema_version as string | null,
-    }])
+  const held = new Map<string, string | null>(
+    (data ?? []).map((r) => [
+      String(r.hubspot_deal_id),
+      r.hubspot_modified_at as string | null,
+    ])
   );
 
   const changed: HsObject[] = [];
   for (const deal of deals) {
-    const ours = held.get(deal.id);
+    const heldModifiedAt = held.get(deal.id) ?? null;
     const theirs = deal.properties.hs_lastmodifieddate ?? null;
 
-    // Only skip when we can PROVE it is unchanged: we hold the deal, both sides
-    // carry a timestamp, and they agree. Anything else gets imported.
-    if (
-      ours && theirs &&
-      Date.parse(ours.modifiedAt ?? '') === Date.parse(theirs) &&
-      ours.schemaVersion === ctx.propertyVersions.deals
-    ) {
+    // Core catch-up and historic property repair are independent streams. An
+    // unchanged held deal can be skipped here even when its property schema is
+    // stale; sweepDealPropertyBackfill repairs that snapshot after catch-up.
+    if (held.has(deal.id) && shouldSkipUnchangedDeal({ heldModifiedAt, remoteModifiedAt: theirs })) {
       ctx.counts.skipped_existing++;
       ctx.processed++;
       continue;
@@ -1332,15 +1343,14 @@ async function loadProductDictionary(
  * own table, so the figure survives across the many invocations one import takes.
  */
 async function progress(ctx: Ctx, phaseOverride?: 'properties') {
-  const [dealsImported, companies, state] = await Promise.all([
-    countActiveDeals(ctx.admin, ctx.userId),
-    countCompanies(ctx.admin, ctx.userId),
-    loadSyncState(ctx.admin, ctx.userId, 'deals:current'),
-  ]);
+  const state = await loadSyncState(ctx.admin, ctx.userId, 'deals:current');
   return {
     deals_in_hubspot: ctx.dealTotal, // already counted once this invocation
-    deals_imported: dealsImported,
-    companies,
+    // These exact counts are intentionally invocation-start snapshots. Reusing
+    // them avoids rescanning 184k+ rows at the end of every 30-second slice; the
+    // next slice refreshes them and advances the visible progress.
+    deals_imported: ctx.activeDealCount,
+    companies: ctx.companyCount,
     phase: phaseOverride ?? state.phase,
   };
 }

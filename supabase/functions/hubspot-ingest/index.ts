@@ -40,7 +40,10 @@ import {
   type HubspotPropertyDefinition,
 } from '../_shared/hubspotProperties.ts';
 import { associatedObjectIds } from '../_shared/hubspotAssociations.ts';
-import { dealArchiveKey, putVerifiedArchive } from '../_shared/r2Archive.ts';
+import {
+  archiveDealPropertyBatch,
+  persistDealSnapshot,
+} from '../_shared/dealSnapshotPersistence.ts';
 import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import { formatHubspotError } from '../_shared/hubspotErrors.ts';
 import {
@@ -136,6 +139,12 @@ type ImportObjectType = 'deals' | 'companies' | 'contacts';
 interface PropertyDefinitionLoad {
   definitions: Record<ImportObjectType, HubspotPropertyDefinition[]>;
   complete: Record<ImportObjectType, boolean>;
+}
+
+interface DealPropertyBackfillCandidate {
+  deal: HsObject;
+  id: string;
+  expectedModifiedAt: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -698,19 +707,43 @@ async function sweepDealPropertyBackfill(ctx: Ctx): Promise<boolean> {
       schemaVersion,
       repairEveryHeldSnapshot
     );
-    const hydrated = await hydrateProperties(ctx, 'deals', candidates);
+    const hydrated = await hydrateProperties(ctx, 'deals', candidates.map((candidate) => candidate.deal));
 
     if (hydrated.length > 0) {
-      const { data, error } = await ctx.admin.rpc('apply_hubspot_deal_property_snapshots', {
-        p_owner_id: ctx.userId,
-        p_schema_version: schemaVersion,
-        p_rows: hydrated.map((deal) => ({
-          hubspot_deal_id: deal.id,
-          properties: deal.properties,
-        })),
-      });
-      if (error) {
-        ctx.errors.push(`deal property backfill: ${error.message}`);
+      const candidateByHubspotId = new Map(
+        candidates.map((candidate) => [candidate.deal.id, candidate]),
+      );
+      try {
+        const finalized = await archiveDealPropertyBatch({
+          ownerId: ctx.userId,
+          schemaVersion,
+          rows: hydrated.map((deal) => {
+            const candidate = candidateByHubspotId.get(deal.id);
+            if (!candidate) throw new Error(`deal ${deal.id} disappeared from the property repair page`);
+            return {
+              id: candidate.id,
+              hubspotDealId: deal.id,
+              expectedModifiedAt: candidate.expectedModifiedAt,
+              properties: deal.properties,
+            };
+          }),
+        }, async (batch) => {
+          const { data, error } = await ctx.admin.rpc(
+            'finalize_hubspot_deal_property_archive_batch',
+            {
+              p_owner_id: batch.ownerId,
+              p_schema_version: batch.schemaVersion,
+              p_r2_key: batch.r2Key,
+              p_r2_sha256: batch.r2Sha256,
+              p_rows: batch.rows,
+            },
+          );
+          if (error) throw error;
+          return Number(data ?? 0);
+        });
+        ctx.counts.properties_backfilled += finalized;
+      } catch (error) {
+        ctx.errors.push(`deal property backfill: ${msg(error)}`);
         await saveSyncState(ctx.admin, ctx.userId, stream, {
           phase: 'backfill',
           page_cursor: cursor ?? null,
@@ -718,7 +751,6 @@ async function sweepDealPropertyBackfill(ctx: Ctx): Promise<boolean> {
         });
         return false;
       }
-      ctx.counts.properties_backfilled += Number(data ?? hydrated.length);
     }
 
     ctx.processed += pageRes.results.length;
@@ -739,11 +771,11 @@ async function dealPropertyBackfillCandidates(
   deals: HsObject[],
   schemaVersion: string,
   includeCurrent: boolean
-): Promise<HsObject[]> {
-  if (deals.length === 0) return deals;
+): Promise<DealPropertyBackfillCandidate[]> {
+  if (deals.length === 0) return [];
   const { data, error } = await ctx.admin
     .from('deals')
-    .select('hubspot_deal_id, hubspot_properties_schema_version')
+    .select('id, hubspot_deal_id, hubspot_modified_at, hubspot_properties_schema_version')
     .eq('owner_id', ctx.userId)
     .in('hubspot_deal_id', deals.map((deal) => deal.id));
   if (error) throw error;
@@ -754,7 +786,22 @@ async function dealPropertyBackfillCandidates(
       row.hubspot_properties_schema_version as string | null,
     ])
   );
-  return filterPropertyBackfillCandidates(deals, heldVersions, schemaVersion, includeCurrent);
+  const selected = new Set(
+    filterPropertyBackfillCandidates(deals, heldVersions, schemaVersion, includeCurrent)
+      .map((deal) => deal.id),
+  );
+  const heldRows = new Map(
+    (data ?? []).map((row) => [String(row.hubspot_deal_id), row]),
+  );
+  return deals.flatMap((deal) => {
+    const held = heldRows.get(deal.id);
+    if (!selected.has(deal.id) || !held) return [];
+    return [{
+      deal,
+      id: String(held.id),
+      expectedModifiedAt: held.hubspot_modified_at as string | null,
+    }];
+  });
 }
 
 async function hasDealsNeedingPropertyBackfill(ctx: Ctx, schemaVersion: string): Promise<boolean> {
@@ -966,58 +1013,38 @@ async function processDeal(ctx: Ctx, deal: HsObject, priority: 'recycled' | 'cur
   if (!companyId) return;
   ctx.counts.companies++;
 
-  const { data: dealRow, error: dealErr } = await ctx.admin.from('deals').upsert(
-    {
-      owner_id: ctx.userId,
-      hubspot_deal_id: deal.id,
-      company_id: companyId,
-      deal_name_raw: rawName,
-      product: parsed.product || null,
-      deal_stage: deal.properties.dealstage,
-      pipeline: deal.properties.pipeline,
-      amount: deal.properties.amount ? Number(deal.properties.amount) : null,
-      is_archived: !!deal.archived || priority === 'recycled',
-      archived_at: deal.archivedAt ?? null,
-      // HubSpot's own timestamps — surfaced on the dashboard and used to sort
-      // newest-first. hubspot_modified_at also lets the next import skip this deal
-      // untouched (see onlyChanged).
-      hubspot_created_at: nullableHubspotTimestamp(deal.properties.createdate),
-      hubspot_modified_at: nullableHubspotTimestamp(deal.properties.hs_lastmodifieddate),
-      hubspot_properties: deal.properties,
-      hubspot_properties_schema_version: ctx.propertyVersions.deals,
-      // A changed snapshot supersedes the previous object. Clearing the pointer
-      // makes a failed upload visible to the resumable migration instead of
-      // leaving bulky properties in Postgres indefinitely.
-      r2_archive_key: null,
-      r2_archive_sha256: null,
-      r2_archived_at: null,
-    },
-    { onConflict: 'owner_id,hubspot_deal_id' }
-  ).select('id').single();
-  if (dealErr) throw dealErr;
+  const dealRowId = await persistDealSnapshot({
+    ownerId: ctx.userId,
+    hubspotDealId: deal.id,
+    modifiedAt: deal.properties.hs_lastmodifieddate ?? null,
+    schemaVersion: ctx.propertyVersions.deals,
+    properties: deal.properties,
+  }, async (snapshot) => {
+    const { data: dealRow, error: dealErr } = await ctx.admin.from('deals').upsert(
+      {
+        owner_id: ctx.userId,
+        hubspot_deal_id: deal.id,
+        company_id: companyId,
+        deal_name_raw: rawName,
+        product: parsed.product || null,
+        deal_stage: deal.properties.dealstage,
+        pipeline: deal.properties.pipeline,
+        amount: deal.properties.amount ? Number(deal.properties.amount) : null,
+        is_archived: !!deal.archived || priority === 'recycled',
+        archived_at: deal.archivedAt ?? null,
+        // HubSpot's own timestamps — surfaced on the dashboard and used to sort
+        // newest-first. hubspot_modified_at also lets the next import skip this deal
+        // untouched (see onlyChanged).
+        hubspot_created_at: nullableHubspotTimestamp(deal.properties.createdate),
+        hubspot_modified_at: nullableHubspotTimestamp(deal.properties.hs_lastmodifieddate),
+        ...snapshot,
+      },
+      { onConflict: 'owner_id,hubspot_deal_id' }
+    ).select('id').single();
+    if (dealErr) throw dealErr;
+    return dealRow!.id as string;
+  });
   ctx.counts.deals++;
-  const dealRowId = dealRow!.id as string;
-
-  // R2 is the durable copy of the full HubSpot snapshot. Only clear Postgres
-  // after the client reads the object back and verifies its checksum.
-  try {
-    const archived = await putVerifiedArchive(
-      dealArchiveKey(ctx.userId, dealRowId, deal.properties.hs_lastmodifieddate ?? new Date().toISOString()),
-      { hubspot_deal_id: deal.id, properties: deal.properties }
-    );
-    const { data: finalized, error } = await ctx.admin.rpc('finalize_deal_archive', {
-      p_owner_id: ctx.userId,
-      p_deal_id: dealRowId,
-      p_expected_modified_at: nullableHubspotTimestamp(deal.properties.hs_lastmodifieddate),
-      p_expected_properties: deal.properties,
-      p_r2_key: archived.key,
-      p_r2_sha256: archived.checksum,
-    });
-    if (error) throw error;
-    if (!finalized) throw new Error('deal changed concurrently; archive will retry on the next sync');
-  } catch (error) {
-    ctx.warnings.push(`deal ${deal.id}: R2 archive failed; the Postgres snapshot was retained (${msg(error)})`);
-  }
 
   // Associated contacts.
   for (const c of deal.associations?.contacts?.results ?? []) {

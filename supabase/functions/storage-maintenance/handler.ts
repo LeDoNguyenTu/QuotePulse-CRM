@@ -1,4 +1,5 @@
 import { corsHeaders, handleOptions, json } from '../_shared/cors.ts';
+import { formatUnknownError } from '../_shared/errorMessage.ts';
 
 export type ArchivePressure = 'safe' | 'warning' | 'critical';
 export type ArchiveRunStatus = 'succeeded' | 'degraded' | 'failed';
@@ -44,13 +45,9 @@ export function archivePolicy(usedBytes: number, limitBytes: number, now: Date):
   const ratio = limitBytes > 0 ? usedBytes / limitBytes : 1;
   if (ratio < 0.70) return { pressure: 'safe', shouldRun: false, batchLimit: 0 };
   if (ratio < 0.85) {
-    return { pressure: 'warning', shouldRun: now.getUTCMinutes() % 15 < 5, batchLimit: 100 };
+    return { pressure: 'warning', shouldRun: now.getUTCMinutes() % 15 === 0, batchLimit: 100 };
   }
   return { pressure: 'critical', shouldRun: true, batchLimit: 200 };
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function createStorageMaintenanceHandler(dependencies: StorageMaintenanceDependencies) {
@@ -67,7 +64,7 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
     try {
       await dependencies.authorize(request);
     } catch (error) {
-      return json({ ok: false, error: message(error) }, 401);
+      return json({ ok: false, error: formatUnknownError(error) }, 401);
     }
 
     const now = dependencies.now();
@@ -75,7 +72,7 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
     try {
       databaseBytes = await dependencies.databaseBytes();
     } catch (error) {
-      return json({ ok: false, error: `Could not read database size: ${message(error)}` }, 500);
+      return json({ ok: false, error: `Could not read database size: ${formatUnknownError(error)}` }, 500);
     }
     const policy = archivePolicy(databaseBytes, dependencies.databaseLimitBytes, now);
     if (!policy.shouldRun) {
@@ -92,7 +89,7 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
     try {
       leaseToken = await dependencies.claimLease();
     } catch (error) {
-      return json({ ok: false, error: `Could not claim archive lease: ${message(error)}` }, 500);
+      return json({ ok: false, error: `Could not claim archive lease: ${formatUnknownError(error)}` }, 500);
     }
     if (!leaseToken) {
       return json({
@@ -121,17 +118,17 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
           const remaining = Math.max(0, 20 - warnings.length);
           warnings.push(...(result.warnings ?? []).slice(0, remaining).map((warning) => `${ownerId}: ${warning}`.slice(0, 500)));
         } catch (error) {
-          if (failures.length < 20) failures.push(`${ownerId}: ${message(error)}`.slice(0, 500));
+          if (failures.length < 20) failures.push(`${ownerId}: ${formatUnknownError(error)}`.slice(0, 500));
         }
       }
     } catch (error) {
-      failures.push(message(error).slice(0, 500));
+      failures.push(formatUnknownError(error).slice(0, 500));
     }
 
     try {
       await dependencies.releaseLease(leaseToken);
     } catch (error) {
-      failures.push(`Could not release archive lease: ${message(error)}`.slice(0, 500));
+      failures.push(`Could not release archive lease: ${formatUnknownError(error)}`.slice(0, 500));
     }
 
     const status: ArchiveRunStatus = failures.length > 0 ? 'failed' : warnings.length > 0 ? 'degraded' : 'succeeded';
@@ -150,7 +147,7 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
     try {
       await dependencies.recordRun(record);
     } catch (error) {
-      failures.push(`Could not record archive run: ${message(error)}`);
+      failures.push(`Could not record archive run: ${formatUnknownError(error)}`);
     }
 
     const payload = {

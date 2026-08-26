@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { archiveAutomationSummary, capacityStatus, formatBytes } from './storageStatus';
+import {
+  archiveAutomationSummary,
+  capacityStatus,
+  formatBytes,
+  storageRecoverySummary,
+} from './storageStatus';
 
 describe('storage capacity status', () => {
   it('reports used, remaining, and a clamped progress width', () => {
@@ -63,5 +68,22 @@ describe('storage capacity status', () => {
       error: null,
       finishedAt: '2026-08-22T12:20:00.000Z',
     })).toBe('Automatic archive completed with warnings and will retry remaining data.');
+  });
+
+  it('distinguishes archive backlog, compaction required, and normal capacity', () => {
+    expect(storageRecoverySummary(
+      { totalDeals: 100, pendingSnapshots: 25, archivedSnapshots: 75 },
+      { usedBytes: 736_000_000, limitBytes: 500_000_000 },
+    )).toMatchObject({ state: 'archiving', message: expect.stringContaining('25') });
+
+    expect(storageRecoverySummary(
+      { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
+      { usedBytes: 650_000_000, limitBytes: 500_000_000 },
+    )).toMatchObject({ state: 'compaction-required', message: expect.stringContaining('compaction') });
+
+    expect(storageRecoverySummary(
+      { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
+      { usedBytes: 420_000_000, limitBytes: 500_000_000 },
+    )).toMatchObject({ state: 'normal', message: expect.stringContaining('below') });
   });
 });

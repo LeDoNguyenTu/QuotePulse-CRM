@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
-    "test": "vitest"
+    "test": "vitest",
+    "test:storage-recovery": "vitest run scripts/recover-supabase-storage.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

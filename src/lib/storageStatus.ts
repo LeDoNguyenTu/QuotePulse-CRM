@@ -20,6 +20,14 @@ export interface CapacityStatus {
   tone: CapacityTone;
 }
 
+export interface SnapshotStorageStatus {
+  totalDeals: number;
+  pendingSnapshots: number;
+  archivedSnapshots: number;
+}
+
+export type StorageRecoveryState = 'archiving' | 'compaction-required' | 'normal';
+
 export function capacityStatus(usedBytes: number, limitBytes: number): CapacityStatus {
   const used = Math.max(0, Number.isFinite(usedBytes) ? usedBytes : 0);
   const limit = Math.max(1, Number.isFinite(limitBytes) ? limitBytes : 1);
@@ -38,6 +46,28 @@ export function archiveAutomationSummary(run: ArchiveAutomationSummaryInput): st
   if (run.status === 'failed') return `Automatic archive failed: ${run.error ?? 'unknown error'}`;
   if (run.status === 'degraded') return 'Automatic archive completed with warnings and will retry remaining data.';
   return `Archived ${run.dealsArchived.toLocaleString()} deal snapshots and ${run.genericAttachmentsArchived.toLocaleString()} attachment records across ${run.ownersProcessed.toLocaleString()} accounts.`;
+}
+
+export function storageRecoverySummary(
+  snapshots: SnapshotStorageStatus,
+  database: { usedBytes: number; limitBytes: number },
+): { state: StorageRecoveryState; message: string } {
+  if (snapshots.pendingSnapshots > 0) {
+    return {
+      state: 'archiving',
+      message: `${snapshots.pendingSnapshots.toLocaleString()} deal snapshots are still moving to R2. Supabase allocated size will fall only after compaction.`,
+    };
+  }
+  if (database.usedBytes >= database.limitBytes) {
+    return {
+      state: 'compaction-required',
+      message: 'All deal snapshots are in R2. Database compaction is still required to reclaim Supabase space.',
+    };
+  }
+  return {
+    state: 'normal',
+    message: 'Storage recovery is complete: deal snapshots are in R2 and Supabase is below its limit.',
+  };
 }
 
 export function formatBytes(bytes: number): string {

@@ -17,11 +17,11 @@ describe('storage pressure archive policy', () => {
       batchLimit: 100,
     });
     expect(archivePolicy(400_000_000, 500_000_000, new Date('2026-08-22T12:10:00Z')).shouldRun).toBe(false);
-    expect(archivePolicy(400_000_000, 500_000_000, new Date('2026-08-22T12:16:00Z')).shouldRun).toBe(true);
+    expect(archivePolicy(400_000_000, 500_000_000, new Date('2026-08-22T12:16:00Z')).shouldRun).toBe(false);
   });
 
-  it('runs a larger critical batch on every five-minute cron tick', () => {
-    expect(archivePolicy(425_000_000, 500_000_000, new Date('2026-08-22T12:10:00Z'))).toEqual({
+  it('runs a bounded critical batch on every one-minute cron tick', () => {
+    expect(archivePolicy(425_000_000, 500_000_000, new Date('2026-08-22T12:11:00Z'))).toEqual({
       pressure: 'critical',
       shouldRun: true,
       batchLimit: 200,
@@ -108,6 +108,25 @@ describe('storage maintenance handler', () => {
     expect(deps.recordRun).toHaveBeenCalledWith(expect.objectContaining({
       status: 'degraded',
       warnings: ['owner-a: attachment batch: R2 unavailable'],
+    }));
+  });
+
+  it('formats structured service errors instead of returning object Object', async () => {
+    const deps = dependencies({
+      listOwners: vi.fn().mockResolvedValue(['owner-a']),
+      archiveOwner: vi.fn().mockRejectedValue({
+        message: 'R2 write rejected',
+        details: 'bucket quota response',
+        code: 'R2_WRITE',
+      }),
+    });
+    const response = await createStorageMaintenanceHandler(deps)(
+      new Request('https://example.test/storage-maintenance', { method: 'POST' }),
+    );
+    expect(response.status).toBe(500);
+    expect((await response.json()).error).toContain('R2 write rejected');
+    expect(deps.recordRun).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.stringContaining('R2 write rejected'),
     }));
   });
 

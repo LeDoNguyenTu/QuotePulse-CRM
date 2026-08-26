@@ -61,7 +61,7 @@ const handler = createStorageStatusHandler({
   readArchiveAutomation: async () => {
     const { data, error } = await admin
       .from('storage_archive_runs')
-      .select('status, pressure, database_bytes, owners_processed, deals_archived, generic_attachments_archived, finished_at')
+      .select('status, pressure, database_bytes, owners_processed, deals_archived, generic_attachments_archived, error, finished_at')
       .order('finished_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -74,8 +74,21 @@ const handler = createStorageStatusHandler({
       ownersProcessed: Number(data.owners_processed),
       dealsArchived: Number(data.deals_archived),
       genericAttachmentsArchived: Number(data.generic_attachments_archived),
-      error: data.status === 'failed' ? 'One or more archive batches failed. The system will retry automatically.' : null,
+      error: data.error as string | null,
       finishedAt: data.finished_at as string,
+    };
+  },
+  readSnapshotStatus: async (ownerId: string) => {
+    const { data, error } = await admin.rpc('deal_archive_storage_status', {
+      p_owner_id: ownerId,
+    });
+    if (error) throw error;
+    const status = data?.[0];
+    if (!status) return { totalDeals: 0, pendingSnapshots: 0, archivedSnapshots: 0 };
+    return {
+      totalDeals: Number(status.total_deals),
+      pendingSnapshots: Number(status.pending_snapshots),
+      archivedSnapshots: Number(status.archived_snapshots),
     };
   },
   now: () => new Date(),

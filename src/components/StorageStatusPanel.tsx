@@ -1,5 +1,11 @@
 import type { StorageServiceStatus, StorageStatusResult } from '../lib/functions';
-import { archiveAutomationSummary, capacityStatus, formatBytes, type CapacityTone } from '../lib/storageStatus';
+import {
+  archiveAutomationSummary,
+  capacityStatus,
+  formatBytes,
+  storageRecoverySummary,
+  type CapacityTone,
+} from '../lib/storageStatus';
 import { useStorageStatus } from '../hooks/useStorageStatus';
 import { Spinner } from './ui';
 
@@ -77,6 +83,14 @@ export function StorageStatusPanel() {
   }
 
   const measured = new Date(query.data.measuredAt);
+  const snapshots = query.data.snapshots;
+  const recovery = snapshots && 'pendingSnapshots' in snapshots &&
+      query.data.database.usedBytes != null && !query.data.database.error
+    ? storageRecoverySummary(snapshots, {
+      usedBytes: query.data.database.usedBytes,
+      limitBytes: query.data.database.limitBytes,
+    })
+    : null;
   return (
     <section className="card p-4" aria-labelledby="storage-status-heading">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -104,6 +118,12 @@ export function StorageStatusPanel() {
             Last run {new Date(query.data.archiveAutomation.finishedAt).toLocaleString()}.
           </span>
         )}
+        <p className="mt-2 border-t border-slate-200 pt-2">
+          <span className="font-medium text-slate-700">Recovery state:</span>{' '}
+          {recovery?.message ?? (snapshots && 'error' in snapshots
+            ? `Unavailable: ${snapshots.error}`
+            : 'Waiting for a fresh database measurement.')}
+        </p>
       </div>
     </section>
   );

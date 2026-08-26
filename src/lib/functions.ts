@@ -141,6 +141,14 @@ export interface StorageStatusResult {
     error: string | null;
     finishedAt: string;
   } | null;
+  snapshots?: {
+    totalDeals: number;
+    pendingSnapshots: number;
+    archivedSnapshots: number;
+    error?: never;
+  } | {
+    error: string;
+  };
 }
 
 async function getStorageStatus(): Promise<StorageStatusResult> {

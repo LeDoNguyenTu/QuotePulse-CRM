@@ -1,4 +1,5 @@
 import { corsHeaders, handleOptions, json } from '../_shared/cors.ts';
+import { formatUnknownError } from '../_shared/errorMessage.ts';
 import type { R2Usage } from '../_shared/r2Usage.ts';
 
 export interface StorageCache extends R2Usage {
@@ -16,6 +17,12 @@ export interface ArchiveAutomationStatus {
   finishedAt: string;
 }
 
+export interface SnapshotStorageStatus {
+  totalDeals: number;
+  pendingSnapshots: number;
+  archivedSnapshots: number;
+}
+
 export interface StorageStatusDependencies {
   authenticate: (request: Request) => Promise<string>;
   databaseBytes: () => Promise<number>;
@@ -23,16 +30,13 @@ export interface StorageStatusDependencies {
   writeCache: (usage: R2Usage, refreshedAt: string) => Promise<void>;
   r2Usage: () => Promise<R2Usage>;
   readArchiveAutomation: () => Promise<ArchiveAutomationStatus | null>;
+  readSnapshotStatus: (ownerId: string) => Promise<SnapshotStorageStatus>;
   now: () => Date;
   databaseLimitBytes: number;
   r2LimitBytes: number;
 }
 
 const CACHE_MS = 15 * 60 * 1_000;
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function fresh(cache: StorageCache | null, now: Date): cache is StorageCache {
   if (!cache) return false;
@@ -51,16 +55,17 @@ export function createStorageStatusHandler(dependencies: StorageStatusDependenci
       });
     }
 
+    let ownerId: string;
     try {
-      await dependencies.authenticate(request);
+      ownerId = await dependencies.authenticate(request);
     } catch (error) {
-      return json({ ok: false, error: message(error) }, 401);
+      return json({ ok: false, error: formatUnknownError(error) }, 401);
     }
 
     const now = dependencies.now();
     const database = await dependencies.databaseBytes()
       .then((usedBytes) => ({ usedBytes, limitBytes: dependencies.databaseLimitBytes }))
-      .catch((error) => ({ limitBytes: dependencies.databaseLimitBytes, error: message(error) }));
+      .catch((error) => ({ limitBytes: dependencies.databaseLimitBytes, error: formatUnknownError(error) }));
 
     const r2 = await (async () => {
       try {
@@ -72,12 +77,14 @@ export function createStorageStatusHandler(dependencies: StorageStatusDependenci
         await dependencies.writeCache(usage, now.toISOString());
         return { ...usage, limitBytes: dependencies.r2LimitBytes, cached: false };
       } catch (error) {
-        return { limitBytes: dependencies.r2LimitBytes, error: message(error) };
+        return { limitBytes: dependencies.r2LimitBytes, error: formatUnknownError(error) };
       }
     })();
 
     const archiveAutomation = await dependencies.readArchiveAutomation().catch(() => null);
+    const snapshots = await dependencies.readSnapshotStatus(ownerId)
+      .catch((error) => ({ error: formatUnknownError(error) }));
 
-    return json({ ok: true, measuredAt: now.toISOString(), database, r2, archiveAutomation });
+    return json({ ok: true, measuredAt: now.toISOString(), database, r2, archiveAutomation, snapshots });
   };
 }

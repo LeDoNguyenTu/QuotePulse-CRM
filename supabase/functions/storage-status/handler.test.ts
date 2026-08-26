@@ -23,6 +23,11 @@ function dependencies(overrides: Record<string, unknown> = {}) {
       error: null,
       finishedAt: '2026-08-21T12:04:00.000Z',
     }),
+    readSnapshotStatus: vi.fn().mockResolvedValue({
+      totalDeals: 186_735,
+      pendingSnapshots: 87_400,
+      archivedSnapshots: 41_088,
+    }),
     now: () => new Date('2026-08-21T12:05:00.000Z'),
     databaseLimitBytes: 500_000_000,
     r2LimitBytes: 10_000_000_000,
@@ -88,5 +93,27 @@ describe('storage status handler', () => {
         genericAttachmentsArchived: 4,
       },
     });
+  });
+
+  it('returns the authenticated owners logical snapshot state', async () => {
+    const deps = dependencies();
+    const response = await createStorageStatusHandler(deps)(
+      new Request('https://example.test/storage-status'),
+    );
+    expect(deps.readSnapshotStatus).toHaveBeenCalledWith('user-id');
+    expect(await response.json()).toMatchObject({
+      snapshots: {
+        totalDeals: 186_735,
+        pendingSnapshots: 87_400,
+        archivedSnapshots: 41_088,
+      },
+    });
+  });
+
+  it('formats structured provider failures with their actual message', async () => {
+    const response = await createStorageStatusHandler(dependencies({
+      databaseBytes: vi.fn().mockRejectedValue({ message: 'database throttled', code: '53300' }),
+    }))(new Request('https://example.test/storage-status'));
+    expect((await response.json()).database.error).toContain('database throttled');
   });
 });

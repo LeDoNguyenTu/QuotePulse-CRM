@@ -37,6 +37,9 @@ import {
 import { clampPage, readDashboardState, writeDashboardState, type ObjectListState } from '../lib/dashboardState';
 import { consumeScrollPosition, routePath } from '../lib/returnNavigation';
 import { StorageStatusPanel } from '../components/StorageStatusPanel';
+import { ImportRecoveryWarning } from '../components/ImportRecoveryWarning';
+import { useStorageStatus } from '../hooks/useStorageStatus';
+import { importRecoveryLock, shouldStopImportForRecovery } from '../lib/storageStatus';
 
 const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
@@ -58,6 +61,11 @@ export function Dashboard() {
   const qc = useQueryClient();
   const { state: importState, startImport, stopImport, dismissImportReport } = useHubspotImport();
   const importing = importState?.status === 'running';
+  const storageStatus = useStorageStatus();
+  const importLock = importRecoveryLock(storageStatus.data, {
+    loading: storageStatus.isLoading,
+    failed: !!storageStatus.error,
+  });
   const importReport = importState?.report ?? null;
   const live = shouldShowLiveImport(importState?.status, !!importState?.live)
     ? importState?.live ?? null
@@ -78,6 +86,12 @@ export function Dashboard() {
   const page = filters.page ?? 0;
   const pageSize = filters.pageSize ?? PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    if (shouldStopImportForRecovery(importing, !!importState?.stopRequested, importLock.locked)) {
+      stopImport();
+    }
+  }, [importLock.locked, importing, importState?.stopRequested, stopImport]);
 
   function setDashboardState(next: typeof dashboardState) {
     setSearchParams(writeDashboardState(next), { replace: true });
@@ -185,6 +199,10 @@ export function Dashboard() {
 
   async function handleImportAll() {
     setBanner(null);
+    if (importLock.locked) {
+      setBanner(importLock.message);
+      return;
+    }
     await startImport();
     /*
     setBanner(null);
@@ -320,8 +338,17 @@ export function Dashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">HubSpot CRM</h1>
         <div className="flex flex-wrap gap-2">
-          <button className="btn-secondary" onClick={handleImportAll} disabled={importing}>
-            {importing ? 'Importing…' : 'Sync HubSpot (new + changed + missing fields)'}
+          <button
+            className="btn-secondary"
+            onClick={handleImportAll}
+            disabled={importing || importLock.locked}
+            title={importLock.locked ? importLock.message : undefined}
+          >
+            {importing
+              ? 'Importing…'
+              : importLock.locked
+                ? 'HubSpot import temporarily disabled'
+                : 'Sync HubSpot (new + changed + missing fields)'}
           </button>
           {activeTable === 'companies' && <>
           <button className="btn-secondary" onClick={() => setNewOpen(true)}>
@@ -355,6 +382,11 @@ export function Dashboard() {
           </>}
         </div>
       </div>
+
+      <ImportRecoveryWarning
+        lock={importLock}
+        onRefresh={storageStatus.refetch}
+      />
 
       <StorageStatusPanel />
 

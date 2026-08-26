@@ -28,6 +28,31 @@ export interface SnapshotStorageStatus {
 
 export type StorageRecoveryState = 'archiving' | 'compaction-required' | 'normal';
 
+export type ImportRecoveryPhase = 'checking' | 'unavailable' | 'archiving' | 'compaction-required' | 'ready';
+
+export interface ImportRecoveryLock {
+  locked: boolean;
+  phase: ImportRecoveryPhase;
+  pendingSnapshots: number | null;
+  estimatedArchiveCompleteAt: number | null;
+  message: string;
+}
+
+interface ImportRecoveryStatus {
+  measuredAt: string;
+  database: {
+    usedBytes?: number;
+    limitBytes: number;
+    error?: string;
+  };
+  archiveAutomation: {
+    status: 'succeeded' | 'degraded' | 'failed';
+    dealsArchived: number;
+    finishedAt: string;
+  } | null;
+  snapshots?: SnapshotStorageStatus | { error: string };
+}
+
 export function capacityStatus(usedBytes: number, limitBytes: number): CapacityStatus {
   const used = Math.max(0, Number.isFinite(usedBytes) ? usedBytes : 0);
   const limit = Math.max(1, Number.isFinite(limitBytes) ? limitBytes : 1);
@@ -68,6 +93,95 @@ export function storageRecoverySummary(
     state: 'normal',
     message: 'Storage recovery is complete: deal snapshots are in R2 and Supabase is below its limit.',
   };
+}
+
+export function importRecoveryLock(
+  status: ImportRecoveryStatus | null | undefined,
+  query: { loading?: boolean; failed?: boolean } = {},
+): ImportRecoveryLock {
+  if (query.loading && !status) {
+    return {
+      locked: true,
+      phase: 'checking',
+      pendingSnapshots: null,
+      estimatedArchiveCompleteAt: null,
+      message: 'Checking Supabase storage recovery. HubSpot import remains disabled until this check completes.',
+    };
+  }
+
+  const snapshots = status?.snapshots;
+  if (
+    query.failed ||
+    !status ||
+    status.database.error ||
+    status.database.usedBytes == null ||
+    !snapshots ||
+    'error' in snapshots
+  ) {
+    return {
+      locked: true,
+      phase: 'unavailable',
+      pendingSnapshots: null,
+      estimatedArchiveCompleteAt: null,
+      message: 'Storage recovery could not be verified. HubSpot import remains disabled to protect the database.',
+    };
+  }
+
+  const pendingSnapshots = Math.max(0, snapshots.pendingSnapshots);
+  if (pendingSnapshots > 0) {
+    const measuredAt = Date.parse(status.measuredAt);
+    const latestRunAt = status.archiveAutomation ? Date.parse(status.archiveAutomation.finishedAt) : Number.NaN;
+    const batchSize = status.archiveAutomation?.status !== 'failed'
+      ? Math.max(0, status.archiveAutomation?.dealsArchived ?? 0)
+      : 0;
+    const recentRun = Number.isFinite(measuredAt) && Number.isFinite(latestRunAt) &&
+      Math.abs(measuredAt - latestRunAt) <= 3 * 60_000;
+    const estimatedArchiveCompleteAt = recentRun && batchSize > 0
+      ? measuredAt + Math.ceil(pendingSnapshots / batchSize) * 60_000
+      : null;
+
+    return {
+      locked: true,
+      phase: 'archiving',
+      pendingSnapshots,
+      estimatedArchiveCompleteAt,
+      message: 'Storage recovery is moving deal snapshots to R2. Import remains disabled until archival and database compaction are complete.',
+    };
+  }
+
+  if (status.database.usedBytes >= status.database.limitBytes) {
+    return {
+      locked: true,
+      phase: 'compaction-required',
+      pendingSnapshots: 0,
+      estimatedArchiveCompleteAt: null,
+      message: 'The R2 archive stage is complete. Database compaction is required before HubSpot import can resume.',
+    };
+  }
+
+  return {
+    locked: false,
+    phase: 'ready',
+    pendingSnapshots: 0,
+    estimatedArchiveCompleteAt: null,
+    message: 'Storage recovery is complete and HubSpot import is available.',
+  };
+}
+
+export function formatRecoveryCountdown(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(Number.isFinite(milliseconds) ? milliseconds / 1_000 : 0));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
+}
+
+export function shouldStopImportForRecovery(
+  importing: boolean,
+  stopRequested: boolean,
+  recoveryLocked: boolean,
+): boolean {
+  return importing && recoveryLocked && !stopRequested;
 }
 
 export function formatBytes(bytes: number): string {

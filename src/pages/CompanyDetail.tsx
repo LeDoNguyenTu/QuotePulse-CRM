@@ -17,6 +17,9 @@ import { Modal } from '../components/Modal';
 import { EmptyState, ErrorState, PriorityBadge, Spinner, StatusBadge } from '../components/ui';
 import type { EmailSend } from '../lib/types';
 import { HistoryBackLink } from '../components/HistoryBackLink';
+import { ImportRecoveryWarning } from '../components/ImportRecoveryWarning';
+import { useStorageStatus } from '../hooks/useStorageStatus';
+import { importRecoveryLock } from '../lib/storageStatus';
 
 type Tab = 'hubspot' | 'kyc' | 'emails';
 
@@ -27,11 +30,20 @@ export function CompanyDetail() {
   const [importing, setImporting] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const storageStatus = useStorageStatus();
+  const importLock = importRecoveryLock(storageStatus.data, {
+    loading: storageStatus.isLoading,
+    failed: !!storageStatus.error,
+  });
 
   const { data: company, isLoading, error } = useCompany(id);
 
   async function importThis() {
     if (!id) return;
+    if (importLock.locked) {
+      setBanner(importLock.message);
+      return;
+    }
     setImporting(true);
     setBanner(null);
     try {
@@ -84,11 +96,21 @@ export function CompanyDetail() {
           <button className="btn-secondary" onClick={() => setEditOpen(true)}>
             Edit details
           </button>
-          <button className="btn-secondary" onClick={importThis} disabled={importing}>
-            {importing ? 'Importing…' : 'Run HubSpot import/update'}
+          <button
+            className="btn-secondary"
+            onClick={importThis}
+            disabled={importing || importLock.locked}
+            title={importLock.locked ? importLock.message : undefined}
+          >
+            {importing ? 'Importing…' : importLock.locked ? 'HubSpot import temporarily disabled' : 'Run HubSpot import/update'}
           </button>
         </div>
       </div>
+
+      <ImportRecoveryWarning
+        lock={importLock}
+        onRefresh={storageStatus.refetch}
+      />
 
       <CompanyEditModal
         company={company}

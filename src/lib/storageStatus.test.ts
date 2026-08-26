@@ -3,6 +3,9 @@ import {
   archiveAutomationSummary,
   capacityStatus,
   formatBytes,
+  formatRecoveryCountdown,
+  importRecoveryLock,
+  shouldStopImportForRecovery,
   storageRecoverySummary,
 } from './storageStatus';
 
@@ -85,5 +88,67 @@ describe('storage capacity status', () => {
       { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
       { usedBytes: 420_000_000, limitBytes: 500_000_000 },
     )).toMatchObject({ state: 'normal', message: expect.stringContaining('below') });
+  });
+
+  it('locks imports while snapshots are moving and calculates the archive countdown', () => {
+    expect(importRecoveryLock({
+      measuredAt: '2026-08-27T02:39:00.000Z',
+      database: { usedBytes: 704_000_000, limitBytes: 500_000_000 },
+      snapshots: { totalDeals: 186_735, pendingSnapshots: 55_000, archivedSnapshots: 59_888 },
+      archiveAutomation: {
+        status: 'succeeded',
+        dealsArchived: 200,
+        finishedAt: '2026-08-27T02:38:50.000Z',
+      },
+    })).toMatchObject({
+      locked: true,
+      phase: 'archiving',
+      pendingSnapshots: 55_000,
+      estimatedArchiveCompleteAt: Date.parse('2026-08-27T07:14:00.000Z'),
+    });
+  });
+
+  it('keeps imports locked for compaction and unlocks only below quota', () => {
+    const recoveredSnapshots = { totalDeals: 186_735, pendingSnapshots: 0, archivedSnapshots: 186_735 };
+    expect(importRecoveryLock({
+      measuredAt: '2026-08-27T07:14:00.000Z',
+      database: { usedBytes: 704_000_000, limitBytes: 500_000_000 },
+      snapshots: recoveredSnapshots,
+      archiveAutomation: null,
+    })).toMatchObject({ locked: true, phase: 'compaction-required' });
+
+    expect(importRecoveryLock({
+      measuredAt: '2026-08-27T07:20:00.000Z',
+      database: { usedBytes: 340_000_000, limitBytes: 500_000_000 },
+      snapshots: recoveredSnapshots,
+      archiveAutomation: null,
+    })).toMatchObject({ locked: false, phase: 'ready' });
+  });
+
+  it('fails closed while recovery status is loading or unavailable', () => {
+    expect(importRecoveryLock(undefined, { loading: true })).toMatchObject({
+      locked: true,
+      phase: 'checking',
+    });
+    expect(importRecoveryLock({
+      measuredAt: '2026-08-27T02:39:00.000Z',
+      database: { usedBytes: 704_000_000, limitBytes: 500_000_000 },
+      snapshots: { error: 'statement timeout' },
+      archiveAutomation: null,
+    })).toMatchObject({ locked: true, phase: 'unavailable' });
+  });
+
+  it('formats the recovery estimate as a ticking clock', () => {
+    expect(formatRecoveryCountdown(4 * 60 * 60 * 1_000 + 35 * 60 * 1_000)).toBe('04:35:00');
+    expect(formatRecoveryCountdown(45_001)).toBe('00:00:46');
+    expect(formatRecoveryCountdown(-1)).toBe('00:00:00');
+  });
+
+  it('requests a running import to stop once recovery locks it', () => {
+    const lock = importRecoveryLock(undefined, { loading: true });
+    expect(shouldStopImportForRecovery(true, false, lock.locked)).toBe(true);
+    expect(shouldStopImportForRecovery(false, false, lock.locked)).toBe(false);
+    expect(shouldStopImportForRecovery(true, true, lock.locked)).toBe(false);
+    expect(shouldStopImportForRecovery(true, false, false)).toBe(false);
   });
 });

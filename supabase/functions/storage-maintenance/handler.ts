@@ -1,7 +1,7 @@
 import { corsHeaders, handleOptions, json } from '../_shared/cors.ts';
 import { formatUnknownError } from '../_shared/errorMessage.ts';
 
-export type ArchivePressure = 'safe' | 'warning' | 'critical';
+export type ArchivePressure = 'safe' | 'warning' | 'high' | 'critical';
 export type ArchiveRunStatus = 'succeeded' | 'degraded' | 'failed';
 
 export interface ArchiveBatchResult {
@@ -30,6 +30,7 @@ export interface StorageMaintenanceDependencies {
   releaseLease: (token: string) => Promise<void>;
   listOwners: () => Promise<string[]>;
   archiveOwner: (ownerId: string, limit: number) => Promise<ArchiveBatchResult>;
+  completeOwnerAttempt: (ownerId: string, didWork: boolean) => Promise<void>;
   recordRun: (run: ArchiveRunRecord) => Promise<void>;
   now: () => Date;
   databaseLimitBytes: number;
@@ -43,11 +44,12 @@ export interface ArchivePolicy {
 
 export function archivePolicy(usedBytes: number, limitBytes: number, now: Date): ArchivePolicy {
   const ratio = limitBytes > 0 ? usedBytes / limitBytes : 1;
-  if (ratio < 0.70) return { pressure: 'safe', shouldRun: false, batchLimit: 0 };
-  if (ratio < 0.85) {
-    return { pressure: 'warning', shouldRun: now.getUTCMinutes() % 15 === 0, batchLimit: 100 };
+  if (ratio < 0.60) return { pressure: 'safe', shouldRun: false, batchLimit: 0 };
+  if (ratio < 0.75) {
+    return { pressure: 'warning', shouldRun: now.getUTCMinutes() % 5 === 0, batchLimit: 25 };
   }
-  return { pressure: 'critical', shouldRun: true, batchLimit: 200 };
+  if (ratio < 0.82) return { pressure: 'high', shouldRun: true, batchLimit: 50 };
+  return { pressure: 'critical', shouldRun: true, batchLimit: 100 };
 }
 
 export function createStorageMaintenanceHandler(dependencies: StorageMaintenanceDependencies) {
@@ -109,7 +111,8 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
     let genericAttachmentsArchived = 0;
     try {
       const owners = await dependencies.listOwners();
-      for (const ownerId of owners) {
+      const ownerId = owners[0];
+      if (ownerId) {
         try {
           const result = await dependencies.archiveOwner(ownerId, policy.batchLimit);
           ownersProcessed += 1;
@@ -117,6 +120,10 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
           genericAttachmentsArchived += Number(result.generic_attachments_archived ?? 0);
           const remaining = Math.max(0, 20 - warnings.length);
           warnings.push(...(result.warnings ?? []).slice(0, remaining).map((warning) => `${ownerId}: ${warning}`.slice(0, 500)));
+          await dependencies.completeOwnerAttempt(
+            ownerId,
+            dealsArchived > 0 || genericAttachmentsArchived > 0,
+          );
         } catch (error) {
           if (failures.length < 20) failures.push(`${ownerId}: ${formatUnknownError(error)}`.slice(0, 500));
         }
@@ -132,22 +139,28 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
     }
 
     const status: ArchiveRunStatus = failures.length > 0 ? 'failed' : warnings.length > 0 ? 'degraded' : 'succeeded';
-    const record: ArchiveRunRecord = {
-      status,
-      pressure: policy.pressure as Exclude<ArchivePressure, 'safe'>,
-      databaseBytes,
-      limitBytes: dependencies.databaseLimitBytes,
-      ownersProcessed,
-      dealsArchived,
-      genericAttachmentsArchived,
-      warnings,
-      error: failures.length ? failures.join('; ') : null,
-      finishedAt: dependencies.now().toISOString(),
-    };
-    try {
-      await dependencies.recordRun(record);
-    } catch (error) {
-      failures.push(`Could not record archive run: ${formatUnknownError(error)}`);
+    const shouldRecord = dealsArchived > 0
+      || genericAttachmentsArchived > 0
+      || warnings.length > 0
+      || failures.length > 0;
+    if (shouldRecord) {
+      const record: ArchiveRunRecord = {
+        status,
+        pressure: policy.pressure as Exclude<ArchivePressure, 'safe'>,
+        databaseBytes,
+        limitBytes: dependencies.databaseLimitBytes,
+        ownersProcessed,
+        dealsArchived,
+        genericAttachmentsArchived,
+        warnings,
+        error: failures.length ? failures.join('; ') : null,
+        finishedAt: dependencies.now().toISOString(),
+      };
+      try {
+        await dependencies.recordRun(record);
+      } catch (error) {
+        failures.push(`Could not record archive run: ${formatUnknownError(error)}`);
+      }
     }
 
     const payload = {

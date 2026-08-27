@@ -65,6 +65,13 @@ const handler = createStorageMaintenanceHandler({
       warnings: Array.isArray(payload.warnings) ? payload.warnings : [],
     };
   },
+  completeOwnerAttempt: async (ownerId, didWork) => {
+    const { error } = await admin.rpc('complete_storage_archive_owner_attempt', {
+      p_owner_id: ownerId,
+      p_did_work: didWork,
+    });
+    if (error) throw error;
+  },
   recordRun: async (run: ArchiveRunRecord) => {
     const { error } = await admin.from('storage_archive_runs').insert({
       status: run.status,

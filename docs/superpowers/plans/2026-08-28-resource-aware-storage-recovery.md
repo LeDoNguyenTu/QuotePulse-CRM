@@ -54,12 +54,12 @@
    type ArchivePressure = "safe" | "warning" | "high" | "critical";
    type ArchivePolicy = {
      pressure: ArchivePressure;
-     minIntervalMs: number;
-     limitPerRun: number;
+     shouldRun: boolean;
+     batchLimit: number;
    };
    ```
 
-   Use `Number.POSITIVE_INFINITY` and `0` below 60%, `5 * 60_000` and `25` below 75%, `60_000` and `50` below 82%, then `60_000` and `100`.
+   Use no run and batch `0` below 60%; a UTC-minute modulo-five cadence and batch `25` below 75%; then every tick with batch `50` below 82% and batch `100` at 82% or higher.
 
 5. Replace the multi-owner loop in `createStorageMaintenanceHandler` with one owner attempt. Add dependency:
 

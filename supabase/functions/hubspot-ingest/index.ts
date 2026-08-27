@@ -12,8 +12,9 @@
 //   * it stopped after 200 deals of an oldest-first listing, so a portal with
 //     more than 200 deals could never reach a newly created one
 // It also swallowed every error and still returned HTTP 200 {ok:true}.
-import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
+import { corsHeaders, handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseAdmin.ts';
+import { assertStorageAdmission } from '../_shared/storageAdmission.ts';
 import {
   parseDealName,
   cleanCompanyName,
@@ -166,6 +167,30 @@ Deno.serve(async (req) => {
   try {
     const userId = await getUserId(req);
     const admin = getAdminClient();
+
+    const admission = await assertStorageAdmission(admin, userId);
+    if (!admission.allowed) {
+      return new Response(JSON.stringify({
+        ok: false,
+        error: admission.message,
+        code: 'storage_recovery_required',
+        retryable: true,
+        storage: {
+          decision: admission.decision,
+          database_bytes: admission.databaseBytes,
+          limit_bytes: admission.limitBytes,
+          compaction_state: admission.compactionState,
+          reason: admission.reason,
+        },
+      }), {
+        status: admission.status,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Retry-After': '60',
+        },
+      });
+    }
 
     const body = (await req.json().catch(() => ({}))) as { mode?: string };
 

@@ -8,13 +8,38 @@ export interface StorageCache extends R2Usage {
 
 export interface ArchiveAutomationStatus {
   status: 'succeeded' | 'degraded' | 'failed';
-  pressure: 'warning' | 'critical';
+  pressure: 'warning' | 'high' | 'critical';
   databaseBytes: number;
   ownersProcessed: number;
   dealsArchived: number;
   genericAttachmentsArchived: number;
   error: string | null;
   finishedAt: string;
+}
+
+export type StorageCompactionState =
+  | 'idle'
+  | 'cooldown'
+  | 'scheduled'
+  | 'running'
+  | 'retry_wait'
+  | 'succeeded'
+  | 'failed_closed';
+
+export interface StorageCompactionStatus {
+  state: StorageCompactionState;
+  requestedAt: string | null;
+  scheduledAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  nextRetryAt: string | null;
+  attemptCount: number;
+  databaseBytesBefore: number | null;
+  databaseBytesAfter: number | null;
+  dealToastBytesBefore: number | null;
+  dealToastBytesAfter: number | null;
+  lastError: string | null;
+  skipReason: string | null;
 }
 
 export interface SnapshotStorageStatus {
@@ -31,6 +56,7 @@ export interface StorageStatusDependencies {
   r2Usage: () => Promise<R2Usage>;
   readArchiveAutomation: () => Promise<ArchiveAutomationStatus | null>;
   readSnapshotStatus: (ownerId: string) => Promise<SnapshotStorageStatus>;
+  readCompactionStatus: () => Promise<StorageCompactionStatus>;
   now: () => Date;
   databaseLimitBytes: number;
   r2LimitBytes: number;
@@ -84,7 +110,9 @@ export function createStorageStatusHandler(dependencies: StorageStatusDependenci
     const archiveAutomation = await dependencies.readArchiveAutomation().catch(() => null);
     const snapshots = await dependencies.readSnapshotStatus(ownerId)
       .catch((error) => ({ error: formatUnknownError(error) }));
+    const compaction = await dependencies.readCompactionStatus()
+      .catch((error) => ({ error: formatUnknownError(error) }));
 
-    return json({ ok: true, measuredAt: now.toISOString(), database, r2, archiveAutomation, snapshots });
+    return json({ ok: true, measuredAt: now.toISOString(), database, r2, archiveAutomation, snapshots, compaction });
   };
 }

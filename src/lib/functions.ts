@@ -121,6 +121,31 @@ export interface StorageServiceStatus {
   error?: string;
 }
 
+export type StorageCompactionState =
+  | 'idle'
+  | 'cooldown'
+  | 'scheduled'
+  | 'running'
+  | 'retry_wait'
+  | 'succeeded'
+  | 'failed_closed';
+
+export interface StorageCompactionStatus {
+  state: StorageCompactionState;
+  requestedAt: string | null;
+  scheduledAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  nextRetryAt: string | null;
+  attemptCount: number;
+  databaseBytesBefore: number | null;
+  databaseBytesAfter: number | null;
+  dealToastBytesBefore: number | null;
+  dealToastBytesAfter: number | null;
+  lastError: string | null;
+  skipReason: string | null;
+}
+
 export interface StorageStatusResult {
   ok: true;
   measuredAt: string;
@@ -133,7 +158,7 @@ export interface StorageStatusResult {
   };
   archiveAutomation: {
     status: 'succeeded' | 'degraded' | 'failed';
-    pressure: 'warning' | 'critical';
+    pressure: 'warning' | 'high' | 'critical';
     databaseBytes: number;
     ownersProcessed: number;
     dealsArchived: number;
@@ -149,6 +174,7 @@ export interface StorageStatusResult {
   } | {
     error: string;
   };
+  compaction: StorageCompactionStatus | { error: string };
 }
 
 async function getStorageStatus(): Promise<StorageStatusResult> {

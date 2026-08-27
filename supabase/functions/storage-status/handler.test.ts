@@ -28,6 +28,21 @@ function dependencies(overrides: Record<string, unknown> = {}) {
       pendingSnapshots: 87_400,
       archivedSnapshots: 41_088,
     }),
+    readCompactionStatus: vi.fn().mockResolvedValue({
+      state: 'cooldown',
+      requestedAt: '2026-08-21T12:00:00.000Z',
+      scheduledAt: null,
+      startedAt: null,
+      finishedAt: null,
+      nextRetryAt: '2026-08-21T12:15:00.000Z',
+      attemptCount: 0,
+      databaseBytesBefore: 716_000_000,
+      databaseBytesAfter: null,
+      dealToastBytesBefore: 370_000_000,
+      dealToastBytesAfter: null,
+      lastError: null,
+      skipReason: 'archive-cooldown',
+    }),
     now: () => new Date('2026-08-21T12:05:00.000Z'),
     databaseLimitBytes: 500_000_000,
     r2LimitBytes: 10_000_000_000,
@@ -107,6 +122,31 @@ describe('storage status handler', () => {
         pendingSnapshots: 87_400,
         archivedSnapshots: 41_088,
       },
+    });
+  });
+
+  it('includes sanitized automatic compaction state', async () => {
+    const response = await createStorageStatusHandler(dependencies())(
+      new Request('https://example.test/storage-status'),
+    );
+    expect(await response.json()).toMatchObject({
+      compaction: {
+        state: 'cooldown',
+        nextRetryAt: '2026-08-21T12:15:00.000Z',
+        attemptCount: 0,
+        databaseBytesBefore: 716_000_000,
+        dealToastBytesBefore: 370_000_000,
+        skipReason: 'archive-cooldown',
+      },
+    });
+  });
+
+  it('marks compaction status explicitly unavailable when its RPC fails', async () => {
+    const response = await createStorageStatusHandler(dependencies({
+      readCompactionStatus: vi.fn().mockRejectedValue(new Error('compaction status unavailable')),
+    }))(new Request('https://example.test/storage-status'));
+    expect(await response.json()).toMatchObject({
+      compaction: { error: 'compaction status unavailable' },
     });
   });
 

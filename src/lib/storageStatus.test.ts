@@ -6,8 +6,25 @@ import {
   formatRecoveryCountdown,
   importRecoveryLock,
   shouldStopImportForRecovery,
+  storageStatusPollInterval,
   storageRecoverySummary,
 } from './storageStatus';
+
+const idleCompaction = {
+  state: 'idle' as const,
+  requestedAt: null,
+  scheduledAt: null,
+  startedAt: null,
+  finishedAt: null,
+  nextRetryAt: null,
+  attemptCount: 0,
+  databaseBytesBefore: null,
+  databaseBytesAfter: null,
+  dealToastBytesBefore: null,
+  dealToastBytesAfter: null,
+  lastError: null,
+  skipReason: null,
+};
 
 describe('storage capacity status', () => {
   it('reports used, remaining, and a clamped progress width', () => {
@@ -27,11 +44,11 @@ describe('storage capacity status', () => {
     });
   });
 
-  it('matches the automatic archive thresholds at 70 and 85 percent', () => {
-    expect(capacityStatus(699, 1_000).tone).toBe('safe');
-    expect(capacityStatus(700, 1_000).tone).toBe('warning');
-    expect(capacityStatus(849, 1_000).tone).toBe('warning');
-    expect(capacityStatus(850, 1_000).tone).toBe('critical');
+  it('matches the proactive archive and import-stop thresholds at 60 and 82 percent', () => {
+    expect(capacityStatus(599, 1_000).tone).toBe('safe');
+    expect(capacityStatus(600, 1_000).tone).toBe('warning');
+    expect(capacityStatus(819, 1_000).tone).toBe('warning');
+    expect(capacityStatus(820, 1_000).tone).toBe('critical');
   });
 
   it('formats decimal provider quotas without implying binary units', () => {
@@ -77,17 +94,36 @@ describe('storage capacity status', () => {
     expect(storageRecoverySummary(
       { totalDeals: 100, pendingSnapshots: 25, archivedSnapshots: 75 },
       { usedBytes: 736_000_000, limitBytes: 500_000_000 },
+      idleCompaction,
     )).toMatchObject({ state: 'archiving', message: expect.stringContaining('25') });
 
     expect(storageRecoverySummary(
       { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
       { usedBytes: 650_000_000, limitBytes: 500_000_000 },
-    )).toMatchObject({ state: 'compaction-required', message: expect.stringContaining('compaction') });
+      { ...idleCompaction, state: 'scheduled' },
+    )).toMatchObject({ state: 'scheduled', message: expect.stringContaining('automatically') });
 
     expect(storageRecoverySummary(
       { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
-      { usedBytes: 420_000_000, limitBytes: 500_000_000 },
+      { usedBytes: 400_000_000, limitBytes: 500_000_000 },
+      { ...idleCompaction, state: 'succeeded' },
     )).toMatchObject({ state: 'normal', message: expect.stringContaining('below') });
+  });
+
+  it.each([
+    ['cooldown', 'cooldown'],
+    ['scheduled', 'scheduled'],
+    ['running', 'running'],
+    ['retry_wait', 'retry-wait'],
+    ['failed_closed', 'failed-closed'],
+  ] as const)('summarizes automatic compaction state %s', (state, expectedState) => {
+    const summary = storageRecoverySummary(
+      { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
+      { usedBytes: 450_000_000, limitBytes: 500_000_000 },
+      { ...idleCompaction, state, nextRetryAt: '2026-08-27T03:00:00.000Z' },
+    );
+    expect(summary.state).toBe(expectedState);
+    if (state !== 'failed_closed') expect(summary.message.toLowerCase()).not.toContain('manual compaction');
   });
 
   it('locks imports while snapshots are moving and calculates the archive countdown', () => {
@@ -100,6 +136,7 @@ describe('storage capacity status', () => {
         dealsArchived: 200,
         finishedAt: '2026-08-27T02:38:50.000Z',
       },
+      compaction: idleCompaction,
     })).toMatchObject({
       locked: true,
       phase: 'archiving',
@@ -115,15 +152,38 @@ describe('storage capacity status', () => {
       database: { usedBytes: 704_000_000, limitBytes: 500_000_000 },
       snapshots: recoveredSnapshots,
       archiveAutomation: null,
+      compaction: { ...idleCompaction, state: 'scheduled' },
     })).toMatchObject({ locked: true, phase: 'compaction-required' });
 
     expect(importRecoveryLock({
       measuredAt: '2026-08-27T07:20:00.000Z',
-      database: { usedBytes: 340_000_000, limitBytes: 500_000_000 },
+      database: { usedBytes: 409_999_999, limitBytes: 500_000_000 },
       snapshots: recoveredSnapshots,
       archiveAutomation: null,
+      compaction: { ...idleCompaction, state: 'succeeded' },
     })).toMatchObject({ locked: false, phase: 'ready' });
+
+    expect(importRecoveryLock({
+      measuredAt: '2026-08-27T07:20:00.000Z',
+      database: { usedBytes: 410_000_000, limitBytes: 500_000_000 },
+      snapshots: recoveredSnapshots,
+      archiveAutomation: null,
+      compaction: idleCompaction,
+    })).toMatchObject({ locked: true, phase: 'compaction-required' });
   });
+
+  it.each(['cooldown', 'scheduled', 'running', 'retry_wait', 'failed_closed'] as const)(
+    'keeps imports locked during compaction state %s',
+    (state) => {
+      expect(importRecoveryLock({
+        measuredAt: '2026-08-27T07:20:00.000Z',
+        database: { usedBytes: 400_000_000, limitBytes: 500_000_000 },
+        snapshots: { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
+        archiveAutomation: null,
+        compaction: { ...idleCompaction, state },
+      })).toMatchObject({ locked: true, phase: 'compaction-required' });
+    },
+  );
 
   it('fails closed while recovery status is loading or unavailable', () => {
     expect(importRecoveryLock(undefined, { loading: true })).toMatchObject({
@@ -135,7 +195,40 @@ describe('storage capacity status', () => {
       database: { usedBytes: 704_000_000, limitBytes: 500_000_000 },
       snapshots: { error: 'statement timeout' },
       archiveAutomation: null,
+      compaction: idleCompaction,
     })).toMatchObject({ locked: true, phase: 'unavailable' });
+
+    expect(importRecoveryLock({
+      measuredAt: '2026-08-27T02:39:00.000Z',
+      database: { usedBytes: 400_000_000, limitBytes: 500_000_000 },
+      snapshots: { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
+      archiveAutomation: null,
+      compaction: { error: 'controller unavailable' },
+    })).toMatchObject({ locked: true, phase: 'unavailable' });
+
+    expect(importRecoveryLock({
+      measuredAt: '2026-08-27T02:39:00.000Z',
+      database: { usedBytes: 400_000_000, limitBytes: 500_000_000 },
+      snapshots: { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
+      archiveAutomation: null,
+      compaction: { ...idleCompaction, state: 'unexpected' as never },
+    })).toMatchObject({ locked: true, phase: 'unavailable' });
+  });
+
+  it('polls conservatively in safe capacity and every minute during pressure or recovery', () => {
+    const safe = {
+      measuredAt: '2026-08-27T02:39:00.000Z',
+      database: { usedBytes: 300_000_000, limitBytes: 500_000_000 },
+      snapshots: { totalDeals: 100, pendingSnapshots: 0, archivedSnapshots: 100 },
+      archiveAutomation: null,
+      compaction: idleCompaction,
+    };
+    expect(storageStatusPollInterval(safe)).toBe(5 * 60_000);
+    expect(storageStatusPollInterval({ ...safe, database: { usedBytes: 375_000_000, limitBytes: 500_000_000 } }))
+      .toBe(60_000);
+    expect(storageStatusPollInterval({ ...safe, compaction: { ...idleCompaction, state: 'running' } }))
+      .toBe(60_000);
+    expect(storageStatusPollInterval(undefined)).toBe(60_000);
   });
 
   it('formats the recovery estimate as a ticking clock', () => {

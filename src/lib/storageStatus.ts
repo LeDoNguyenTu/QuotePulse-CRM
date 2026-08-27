@@ -1,8 +1,10 @@
+import type { StorageCompactionStatus } from './functions';
+
 export type CapacityTone = 'safe' | 'warning' | 'critical';
 
 export interface ArchiveAutomationSummaryInput {
   status: 'succeeded' | 'degraded' | 'failed';
-  pressure: 'warning' | 'critical';
+  pressure: 'warning' | 'high' | 'critical';
   databaseBytes: number;
   ownersProcessed: number;
   dealsArchived: number;
@@ -26,7 +28,15 @@ export interface SnapshotStorageStatus {
   archivedSnapshots: number;
 }
 
-export type StorageRecoveryState = 'archiving' | 'compaction-required' | 'normal';
+export type StorageRecoveryState =
+  | 'archiving'
+  | 'capacity-guard'
+  | 'cooldown'
+  | 'scheduled'
+  | 'running'
+  | 'retry-wait'
+  | 'failed-closed'
+  | 'normal';
 
 export type ImportRecoveryPhase = 'checking' | 'unavailable' | 'archiving' | 'compaction-required' | 'ready';
 
@@ -51,7 +61,23 @@ interface ImportRecoveryStatus {
     finishedAt: string;
   } | null;
   snapshots?: SnapshotStorageStatus | { error: string };
+  compaction?: StorageCompactionStatus | { error: string };
 }
+
+const ARCHIVE_START_RATIO = 0.60;
+const FAST_POLL_RATIO = 0.75;
+const IMPORT_STOP_RATIO = 0.82;
+const NORMAL_POLL_MS = 5 * 60_000;
+const RECOVERY_POLL_MS = 60_000;
+const VALID_COMPACTION_STATES = new Set([
+  'idle',
+  'cooldown',
+  'scheduled',
+  'running',
+  'retry_wait',
+  'succeeded',
+  'failed_closed',
+]);
 
 export function capacityStatus(usedBytes: number, limitBytes: number): CapacityStatus {
   const used = Math.max(0, Number.isFinite(usedBytes) ? usedBytes : 0);
@@ -63,7 +89,11 @@ export function capacityStatus(usedBytes: number, limitBytes: number): CapacityS
     remainingBytes: Math.max(0, limit - used),
     percent,
     progressPercent: Math.min(100, percent),
-    tone: percent >= 85 ? 'critical' : percent >= 70 ? 'warning' : 'safe',
+    tone: percent >= IMPORT_STOP_RATIO * 100
+      ? 'critical'
+      : percent >= ARCHIVE_START_RATIO * 100
+      ? 'warning'
+      : 'safe',
   };
 }
 
@@ -76,6 +106,7 @@ export function archiveAutomationSummary(run: ArchiveAutomationSummaryInput): st
 export function storageRecoverySummary(
   snapshots: SnapshotStorageStatus,
   database: { usedBytes: number; limitBytes: number },
+  compaction: StorageCompactionStatus,
 ): { state: StorageRecoveryState; message: string } {
   if (snapshots.pendingSnapshots > 0) {
     return {
@@ -83,10 +114,40 @@ export function storageRecoverySummary(
       message: `${snapshots.pendingSnapshots.toLocaleString()} deal snapshots are still moving to R2. Supabase allocated size will fall only after compaction.`,
     };
   }
-  if (database.usedBytes >= database.limitBytes) {
+  if (compaction.state === 'failed_closed') {
     return {
-      state: 'compaction-required',
-      message: 'All deal snapshots are in R2. Database compaction is still required to reclaim Supabase space.',
+      state: 'failed-closed',
+      message: `Automatic recovery stopped safely${compaction.lastError ? `: ${compaction.lastError}` : '.'} Manual support is required; imports remain blocked.`,
+    };
+  }
+  if (compaction.state === 'running') {
+    return {
+      state: 'running',
+      message: 'Automatic TOAST compaction is running. Imports and archive work remain paused to protect database I/O.',
+    };
+  }
+  if (compaction.state === 'scheduled') {
+    return {
+      state: 'scheduled',
+      message: `Database compaction is scheduled automatically${compaction.scheduledAt ? ` for ${new Date(compaction.scheduledAt).toLocaleString()}` : ''}.`,
+    };
+  }
+  if (compaction.state === 'retry_wait') {
+    return {
+      state: 'retry-wait',
+      message: `Automatic compaction paused to protect database I/O and will retry${compaction.nextRetryAt ? ` after ${new Date(compaction.nextRetryAt).toLocaleString()}` : ' later'}.`,
+    };
+  }
+  if (compaction.state === 'cooldown') {
+    return {
+      state: 'cooldown',
+      message: 'Archive verification is complete. Automatic compaction is waiting for the cooldown and a quiet database window.',
+    };
+  }
+  if (database.usedBytes >= database.limitBytes * IMPORT_STOP_RATIO) {
+    return {
+      state: 'capacity-guard',
+      message: 'The capacity guard is active. Automatic recovery is evaluating the next safe compaction opportunity.',
     };
   }
   return {
@@ -110,13 +171,17 @@ export function importRecoveryLock(
   }
 
   const snapshots = status?.snapshots;
+  const compaction = status?.compaction;
   if (
     query.failed ||
     !status ||
     status.database.error ||
     status.database.usedBytes == null ||
     !snapshots ||
-    'error' in snapshots
+    'error' in snapshots ||
+    !compaction ||
+    'error' in compaction ||
+    !VALID_COMPACTION_STATES.has(compaction.state)
   ) {
     return {
       locked: true,
@@ -149,13 +214,33 @@ export function importRecoveryLock(
     };
   }
 
-  if (status.database.usedBytes >= status.database.limitBytes) {
+  if (compaction.state === 'failed_closed') {
     return {
       locked: true,
       phase: 'compaction-required',
       pendingSnapshots: 0,
       estimatedArchiveCompleteAt: null,
-      message: 'The R2 archive stage is complete. Database compaction is required before HubSpot import can resume.',
+      message: `Automatic storage recovery stopped safely${compaction.lastError ? `: ${compaction.lastError}` : '.'} HubSpot import remains disabled until the issue is resolved.`,
+    };
+  }
+
+  if (['cooldown', 'scheduled', 'running', 'retry_wait'].includes(compaction.state)) {
+    return {
+      locked: true,
+      phase: 'compaction-required',
+      pendingSnapshots: 0,
+      estimatedArchiveCompleteAt: null,
+      message: 'Automatic database compaction is pending or active. HubSpot import will resume after capacity is verified safe.',
+    };
+  }
+
+  if (status.database.usedBytes >= status.database.limitBytes * IMPORT_STOP_RATIO) {
+    return {
+      locked: true,
+      phase: 'compaction-required',
+      pendingSnapshots: 0,
+      estimatedArchiveCompleteAt: null,
+      message: 'The storage capacity guard is active. Automatic compaction will run at the next safe opportunity before HubSpot import resumes.',
     };
   }
 
@@ -166,6 +251,20 @@ export function importRecoveryLock(
     estimatedArchiveCompleteAt: null,
     message: 'Storage recovery is complete and HubSpot import is available.',
   };
+}
+
+export function storageStatusPollInterval(status: ImportRecoveryStatus | null | undefined): number {
+  if (!status || status.database.error || status.database.usedBytes == null || !status.compaction) {
+    return RECOVERY_POLL_MS;
+  }
+  if ('error' in status.compaction) return RECOVERY_POLL_MS;
+  const snapshots = status.snapshots;
+  const recoveryActive = !['idle', 'succeeded'].includes(status.compaction.state)
+    || !!(snapshots && !('error' in snapshots) && snapshots.pendingSnapshots > 0);
+  const ratio = status.database.limitBytes > 0
+    ? status.database.usedBytes / status.database.limitBytes
+    : 1;
+  return recoveryActive || ratio >= FAST_POLL_RATIO ? RECOVERY_POLL_MS : NORMAL_POLL_MS;
 }
 
 export function formatRecoveryCountdown(milliseconds: number): string {

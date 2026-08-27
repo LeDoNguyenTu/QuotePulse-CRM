@@ -84,12 +84,14 @@ export function StorageStatusPanel() {
 
   const measured = new Date(query.data.measuredAt);
   const snapshots = query.data.snapshots;
+  const compaction = query.data.compaction;
   const recovery = snapshots && 'pendingSnapshots' in snapshots &&
-      query.data.database.usedBytes != null && !query.data.database.error
+      query.data.database.usedBytes != null && !query.data.database.error &&
+      compaction && !('error' in compaction)
     ? storageRecoverySummary(snapshots, {
       usedBytes: query.data.database.usedBytes,
       limitBytes: query.data.database.limitBytes,
-    })
+    }, compaction)
     : null;
   return (
     <section className="card p-4" aria-labelledby="storage-status-heading">
@@ -112,7 +114,7 @@ export function StorageStatusPanel() {
         <span className="font-medium text-slate-700">Automatic R2 archive:</span>{' '}
         {query.data.archiveAutomation
           ? archiveAutomationSummary(query.data.archiveAutomation)
-          : 'Ready. It activates at 70% database usage.'}
+          : 'Ready. It activates at 60% database usage.'}
         {query.data.archiveAutomation && (
           <span className="ml-1 text-slate-400">
             Last run {new Date(query.data.archiveAutomation.finishedAt).toLocaleString()}.
@@ -122,6 +124,8 @@ export function StorageStatusPanel() {
           <span className="font-medium text-slate-700">Recovery state:</span>{' '}
           {recovery?.message ?? (snapshots && 'error' in snapshots
             ? `Unavailable: ${snapshots.error}`
+            : compaction && 'error' in compaction
+            ? `Unavailable: ${compaction.error}`
             : 'Waiting for a fresh database measurement.')}
         </p>
       </div>

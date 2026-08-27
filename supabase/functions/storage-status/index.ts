@@ -1,6 +1,10 @@
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
 import { readR2Usage, type R2Usage } from '../_shared/r2Usage.ts';
-import { createStorageStatusHandler, type StorageCache } from './handler.ts';
+import {
+  createStorageStatusHandler,
+  type StorageCache,
+  type StorageCompactionState,
+} from './handler.ts';
 
 function required(name: string): string {
   const value = Deno.env.get(name);
@@ -69,7 +73,7 @@ const handler = createStorageStatusHandler({
     if (!data) return null;
     return {
       status: data.status as 'succeeded' | 'degraded' | 'failed',
-      pressure: data.pressure as 'warning' | 'critical',
+      pressure: data.pressure as 'warning' | 'high' | 'critical',
       databaseBytes: Number(data.database_bytes),
       ownersProcessed: Number(data.owners_processed),
       dealsArchived: Number(data.deals_archived),
@@ -89,6 +93,27 @@ const handler = createStorageStatusHandler({
       totalDeals: Number(status.total_deals),
       pendingSnapshots: Number(status.pending_snapshots),
       archivedSnapshots: Number(status.archived_snapshots),
+    };
+  },
+  readCompactionStatus: async () => {
+    const { data, error } = await admin.rpc('storage_compaction_status');
+    if (error) throw error;
+    const status = data?.[0];
+    if (!status) throw new Error('Automatic compaction state is unavailable.');
+    return {
+      state: status.state as StorageCompactionState,
+      requestedAt: status.requested_at as string | null,
+      scheduledAt: status.scheduled_at as string | null,
+      startedAt: status.started_at as string | null,
+      finishedAt: status.finished_at as string | null,
+      nextRetryAt: status.next_retry_at as string | null,
+      attemptCount: Number(status.attempt_count),
+      databaseBytesBefore: status.database_bytes_before == null ? null : Number(status.database_bytes_before),
+      databaseBytesAfter: status.database_bytes_after == null ? null : Number(status.database_bytes_after),
+      dealToastBytesBefore: status.deal_toast_bytes_before == null ? null : Number(status.deal_toast_bytes_before),
+      dealToastBytesAfter: status.deal_toast_bytes_after == null ? null : Number(status.deal_toast_bytes_after),
+      lastError: status.last_error as string | null,
+      skipReason: status.skip_reason as string | null,
     };
   },
   now: () => new Date(),

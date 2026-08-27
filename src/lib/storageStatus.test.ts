@@ -228,6 +228,7 @@ describe('storage capacity status', () => {
       .toBe(60_000);
     expect(storageStatusPollInterval({ ...safe, compaction: { ...idleCompaction, state: 'running' } }))
       .toBe(60_000);
+    expect(storageStatusPollInterval({ ...safe, snapshots: { error: 'status timeout' } })).toBe(60_000);
     expect(storageStatusPollInterval(undefined)).toBe(60_000);
   });
 

@@ -50,6 +50,8 @@ describe('resource-aware automatic storage recovery migration', () => {
     expect(sql).toContain("interval '60 minutes'");
     expect(sql).toContain("at time zone 'asia/singapore'");
     expect(sql).toContain("current_state.state in ('cooldown', 'retry_wait')");
+    expect(sql).toContain("skip_reason = 'toast-compaction-ineffective'");
+    expect(sql).toMatch(/deal_toast_bytes_before[\s\S]*sizes\.deal_toast_bytes[\s\S]*storage_compaction_backoff/);
   });
 
   it('prevents archive and compaction from acquiring work at the same time', () => {

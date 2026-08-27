@@ -259,8 +259,9 @@ export function storageStatusPollInterval(status: ImportRecoveryStatus | null | 
   }
   if ('error' in status.compaction) return RECOVERY_POLL_MS;
   const snapshots = status.snapshots;
+  if (!snapshots || 'error' in snapshots) return RECOVERY_POLL_MS;
   const recoveryActive = !['idle', 'succeeded'].includes(status.compaction.state)
-    || !!(snapshots && !('error' in snapshots) && snapshots.pendingSnapshots > 0);
+    || snapshots.pendingSnapshots > 0;
   const ratio = status.database.limitBytes > 0
     ? status.database.usedBytes / status.database.limitBytes
     : 1;

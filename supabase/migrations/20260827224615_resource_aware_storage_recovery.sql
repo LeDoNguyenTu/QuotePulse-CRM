@@ -255,6 +255,24 @@ begin
             updated_at = statement_timestamp()
         where id;
         return 'succeeded';
+      elsif latest_run.status = 'succeeded'
+         and (
+           current_state.deal_toast_bytes_before is null
+           or sizes.deal_toast_bytes >= current_state.deal_toast_bytes_before - 1000000
+         ) then
+        update public.storage_compaction_state
+        set state = 'retry_wait',
+            finished_at = coalesce(latest_run.end_time, statement_timestamp()),
+            next_retry_at = statement_timestamp() + private.storage_compaction_backoff(attempt_count),
+            database_bytes_after = sizes.database_bytes,
+            deal_heap_bytes_after = sizes.deal_heap_bytes,
+            deal_index_bytes_after = sizes.deal_index_bytes,
+            deal_toast_bytes_after = sizes.deal_toast_bytes,
+            last_error = 'TOAST-only compaction did not reclaim measurable space and may have skipped a busy relation.',
+            skip_reason = 'toast-compaction-ineffective',
+            updated_at = statement_timestamp()
+        where id;
+        return 'retry-wait';
       elsif latest_run.status = 'succeeded' then
         update public.storage_compaction_state
         set state = 'failed_closed',

@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { assertStorageAdmission, decideStorageAdmission } from './storageAdmission.ts';
+import {
+  assertStorageAdmission,
+  decideStorageAdmission,
+  releaseStorageAdmission,
+} from './storageAdmission.ts';
 
 const allowedRow = {
   decision: 'allowed',
@@ -9,6 +13,7 @@ const allowedRow = {
   archive_pending: false,
   compaction_state: 'idle',
   reason: null,
+  lease_token: '11111111-1111-4111-8111-111111111111',
 };
 
 describe('server-side storage admission', () => {
@@ -17,6 +22,7 @@ describe('server-side storage admission', () => {
       allowed: true,
       decision: 'allowed',
       databaseBytes: 300_000_000,
+      leaseToken: '11111111-1111-4111-8111-111111111111',
     });
   });
 
@@ -42,6 +48,8 @@ describe('server-side storage admission', () => {
     [[{ ...allowedRow, decision: 'unexpected' }], null],
     [[{ ...allowedRow, archive_pending: true }], null],
     [[{ ...allowedRow, compaction_state: 'failed_closed' }], null],
+    [[{ ...allowedRow, lease_token: null }], null],
+    [[{ ...allowedRow, lease_token: 'not-a-uuid' }], null],
     [[allowedRow], { message: 'database unavailable' }],
   ])('fails closed for malformed or unavailable status %#', (data, error) => {
     expect(decideStorageAdmission(data, error)).toMatchObject({
@@ -54,7 +62,30 @@ describe('server-side storage admission', () => {
   it('passes the authenticated owner id explicitly to the service RPC', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: [allowedRow], error: null });
     await expect(assertStorageAdmission({ rpc } as never, 'owner-123')).resolves.toMatchObject({ allowed: true });
-    expect(rpc).toHaveBeenCalledWith('storage_import_admission', { p_owner_id: 'owner-123' });
+    expect(rpc).toHaveBeenCalledWith('claim_storage_import_admission', {
+      p_owner_id: 'owner-123',
+      p_lease_seconds: 90,
+    });
+  });
+
+  it('releases the exact import lease token', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: true, error: null });
+    await expect(releaseStorageAdmission(
+      { rpc } as never,
+      '11111111-1111-4111-8111-111111111111',
+    )).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('release_storage_import_lease', {
+      p_token: '11111111-1111-4111-8111-111111111111',
+    });
+  });
+
+  it('surfaces lease-release failures to the handler cleanup path', async () => {
+    const error = new Error('release failed');
+    const rpc = vi.fn().mockResolvedValue({ data: null, error });
+    await expect(releaseStorageAdmission(
+      { rpc } as never,
+      '11111111-1111-4111-8111-111111111111',
+    )).rejects.toBe(error);
   });
 
   it('runs admission before parsing rebuild mode, credentials, or HubSpot calls', () => {
@@ -66,5 +97,7 @@ describe('server-side storage admission', () => {
     expect(admission).toBeLessThan(source.indexOf('getUserSettings(admin, userId)'));
     expect(admission).toBeLessThan(source.indexOf('HubSpotClient.connect(token)'));
     expect(admission).toBeLessThan(source.indexOf("hs.countAll('deals')"));
+    expect(source).toContain('finally');
+    expect(source).toContain('releaseStorageAdmission(storageAdmin, storageImportLeaseToken)');
   });
 });

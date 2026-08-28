@@ -14,7 +14,7 @@
 // It also swallowed every error and still returned HTTP 200 {ok:true}.
 import { corsHeaders, handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseAdmin.ts';
-import { assertStorageAdmission } from '../_shared/storageAdmission.ts';
+import { assertStorageAdmission, releaseStorageAdmission } from '../_shared/storageAdmission.ts';
 import {
   parseDealName,
   cleanCompanyName,
@@ -163,10 +163,13 @@ Deno.serve(async (req) => {
   };
   const errors: string[] = [];
   const warnings: string[] = [];
+  let storageAdmin: ReturnType<typeof getAdminClient> | null = null;
+  let storageImportLeaseToken: string | null = null;
 
   try {
     const userId = await getUserId(req);
     const admin = getAdminClient();
+    storageAdmin = admin;
 
     const admission = await assertStorageAdmission(admin, userId);
     if (!admission.allowed) {
@@ -191,6 +194,7 @@ Deno.serve(async (req) => {
         },
       });
     }
+    storageImportLeaseToken = admission.leaseToken;
 
     const body = (await req.json().catch(() => ({}))) as { mode?: string };
 
@@ -369,6 +373,14 @@ Deno.serve(async (req) => {
       },
       500
     );
+  } finally {
+    if (storageAdmin && storageImportLeaseToken) {
+      try {
+        await releaseStorageAdmission(storageAdmin, storageImportLeaseToken);
+      } catch (releaseError) {
+        console.error('Could not release the storage import lease.', releaseError);
+      }
+    }
   }
 });
 

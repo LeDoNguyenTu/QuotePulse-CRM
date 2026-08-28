@@ -16,6 +16,7 @@ export interface StorageAdmissionResult {
   limitBytes: number;
   compactionState: string | null;
   reason: string | null;
+  leaseToken: string | null;
 }
 
 interface StorageAdmissionRow {
@@ -25,6 +26,7 @@ interface StorageAdmissionRow {
   archive_pending: boolean;
   compaction_state: string;
   reason: string | null;
+  lease_token: string | null;
 }
 
 const DATABASE_STOP_BYTES = 410_000_000;
@@ -43,6 +45,7 @@ function unavailable(message = 'Storage recovery status is unavailable. HubSpot 
     limitBytes: DATABASE_LIMIT_BYTES,
     compactionState: null,
     reason: 'status-unavailable',
+    leaseToken: null,
   };
 }
 
@@ -78,6 +81,7 @@ export function decideStorageAdmission(data: unknown, error: unknown): StorageAd
       limitBytes,
       compactionState: typeof row.compaction_state === 'string' ? row.compaction_state : null,
       reason: typeof row.reason === 'string' ? row.reason : null,
+      leaseToken: null,
     };
   }
 
@@ -87,6 +91,8 @@ export function decideStorageAdmission(data: unknown, error: unknown): StorageAd
     || typeof row.compaction_state !== 'string'
     || !SAFE_COMPACTION_STATES.has(row.compaction_state)
     || databaseBytes >= DATABASE_STOP_BYTES
+    || typeof row.lease_token !== 'string'
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(row.lease_token)
   ) {
     return unavailable('Storage admission returned an unsafe or invalid state. HubSpot import remains paused.');
   }
@@ -100,6 +106,7 @@ export function decideStorageAdmission(data: unknown, error: unknown): StorageAd
     limitBytes,
     compactionState: row.compaction_state,
     reason: null,
+    leaseToken: row.lease_token,
   };
 }
 
@@ -108,9 +115,20 @@ export async function assertStorageAdmission(
   ownerId: string,
 ): Promise<StorageAdmissionResult> {
   try {
-    const { data, error } = await admin.rpc('storage_import_admission', { p_owner_id: ownerId });
+    const { data, error } = await admin.rpc('claim_storage_import_admission', {
+      p_owner_id: ownerId,
+      p_lease_seconds: 90,
+    });
     return decideStorageAdmission(data, error);
   } catch {
     return unavailable();
   }
+}
+
+export async function releaseStorageAdmission(
+  admin: Pick<SupabaseClient, 'rpc'>,
+  leaseToken: string,
+): Promise<void> {
+  const { error } = await admin.rpc('release_storage_import_lease', { p_token: leaseToken });
+  if (error) throw error;
 }

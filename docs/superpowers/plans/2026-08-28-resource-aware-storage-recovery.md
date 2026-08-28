@@ -126,7 +126,8 @@
 8. Add service-role-only public RPCs:
 
    - `storage_compaction_status()` returning sanitized state/status fields for the Edge status function;
-   - `storage_import_admission(uuid)` returning `allowed`, `archiving`, `capacity_guard`, `compacting`, or `status_unavailable`, together with used/limit bytes and the compaction state.
+   - `claim_storage_import_admission(uuid, integer)` returning `allowed`, `archiving`, `capacity_guard`, `compacting`, or `status_unavailable`, together with used/limit bytes, the compaction state, and a short-lived lease token when allowed;
+   - `release_storage_import_lease(uuid)` releasing only the matching import lease.
 
    Both use constant-time/index-backed checks and do not expose raw cron SQL or privileged catalog data.
 
@@ -154,7 +155,7 @@
 
    `npm test -- --run supabase/functions/_shared/storageAdmission.test.ts`
 
-3. Implement the typed mapper and an `assertStorageAdmission(admin, ownerId)` helper that calls `storage_import_admission` once, passes the authenticated owner id explicitly, validates the response, and fails closed on every error or unknown state.
+3. Implement the typed mapper and an `assertStorageAdmission(admin, ownerId)` helper that atomically claims `claim_storage_import_admission` once, passes the authenticated owner id explicitly, validates the response and lease token, and fails closed on every error or unknown state. Release the matching lease in the handler's `finally` path.
 
 4. In the `hubspot-ingest` request handler, call `assertStorageAdmission` immediately after authentication/admin-client construction and before parsing a rebuild, resolving HubSpot credentials, making remote requests, or writing CRM rows. Return HTTP 503 with `Retry-After: 60` and the shared structured error when denied.
 

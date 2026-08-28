@@ -101,6 +101,15 @@ jobs:
             echo "::endgroup::"
           done
 
+      # The migration deliberately installs the controller disabled. Enable it
+      # only after the matching admission/maintenance functions are live, so a
+      # partial deployment can never admit imports against mixed versions.
+      - name: Enable automatic storage recovery controller
+        run: |
+          supabase db query --linked "update public.storage_compaction_state
+            set controller_enabled = true, updated_at = statement_timestamp()
+            where id;"
+
       - name: Verify storage archive schedule
         run: |
           supabase db query --linked "do \$\$ begin
@@ -116,4 +125,15 @@ jobs:
             if not exists (
               select 1 from cron.job where jobname = 'storage-pressure-r2-archive' and active
             ) then raise exception 'storage-pressure-r2-archive cron job is not active'; end if;
+            if not exists (
+              select 1
+              from cron.job job
+              cross join public.storage_compaction_state recovery
+              where job.jobname = 'storage-toast-compaction'
+                and recovery.id
+                and (not job.active or recovery.state in ('scheduled', 'running'))
+            ) then raise exception 'storage-toast-compaction job state is inconsistent'; end if;
+            if not exists (
+              select 1 from public.storage_compaction_state where id and controller_enabled
+            ) then raise exception 'automatic storage recovery controller is not enabled'; end if;
           end \$\$;"

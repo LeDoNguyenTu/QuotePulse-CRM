@@ -3,10 +3,9 @@ import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
 import { companyAttachmentBatchArchiveKey, dealBatchArchiveKey, getArchiveJson, putVerifiedArchive, verifyArchivePayload } from '../_shared/r2Archive.ts';
 import { resolveArchiveOwner } from '../_shared/archiveAuth.ts';
 import { assertCompanyArchivePointer, attachmentsForCompany, mergeAttachmentRecords, type AttachmentRecord } from '../_shared/attachmentArchive.ts';
+import { remainingArchiveBudget } from '../_shared/archiveBudget.ts';
 
-const MAX_BATCH = 1_000;
-const MAX_DEALS_PER_BATCH = 200;
-const MAX_COMPANIES_PER_BATCH = 200;
+const MAX_BATCH = 200;
 
 type DealCandidate = {
   id: string;
@@ -51,7 +50,7 @@ Deno.serve(async (req) => {
 
     const { data: deals, error: dealsError } = await admin.rpc('deal_archive_candidates', {
       p_owner_id: userId,
-      p_limit: Math.min(limit, MAX_DEALS_PER_BATCH),
+      p_limit: limit,
     });
     if (dealsError) throw dealsError;
     if ((deals ?? []).length > 0) {
@@ -82,87 +81,94 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: candidates, error: candidateError } = await admin.rpc('generic_attachment_archive_candidates', {
-      p_owner_id: userId,
-      p_limit: Math.min(limit, MAX_COMPANIES_PER_BATCH),
-    });
-    if (candidateError) throw candidateError;
-    const companyIds = ((candidates ?? []) as Array<{ company_id: string }>).map((row) => row.company_id);
-    if (companyIds.length > 0) {
-      try {
-        const { data: manifests, error: manifestError } = await admin
-          .from('company_attachment_archives')
-          .select('company_id, r2_key, r2_sha256')
-          .eq('owner_id', userId)
-          .in('company_id', companyIds);
-        if (manifestError) throw manifestError;
-        const manifestRows = (manifests ?? []) as AttachmentManifest[];
-        const manifestByCompany = new Map(manifestRows.map((manifest) => [manifest.company_id, manifest]));
-        const previousByCompany = new Map<string, AttachmentRecord[]>();
-        const manifestsByKey = new Map<string, AttachmentManifest[]>();
-        for (const manifest of manifestRows) {
-          const companyId = manifest.company_id;
-          assertCompanyArchivePointer(manifest.r2_key, userId, companyId);
-          const group = manifestsByKey.get(manifest.r2_key) ?? [];
-          group.push(manifest);
-          manifestsByKey.set(manifest.r2_key, group);
-        }
-        for (const [key, groupedManifests] of manifestsByKey) {
-          const expected = groupedManifests[0].r2_sha256;
-          if (groupedManifests.some((manifest) => manifest.r2_sha256 !== expected)) {
-            throw new Error('Companies sharing an attachment archive have inconsistent checksums.');
-          }
-          const payload = await getArchiveJson<unknown>(key);
-          await verifyArchivePayload(JSON.stringify(payload), expected);
-          for (const manifest of groupedManifests) {
+    const dealsAttempted = (deals ?? []).length;
+    const attachmentBudget = remainingArchiveBudget(limit, dealsAttempted);
+    let attachmentsAttempted = 0;
+    if (attachmentBudget > 0) {
+      const { data: candidates, error: candidateError } = await admin.rpc('generic_attachment_archive_candidates', {
+        p_owner_id: userId,
+        p_limit: attachmentBudget,
+      });
+      if (candidateError) throw candidateError;
+      const companyIds = ((candidates ?? []) as Array<{ company_id: string }>).map((row) => row.company_id);
+      if (companyIds.length > 0) {
+        try {
+          const { data: manifests, error: manifestError } = await admin
+            .from('company_attachment_archives')
+            .select('company_id, r2_key, r2_sha256')
+            .eq('owner_id', userId)
+            .in('company_id', companyIds);
+          if (manifestError) throw manifestError;
+          const manifestRows = (manifests ?? []) as AttachmentManifest[];
+          const manifestByCompany = new Map(manifestRows.map((manifest) => [manifest.company_id, manifest]));
+          const previousByCompany = new Map<string, AttachmentRecord[]>();
+          const manifestsByKey = new Map<string, AttachmentManifest[]>();
+          for (const manifest of manifestRows) {
             const companyId = manifest.company_id;
-            previousByCompany.set(companyId, attachmentsForCompany(payload, companyId));
+            assertCompanyArchivePointer(manifest.r2_key, userId, companyId);
+            const group = manifestsByKey.get(manifest.r2_key) ?? [];
+            group.push(manifest);
+            manifestsByKey.set(manifest.r2_key, group);
           }
-        }
+          for (const [key, groupedManifests] of manifestsByKey) {
+            const expected = groupedManifests[0].r2_sha256;
+            if (groupedManifests.some((manifest) => manifest.r2_sha256 !== expected)) {
+              throw new Error('Companies sharing an attachment archive have inconsistent checksums.');
+            }
+            const payload = await getArchiveJson<unknown>(key);
+            await verifyArchivePayload(JSON.stringify(payload), expected);
+            for (const manifest of groupedManifests) {
+              const companyId = manifest.company_id;
+              previousByCompany.set(companyId, attachmentsForCompany(payload, companyId));
+            }
+          }
 
-        const { data: attachments, error: attachmentError } = await admin.rpc('generic_attachments_for_archive', {
-          p_owner_id: userId,
-          p_company_ids: companyIds,
-        });
-        if (attachmentError) throw attachmentError;
-        const liveByCompany = new Map<string, AttachmentRecord[]>();
-        for (const { company_id: companyId, ...attachment } of (attachments ?? []) as Array<AttachmentRecord & { company_id: string }>) {
-          const rows = liveByCompany.get(companyId) ?? [];
-          rows.push(attachment as AttachmentRecord);
-          liveByCompany.set(companyId, rows);
-        }
-
-        const batch = companyIds.flatMap<CompanyAttachmentBatch>((companyId) => {
-          const liveRows = liveByCompany.get(companyId) ?? [];
-          if (liveRows.length === 0) return [];
-          const attachments = mergeAttachmentRecords(liveRows, previousByCompany.get(companyId) ?? []);
-          return [{
-            company_id: companyId,
-            expected_sha256: manifestByCompany.get(companyId)?.r2_sha256 ?? null,
-            item_count: attachments.length,
-            attachment_ids: liveRows.map((row) => row.id),
-            attachments,
-          }];
-        });
-        if (batch.length > 0) {
-          const archived = await putVerifiedArchive(
-            companyAttachmentBatchArchiveKey(userId, crypto.randomUUID()),
-            { companies: batch.map(({ expected_sha256: _sha, item_count: _count, attachment_ids: _ids, ...company }) => company) },
-          );
-          const { data: removed, error: cleanupError } = await admin.rpc('finalize_company_attachment_archive_batch', {
+          const { data: attachments, error: attachmentError } = await admin.rpc('generic_attachments_for_archive', {
             p_owner_id: userId,
-            p_r2_key: archived.key,
-            p_r2_sha256: archived.checksum,
-            p_companies: batch.map(({ attachments: _attachments, ...company }) => company),
+            p_company_ids: companyIds,
+            p_limit: attachmentBudget,
           });
-          if (cleanupError) throw cleanupError;
-          counts.generic_attachments_archived = Number(removed ?? 0);
+          if (attachmentError) throw attachmentError;
+          attachmentsAttempted = (attachments ?? []).length;
+          const liveByCompany = new Map<string, AttachmentRecord[]>();
+          for (const { company_id: companyId, ...attachment } of (attachments ?? []) as Array<AttachmentRecord & { company_id: string }>) {
+            const rows = liveByCompany.get(companyId) ?? [];
+            rows.push(attachment as AttachmentRecord);
+            liveByCompany.set(companyId, rows);
+          }
+
+          const batch = companyIds.flatMap<CompanyAttachmentBatch>((companyId) => {
+            const liveRows = liveByCompany.get(companyId) ?? [];
+            if (liveRows.length === 0) return [];
+            const attachments = mergeAttachmentRecords(liveRows, previousByCompany.get(companyId) ?? []);
+            return [{
+              company_id: companyId,
+              expected_sha256: manifestByCompany.get(companyId)?.r2_sha256 ?? null,
+              item_count: attachments.length,
+              attachment_ids: liveRows.map((row) => row.id),
+              attachments,
+            }];
+          });
+          if (batch.length > 0) {
+            const archived = await putVerifiedArchive(
+              companyAttachmentBatchArchiveKey(userId, crypto.randomUUID()),
+              { companies: batch.map(({ expected_sha256: _sha, item_count: _count, attachment_ids: _ids, ...company }) => company) },
+            );
+            const { data: removed, error: cleanupError } = await admin.rpc('finalize_company_attachment_archive_batch', {
+              p_owner_id: userId,
+              p_r2_key: archived.key,
+              p_r2_sha256: archived.checksum,
+              p_companies: batch.map(({ attachments: _attachments, ...company }) => company),
+            });
+            if (cleanupError) throw cleanupError;
+            counts.generic_attachments_archived = Number(removed ?? 0);
+          }
+        } catch (error) {
+          counts.warnings.push(`attachment batch: ${errorMessage(error, 'archive failed')}`);
         }
-      } catch (error) {
-        counts.warnings.push(`attachment batch: ${errorMessage(error, 'archive failed')}`);
       }
     }
-    const attempted = (deals?.length ?? 0) + companyIds.length;
+    const attempted = dealsAttempted + attachmentsAttempted;
     if (attempted > 0 && counts.deals_archived === 0 && counts.generic_attachments_archived === 0 && counts.warnings.length > 0) {
       return errorResponse(`Archive batch failed: ${counts.warnings[0]}`, 500);
     }

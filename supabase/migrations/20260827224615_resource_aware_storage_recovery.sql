@@ -19,6 +19,42 @@ alter table public.storage_archive_state
   add column if not exists zero_candidate_observations integer not null default 0
     check (zero_candidate_observations between 0 and 2);
 
+-- Existing installations did not track the last write on the singleton. Keep
+-- the first controller run conservative: use the newest known productive run,
+-- or migration time when history is empty or ambiguous.
+update public.storage_archive_state state
+set last_archive_work_at = coalesce(
+  state.last_archive_work_at,
+  (
+    select max(run.finished_at)
+    from public.storage_archive_runs run
+    where run.deals_archived > 0 or run.generic_attachments_archived > 0
+  ),
+  statement_timestamp()
+)
+where state.id;
+
+create table if not exists public.storage_import_state (
+  id boolean primary key default true check (id),
+  owner_id uuid,
+  lease_token uuid,
+  lease_expires_at timestamptz
+);
+
+alter table public.storage_import_state enable row level security;
+revoke all on table public.storage_import_state from public, anon, authenticated;
+grant all on table public.storage_import_state to service_role;
+
+insert into public.storage_import_state (id)
+values (true)
+on conflict (id) do nothing;
+
+-- Keep the once-per-minute global attachment backlog probe on a small partial
+-- index as this table grows. The predicate exactly matches archive candidates.
+create index if not exists attachments_generic_archive_pending_idx
+  on public.attachments (owner_id, deal_id, id)
+  where source_type = 'generic';
+
 create or replace function public.storage_archive_owner_candidates()
 returns table (owner_id uuid)
 language sql
@@ -91,8 +127,51 @@ revoke all on function public.complete_storage_archive_owner_attempt(uuid, boole
 grant execute on function public.complete_storage_archive_owner_attempt(uuid, boolean)
   to service_role;
 
+create or replace function public.generic_attachments_for_archive(
+  p_owner_id uuid,
+  p_company_ids uuid[],
+  p_limit integer
+)
+returns table (
+  id uuid,
+  deal_id uuid,
+  hubspot_attachment_id text,
+  file_name text,
+  file_url text,
+  source_type text,
+  parsed boolean,
+  parsed_summary jsonb,
+  created_at timestamptz,
+  updated_at timestamptz,
+  company_id uuid
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select attachment.id, attachment.deal_id, attachment.hubspot_attachment_id,
+    attachment.file_name, attachment.file_url, attachment.source_type::text,
+    attachment.parsed, attachment.parsed_summary, attachment.created_at,
+    attachment.updated_at, deal.company_id
+  from public.attachments attachment
+  join public.deals deal
+    on deal.id = attachment.deal_id and deal.owner_id = attachment.owner_id
+  where attachment.owner_id = p_owner_id
+    and attachment.source_type = 'generic'
+    and deal.company_id = any(p_company_ids)
+  order by attachment.id
+  limit greatest(1, least(p_limit, 1000));
+$$;
+
+revoke all on function public.generic_attachments_for_archive(uuid, uuid[], integer)
+  from public, anon, authenticated;
+grant execute on function public.generic_attachments_for_archive(uuid, uuid[], integer)
+  to service_role;
+
 create table if not exists public.storage_compaction_state (
   id boolean primary key default true check (id),
+  controller_enabled boolean not null default false,
   state text not null default 'idle'
     check (state in ('idle', 'cooldown', 'scheduled', 'running', 'retry_wait', 'succeeded', 'failed_closed')),
   requested_at timestamptz,
@@ -180,12 +259,18 @@ as $$
 declare
   current_state public.storage_compaction_state%rowtype;
   archive_state public.storage_archive_state%rowtype;
+  import_state public.storage_import_state%rowtype;
   sizes record;
   archive_pending boolean;
   active_query boolean;
   long_transaction boolean;
   maintenance_active boolean;
+  compaction_backend_active boolean;
+  cron_job_active boolean;
+  was_compaction_active boolean := false;
+  controller_error text;
   latest_run record;
+  deal_toast_oid oid;
   next_minute timestamptz;
   schedule_expression text;
   singapore_hour integer;
@@ -194,16 +279,32 @@ begin
     return 'controller-busy';
   end if;
 
+  select * into archive_state
+  from public.storage_archive_state
+  where id
+  for update;
+
+  select * into current_state
+  from public.storage_compaction_state
+  where id
+  for update;
+
+  was_compaction_active := current_state.state in ('scheduled', 'running');
+
+  select * into import_state
+  from public.storage_import_state
+  where id
+  for update;
+
+  if not current_state.controller_enabled then
+    return 'controller-disabled';
+  end if;
+
   select * into sizes from private.storage_relation_sizes();
 
   select exists (
     select 1 from public.storage_archive_owner_candidates()
   ) into archive_pending;
-
-  select * into archive_state
-  from public.storage_archive_state
-  where id
-  for update;
 
   update public.storage_archive_state
   set zero_candidate_observations = case
@@ -213,10 +314,17 @@ begin
   where id
   returning * into archive_state;
 
-  select * into current_state
-  from public.storage_compaction_state
-  where id
-  for update;
+  if current_state.state not in ('scheduled', 'running')
+     and import_state.lease_expires_at is not null
+     and import_state.lease_expires_at >= statement_timestamp() then
+    update public.storage_compaction_state
+    set state = 'cooldown',
+        next_retry_at = import_state.lease_expires_at,
+        skip_reason = 'import-lease-active',
+        updated_at = statement_timestamp()
+    where id;
+    return 'import-lease-active';
+  end if;
 
   if current_state.state in ('scheduled', 'running') and current_state.cron_job_id is not null then
     select detail.status, detail.start_time, detail.end_time, detail.return_message
@@ -304,17 +412,52 @@ begin
       end if;
     end if;
 
+    if current_state.skip_reason in ('cron-stop-verification', 'controller-uncertain')
+       and current_state.next_retry_at is not null
+       and statement_timestamp() >= current_state.next_retry_at then
+      select coalesce(job.active, false)
+      into cron_job_active
+      from cron.job job
+      where job.jobid = current_state.cron_job_id;
+
+      select exists (
+        select 1
+        from pg_catalog.pg_stat_activity activity
+        where activity.datname = pg_catalog.current_database()
+          and activity.pid <> pg_catalog.pg_backend_pid()
+          and activity.query ~* 'vacuum[[:space:][:punct:]]+full'
+          and activity.query ~* 'public[.]deals'
+      ) into compaction_backend_active;
+
+      if not coalesce(cron_job_active, false) and not compaction_backend_active then
+        update public.storage_compaction_state
+        set state = 'retry_wait',
+            next_retry_at = statement_timestamp() + private.storage_compaction_backoff(attempt_count),
+            skip_reason = 'cron-stop-verified',
+            updated_at = statement_timestamp()
+        where id;
+        return 'retry-wait';
+      end if;
+
+      update public.storage_compaction_state
+      set state = 'running',
+          next_retry_at = statement_timestamp() + interval '5 minutes',
+          updated_at = statement_timestamp()
+      where id;
+      return 'running';
+    end if;
+
     if current_state.state = 'scheduled'
        and statement_timestamp() > current_state.scheduled_at + interval '5 minutes' then
       perform cron.alter_job(current_state.cron_job_id, active := false);
       update public.storage_compaction_state
-      set state = 'retry_wait',
-          next_retry_at = statement_timestamp() + private.storage_compaction_backoff(attempt_count),
+      set state = 'running',
+          next_retry_at = statement_timestamp() + interval '5 minutes',
           last_error = 'Compaction cron job did not start within five minutes.',
-          skip_reason = 'cron-start-timeout',
+          skip_reason = 'cron-stop-verification',
           updated_at = statement_timestamp()
       where id;
-      return 'retry-wait';
+      return 'cron-stop-verification';
     end if;
 
     return current_state.state;
@@ -410,14 +553,19 @@ begin
       and activity.xact_start < statement_timestamp() - interval '30 seconds'
   ) into long_transaction;
 
+  select nullif(relation.reltoastrelid, 0::oid)
+  into deal_toast_oid
+  from pg_catalog.pg_class relation
+  where relation.oid = 'public.deals'::regclass;
+
   select exists (
     select 1
     from pg_catalog.pg_stat_progress_vacuum vacuum_progress
-    where vacuum_progress.relid = 'public.deals'::regclass
+    where vacuum_progress.relid in ('public.deals'::regclass, deal_toast_oid)
     union all
     select 1
     from pg_catalog.pg_stat_progress_cluster cluster_progress
-    where cluster_progress.relid = 'public.deals'::regclass
+    where cluster_progress.relid in ('public.deals'::regclass, deal_toast_oid)
   ) into maintenance_active;
 
   if active_query or long_transaction or maintenance_active then
@@ -494,10 +642,30 @@ begin
   return 'scheduled';
 exception
   when others then
+    controller_error := sqlerrm;
+    if was_compaction_active then
+      begin
+        if current_state.cron_job_id is not null then
+          perform cron.alter_job(current_state.cron_job_id, active := false);
+        end if;
+      exception when others then
+        null;
+      end;
+
+      update public.storage_compaction_state
+      set state = 'running',
+          next_retry_at = statement_timestamp() + interval '5 minutes',
+          last_error = left(controller_error, 1000),
+          skip_reason = 'controller-uncertain',
+          updated_at = statement_timestamp()
+      where id;
+      return 'controller-uncertain';
+    end if;
+
     update public.storage_compaction_state
     set state = 'retry_wait',
         next_retry_at = statement_timestamp() + interval '60 minutes',
-        last_error = left(sqlerrm, 1000),
+        last_error = left(controller_error, 1000),
         skip_reason = 'controller-error',
         updated_at = statement_timestamp()
     where id;
@@ -540,7 +708,16 @@ as $$
     recovery.database_bytes_after,
     recovery.deal_toast_bytes_before,
     recovery.deal_toast_bytes_after,
-    left(recovery.last_error, 500),
+    case
+      when recovery.last_error is null then null
+      when recovery.skip_reason = 'automatic-main-rewrite-prohibited' then
+        'Automatic TOAST compaction completed, but database capacity is still above the safe limit.'
+      when recovery.skip_reason in ('cron-stop-verification', 'controller-uncertain') then
+        'Automatic compaction completion is being verified. HubSpot import remains paused.'
+      when recovery.skip_reason = 'toast-compaction-ineffective' then
+        'Automatic compaction did not reclaim enough space and will retry safely.'
+      else 'Automatic storage recovery encountered an internal error.'
+    end,
     recovery.skip_reason
   from public.storage_compaction_state recovery
   where recovery.id;
@@ -551,72 +728,128 @@ revoke all on function public.storage_compaction_status()
 grant execute on function public.storage_compaction_status()
   to service_role;
 
-create or replace function public.storage_import_admission(p_owner_id uuid)
+drop function if exists public.storage_import_admission(uuid);
+
+create or replace function public.claim_storage_import_admission(
+  p_owner_id uuid,
+  p_lease_seconds integer default 90
+)
 returns table (
   decision text,
   database_bytes bigint,
   limit_bytes bigint,
   archive_pending boolean,
   compaction_state text,
-  reason text
+  reason text,
+  lease_token uuid
 )
 language plpgsql
-stable
 security definer
 set search_path = pg_catalog, public
 as $$
 declare
   used_bytes bigint;
-  owner_pending boolean;
-  lease_active boolean;
-  recovery_state text;
+  global_pending boolean;
+  archive_state public.storage_archive_state%rowtype;
+  recovery_state public.storage_compaction_state%rowtype;
+  import_state public.storage_import_state%rowtype;
+  claimed_token uuid;
 begin
   if p_owner_id is null then
-    return query select 'status_unavailable', 0::bigint, 500000000::bigint, false, 'idle', 'owner-unavailable';
+    return query select 'status_unavailable', 0::bigint, 500000000::bigint, false,
+      'idle', 'owner-unavailable', null::uuid;
     return;
   end if;
 
+  select * into archive_state
+  from public.storage_archive_state
+  where id
+  for update;
+
+  select * into recovery_state
+  from public.storage_compaction_state
+  where id
+  for update;
+
+  select * into import_state
+  from public.storage_import_state
+  where id
+  for update;
+
   used_bytes := pg_catalog.pg_database_size(pg_catalog.current_database());
   select exists (
-    select 1
-    from public.deals deal
-    where deal.owner_id = p_owner_id
-      and deal.r2_archive_key is null
-      and deal.hubspot_properties is not null
-      and deal.hubspot_properties <> '{}'::jsonb
-    limit 1
-  ) into owner_pending;
+    select 1 from public.storage_archive_owner_candidates()
+  ) into global_pending;
 
-  select
-    recovery.state,
-    archive.lease_expires_at is not null and archive.lease_expires_at >= statement_timestamp()
-  into recovery_state, lease_active
-  from public.storage_compaction_state recovery
-  cross join public.storage_archive_state archive
-  where recovery.id and archive.id;
-
-  if recovery_state in ('cooldown', 'scheduled', 'running', 'retry_wait') then
-    return query select 'compacting', used_bytes, 500000000::bigint, owner_pending, recovery_state, recovery_state;
-  elsif recovery_state = 'failed_closed' then
-    return query select 'capacity_guard', used_bytes, 500000000::bigint, owner_pending, recovery_state, 'failed-closed';
-  elsif lease_active or owner_pending then
-    return query select 'archiving', used_bytes, 500000000::bigint, owner_pending, recovery_state, 'archive-active';
+  if archive_state.id is null or recovery_state.id is null or import_state.id is null then
+    return query select 'status_unavailable', used_bytes, 500000000::bigint, global_pending,
+      coalesce(recovery_state.state, 'idle'), 'recovery-state-unavailable', null::uuid;
+  elsif not recovery_state.controller_enabled then
+    return query select 'status_unavailable', used_bytes, 500000000::bigint, global_pending,
+      recovery_state.state, 'controller-disabled', null::uuid;
+  elsif recovery_state.state in ('cooldown', 'scheduled', 'running', 'retry_wait') then
+    return query select 'compacting', used_bytes, 500000000::bigint, global_pending,
+      recovery_state.state, recovery_state.state, null::uuid;
+  elsif recovery_state.state = 'failed_closed' then
+    return query select 'capacity_guard', used_bytes, 500000000::bigint, global_pending,
+      recovery_state.state, 'failed-closed', null::uuid;
+  elsif archive_state.lease_expires_at is not null
+     and archive_state.lease_expires_at >= statement_timestamp() then
+    return query select 'archiving', used_bytes, 500000000::bigint, global_pending,
+      recovery_state.state, 'archive-active', null::uuid;
+  elsif global_pending then
+    return query select 'archiving', used_bytes, 500000000::bigint, true,
+      recovery_state.state, 'archive-pending', null::uuid;
+  elsif import_state.lease_expires_at is not null
+     and import_state.lease_expires_at >= statement_timestamp() then
+    return query select 'status_unavailable', used_bytes, 500000000::bigint, global_pending,
+      recovery_state.state, 'import-lease-active', null::uuid;
   elsif used_bytes >= 410000000 then
-    return query select 'capacity_guard', used_bytes, 500000000::bigint, owner_pending, recovery_state, coalesce(recovery_state, 'capacity');
-  elsif recovery_state is null then
-    return query select 'status_unavailable', used_bytes, 500000000::bigint, owner_pending, 'idle', 'recovery-state-unavailable';
-  else
-    return query select 'allowed', used_bytes, 500000000::bigint, owner_pending, recovery_state, null::text;
+    return query select 'capacity_guard', used_bytes, 500000000::bigint, global_pending,
+      recovery_state.state, 'capacity', null::uuid;
   end if;
+
+  claimed_token := gen_random_uuid();
+  update public.storage_import_state
+  set owner_id = p_owner_id,
+      lease_token = claimed_token,
+      lease_expires_at = statement_timestamp()
+        + make_interval(secs => greatest(30, least(p_lease_seconds, 120)))
+  where id;
+
+  return query select 'allowed', used_bytes, 500000000::bigint, false,
+    recovery_state.state, null::text, claimed_token;
 exception
   when others then
-    return query select 'status_unavailable', 0::bigint, 500000000::bigint, false, 'idle', 'admission-check-failed';
+    return query select 'status_unavailable', 0::bigint, 500000000::bigint, false,
+      'idle', 'admission-check-failed', null::uuid;
 end;
 $$;
 
-revoke all on function public.storage_import_admission(uuid)
+revoke all on function public.claim_storage_import_admission(uuid, integer)
   from public, anon, authenticated;
-grant execute on function public.storage_import_admission(uuid)
+grant execute on function public.claim_storage_import_admission(uuid, integer)
+  to service_role;
+
+create or replace function public.release_storage_import_lease(p_token uuid)
+returns boolean
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  update public.storage_import_state
+  set owner_id = null,
+      lease_token = null,
+      lease_expires_at = null
+  where id and lease_token = p_token;
+  return found;
+end;
+$$;
+
+revoke all on function public.release_storage_import_lease(uuid)
+  from public, anon, authenticated;
+grant execute on function public.release_storage_import_lease(uuid)
   to service_role;
 
 create or replace function public.claim_storage_archive_lease(p_lease_seconds integer default 600)
@@ -627,24 +860,39 @@ set search_path = public
 as $$
 declare
   claimed_token uuid := gen_random_uuid();
+  archive_state public.storage_archive_state%rowtype;
+  recovery_state public.storage_compaction_state%rowtype;
+  import_state public.storage_import_state%rowtype;
 begin
-  if exists (
-    select 1
-    from public.storage_compaction_state recovery
-    where recovery.id
-      and recovery.state in ('scheduled', 'running')
-  ) then
+  select * into archive_state
+  from public.storage_archive_state
+  where id
+  for update;
+
+  select * into recovery_state
+  from public.storage_compaction_state
+  where id
+  for update;
+
+  select * into import_state
+  from public.storage_import_state
+  where id
+  for update;
+
+  if recovery_state.state in ('scheduled', 'running')
+     or (
+       import_state.lease_expires_at is not null
+       and import_state.lease_expires_at >= statement_timestamp()
+     ) then
     return null;
   end if;
 
-  insert into public.storage_archive_state (id, lease_token, lease_expires_at)
-  values (true, claimed_token, now() + make_interval(secs => greatest(30, least(p_lease_seconds, 600))))
-  on conflict (id) do update
-  set lease_token = excluded.lease_token,
-      lease_expires_at = excluded.lease_expires_at
-  where public.storage_archive_state.lease_expires_at is null
-     or public.storage_archive_state.lease_expires_at < now()
-  returning lease_token into claimed_token;
+  update public.storage_archive_state
+  set lease_token = claimed_token,
+      lease_expires_at = statement_timestamp()
+        + make_interval(secs => greatest(30, least(p_lease_seconds, 600)))
+  where id
+    and (lease_expires_at is null or lease_expires_at < statement_timestamp());
 
   if not found then return null; end if;
   return claimed_token;
@@ -736,5 +984,7 @@ end $$;
 
 comment on table public.storage_compaction_state is
   'Service-only singleton for automatic, TOAST-first database compaction.';
-comment on function public.storage_import_admission(uuid) is
-  'Service-role-only fail-closed HubSpot import admission under storage pressure.';
+comment on function public.claim_storage_import_admission(uuid, integer) is
+  'Service-role-only atomic, fail-closed HubSpot import admission under storage pressure.';
+comment on function public.release_storage_import_lease(uuid) is
+  'Releases the matching short-lived HubSpot import lease.';

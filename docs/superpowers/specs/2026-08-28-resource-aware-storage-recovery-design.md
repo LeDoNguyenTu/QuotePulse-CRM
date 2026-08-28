@@ -103,7 +103,7 @@ Compaction becomes eligible only when all of these are true:
 1. Database usage is at least 82%.
 2. Archive candidates are zero on two consecutive maintenance observations.
 3. At least ten minutes have passed since the last successful archive write.
-4. The archive lease is free and no compaction is already active.
+4. The archive and import leases are free and no compaction is already active.
 5. No transaction has been open for more than 30 seconds.
 6. No non-maintenance database query has been active for more than five seconds.
 7. No vacuum, cluster, or autovacuum operation is active on `public.deals`.
@@ -157,9 +157,13 @@ unlikely after the current legacy TOAST allocation is reclaimed.
 
 ## Import admission and stopping behavior
 
-A service-role-only admission RPC returns one decision from indexed or constant-
-time checks: `allowed`, `archiving`, `capacity_guard`, `compacting`, or
-`status_unavailable`.
+A service-role-only admission RPC atomically locks the archive, compaction, and
+import singleton rows, then returns one decision from indexed or constant-time
+checks: `allowed`, `archiving`, `capacity_guard`, `compacting`, or
+`status_unavailable`. An allowed response includes a short-lived import lease;
+the handler releases the exact token in `finally`, with expiry as crash safety.
+Archive and compaction acquisition use the same row-lock order, so no two kinds
+of storage-heavy work can cross the admission check concurrently.
 
 `hubspot-ingest` calls it before token exchange, HubSpot requests, or database
 writes. Any unavailable/error result fails closed with HTTP 503 and a retryable

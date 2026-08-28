@@ -67,7 +67,7 @@
    completeOwnerAttempt(ownerId: string, didWork: boolean): Promise<void>;
    ```
 
-   Call it after a successful archive attempt; do not advance it after an R2/archive failure. Insert history only for work, partial/error results, or lease/controller failures.
+   Call it after a successful archive attempt; do not advance it after an R2/archive failure. The deal and attachment finalization RPCs also update `last_archive_work_at` transactionally whenever they actually reclaim rows, so a later partial failure cannot erase the cooldown evidence. Insert history only for work, partial/error results, or lease/controller failures.
 
 6. Wire `completeOwnerAttempt` in `index.ts` to a migration-defined service RPC named `complete_storage_archive_owner_attempt`.
 
@@ -91,7 +91,7 @@
    - capacity thresholds `0.60`, `0.75`, `0.82`, and emergency `0.95` are represented through constants or exact integer byte thresholds;
    - `storage_compaction_state` enables RLS and revokes browser roles;
    - controller functions have a fixed `search_path`;
-   - the compaction command contains `FULL`, `SKIP_LOCKED`, `PROCESS_MAIN FALSE`, `PROCESS_TOAST TRUE`, and `public.deals`;
+   - the compaction command contains `FULL`, `PROCESS_MAIN FALSE`, `PROCESS_TOAST TRUE`, and `public.deals`, while the cron role receives a five-second database-scoped `lock_timeout` for the armed run;
    - no scheduled command contains a plain `VACUUM FULL public.deals` or `PROCESS_MAIN TRUE`;
    - backoff intervals are 15, 30, and 60 minutes;
    - the controller uses a non-blocking advisory lock and inspects `pg_stat_activity`, `pg_stat_progress_vacuum`, and `pg_stat_progress_cluster`;
@@ -115,7 +115,6 @@
      ```sql
      VACUUM (
        FULL,
-       SKIP_LOCKED,
        PROCESS_MAIN FALSE,
        PROCESS_TOAST TRUE
      ) public.deals;
@@ -126,7 +125,7 @@
 8. Add service-role-only public RPCs:
 
    - `storage_compaction_status()` returning sanitized state/status fields for the Edge status function;
-   - `claim_storage_import_admission(uuid, integer)` returning `allowed`, `archiving`, `capacity_guard`, `compacting`, or `status_unavailable`, together with used/limit bytes, the compaction state, and a short-lived lease token when allowed;
+   - `claim_storage_import_admission(uuid, integer)` returning `allowed`, `archiving`, `capacity_guard`, `compacting`, or `status_unavailable`, together with used/limit bytes, the compaction state, and a five-minute lease token when allowed;
    - `release_storage_import_lease(uuid)` releasing only the matching import lease.
 
    Both use constant-time/index-backed checks and do not expose raw cron SQL or privileged catalog data.

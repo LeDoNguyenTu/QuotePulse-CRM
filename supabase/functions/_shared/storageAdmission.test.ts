@@ -64,7 +64,7 @@ describe('server-side storage admission', () => {
     await expect(assertStorageAdmission({ rpc } as never, 'owner-123')).resolves.toMatchObject({ allowed: true });
     expect(rpc).toHaveBeenCalledWith('claim_storage_import_admission', {
       p_owner_id: 'owner-123',
-      p_lease_seconds: 90,
+      p_lease_seconds: 300,
     });
   });
 

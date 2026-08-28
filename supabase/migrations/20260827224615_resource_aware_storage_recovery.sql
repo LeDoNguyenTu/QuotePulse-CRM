@@ -169,6 +169,150 @@ revoke all on function public.generic_attachments_for_archive(uuid, uuid[], inte
 grant execute on function public.generic_attachments_for_archive(uuid, uuid[], integer)
   to service_role;
 
+-- Archive finalization and the cooldown marker must commit atomically. If a
+-- later R2 batch step fails, the controller still sees the rows reclaimed by
+-- the earlier successful finalization and waits ten minutes before compaction.
+create or replace function public.finalize_deal_archive_batch(
+  p_owner_id uuid,
+  p_r2_key text,
+  p_r2_sha256 text,
+  p_rows jsonb
+) returns integer
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  archived integer;
+begin
+  with incoming as (
+    select *
+    from jsonb_to_recordset(p_rows) as row(
+      id uuid,
+      hubspot_deal_id text,
+      expected_modified_at timestamptz,
+      properties jsonb
+    )
+  ), updated as (
+    update public.deals deal
+    set hubspot_properties = '{}'::jsonb,
+        r2_archive_key = p_r2_key,
+        r2_archive_sha256 = p_r2_sha256,
+        r2_archived_at = now()
+    from incoming
+    where deal.id = incoming.id
+      and deal.owner_id = p_owner_id
+      and deal.hubspot_deal_id = incoming.hubspot_deal_id
+      and deal.hubspot_modified_at is not distinct from incoming.expected_modified_at
+      and deal.hubspot_properties = incoming.properties
+    returning deal.id
+  )
+  select count(*) into archived from updated;
+
+  if archived > 0 then
+    update public.storage_archive_state
+    set last_archive_work_at = statement_timestamp(),
+        zero_candidate_observations = 0
+    where id;
+  end if;
+
+  return archived;
+end;
+$$;
+
+revoke all on function public.finalize_deal_archive_batch(uuid, text, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.finalize_deal_archive_batch(uuid, text, text, jsonb)
+  to service_role;
+
+create or replace function public.finalize_company_attachment_archive_batch(
+  p_owner_id uuid,
+  p_r2_key text,
+  p_r2_sha256 text,
+  p_companies jsonb
+) returns integer
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  company record;
+  current_sha256 text;
+  current_exists boolean;
+  removed integer;
+begin
+  for company in
+    select * from jsonb_to_recordset(p_companies) as row(
+      company_id uuid,
+      expected_sha256 text,
+      item_count integer,
+      attachment_ids jsonb
+    ) order by company_id
+  loop
+    perform pg_advisory_xact_lock(hashtextextended(p_owner_id::text || ':' || company.company_id::text, 0));
+    current_sha256 := null;
+    select manifest.r2_sha256 into current_sha256
+    from public.company_attachment_archives manifest
+    where manifest.owner_id = p_owner_id and manifest.company_id = company.company_id;
+    current_exists := found;
+    if (current_exists and current_sha256 is distinct from company.expected_sha256)
+       or (not current_exists and company.expected_sha256 is not null) then
+      raise exception 'attachment archive changed concurrently';
+    end if;
+  end loop;
+
+  insert into public.company_attachment_archives
+    (owner_id, company_id, r2_key, r2_sha256, item_count, archived_at, updated_at)
+  select p_owner_id, row.company_id, p_r2_key, p_r2_sha256, row.item_count, now(), now()
+  from jsonb_to_recordset(p_companies) as row(
+    company_id uuid,
+    expected_sha256 text,
+    item_count integer,
+    attachment_ids jsonb
+  )
+  on conflict (owner_id, company_id) do update set
+    r2_key = excluded.r2_key,
+    r2_sha256 = excluded.r2_sha256,
+    item_count = excluded.item_count,
+    archived_at = excluded.archived_at,
+    updated_at = excluded.updated_at;
+
+  with incoming as (
+    select row.company_id, ids.attachment_id::uuid as attachment_id
+    from jsonb_to_recordset(p_companies) as row(
+      company_id uuid,
+      expected_sha256 text,
+      item_count integer,
+      attachment_ids jsonb
+    )
+    cross join lateral jsonb_array_elements_text(row.attachment_ids) as ids(attachment_id)
+  )
+  delete from public.attachments attachment
+  using public.deals deal, incoming
+  where attachment.id = incoming.attachment_id
+    and attachment.owner_id = p_owner_id
+    and attachment.source_type = 'generic'
+    and attachment.deal_id = deal.id
+    and deal.owner_id = p_owner_id
+    and deal.company_id = incoming.company_id;
+  get diagnostics removed = row_count;
+
+  if removed > 0 then
+    update public.storage_archive_state
+    set last_archive_work_at = statement_timestamp(),
+        zero_candidate_observations = 0
+    where id;
+  end if;
+
+  return removed;
+end;
+$$;
+
+revoke all on function public.finalize_company_attachment_archive_batch(uuid, text, text, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.finalize_company_attachment_archive_batch(uuid, text, text, jsonb)
+  to service_role;
+
 create table if not exists public.storage_compaction_state (
   id boolean primary key default true check (id),
   controller_enabled boolean not null default false,
@@ -249,6 +393,50 @@ as $$
 $$;
 
 revoke all on function private.storage_compaction_backoff(integer) from public, anon, authenticated;
+
+-- pg_cron opens a new session for each run. Scope a short lock timeout to the
+-- exact cron role in this database while the one-shot job is armed; app roles
+-- and existing sessions are unaffected. VACUUM itself must remain a single
+-- top-level command because VACUUM FULL cannot run inside a transaction block.
+create or replace function private.set_storage_compaction_lock_timeout(
+  p_job_id bigint,
+  p_enabled boolean
+)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, cron, private
+as $$
+declare
+  job_username text;
+begin
+  select job.username into job_username
+  from cron.job job
+  where job.jobid = p_job_id;
+
+  if job_username is null then
+    raise exception 'Storage compaction cron role is unavailable.';
+  end if;
+
+  if p_enabled then
+    execute pg_catalog.format(
+      'alter role %I in database %I set lock_timeout = %L',
+      job_username,
+      pg_catalog.current_database(),
+      '5s'
+    );
+  else
+    execute pg_catalog.format(
+      'alter role %I in database %I reset lock_timeout',
+      job_username,
+      pg_catalog.current_database()
+    );
+  end if;
+end;
+$$;
+
+revoke all on function private.set_storage_compaction_lock_timeout(bigint, boolean)
+  from public, anon, authenticated;
 
 create or replace function private.reconcile_storage_compaction()
 returns text
@@ -347,6 +535,7 @@ begin
 
     if latest_run.status in ('succeeded', 'failed') then
       perform cron.alter_job(current_state.cron_job_id, active := false);
+      perform private.set_storage_compaction_lock_timeout(current_state.cron_job_id, false);
       select * into sizes from private.storage_relation_sizes();
 
       if latest_run.status = 'succeeded' and sizes.database_bytes < 410000000 then
@@ -430,6 +619,7 @@ begin
       ) into compaction_backend_active;
 
       if not coalesce(cron_job_active, false) and not compaction_backend_active then
+        perform private.set_storage_compaction_lock_timeout(current_state.cron_job_id, false);
         update public.storage_compaction_state
         set state = 'retry_wait',
             next_retry_at = statement_timestamp() + private.storage_compaction_backoff(attempt_count),
@@ -612,6 +802,8 @@ begin
     extract(month from next_minute)::integer
   );
 
+  was_compaction_active := true;
+  perform private.set_storage_compaction_lock_timeout(current_state.cron_job_id, true);
   perform cron.alter_job(
     current_state.cron_job_id,
     schedule := schedule_expression,
@@ -732,7 +924,7 @@ drop function if exists public.storage_import_admission(uuid);
 
 create or replace function public.claim_storage_import_admission(
   p_owner_id uuid,
-  p_lease_seconds integer default 90
+  p_lease_seconds integer default 300
 )
 returns table (
   decision text,
@@ -814,7 +1006,7 @@ begin
   set owner_id = p_owner_id,
       lease_token = claimed_token,
       lease_expires_at = statement_timestamp()
-        + make_interval(secs => greatest(30, least(p_lease_seconds, 120)))
+        + make_interval(secs => greatest(300, least(p_lease_seconds, 300)))
   where id;
 
   return query select 'allowed', used_bytes, 500000000::bigint, false,
@@ -923,7 +1115,6 @@ begin
     $compaction$
       VACUUM (
         FULL,
-        SKIP_LOCKED,
         PROCESS_MAIN FALSE,
         PROCESS_TOAST TRUE
       ) public.deals;

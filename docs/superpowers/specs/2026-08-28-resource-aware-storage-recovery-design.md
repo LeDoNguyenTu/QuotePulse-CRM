@@ -131,7 +131,6 @@ relation through the parent table:
 ```sql
 VACUUM (
   FULL,
-  SKIP_LOCKED,
   PROCESS_MAIN FALSE,
   PROCESS_TOAST TRUE
 ) public.deals;
@@ -144,9 +143,13 @@ headroom and WAL generation, and directly targets the approximately 370 MB
 legacy allocation. It still reads and rewrites the TOAST relation and therefore
 remains a quiet-period operation.
 
-`SKIP_LOCKED` makes the command abandon the relation instead of waiting for an
-initial conflicting lock. Reconciliation verifies the post-run size rather than
-treating the cron exit status alone as proof of recovery.
+PostgreSQL ignores `SKIP_LOCKED` for `VACUUM FULL`. While the one-shot job is
+armed, the controller therefore applies a five-second `lock_timeout` only to the
+cron role in this database; app roles remain unchanged. The job fails quickly
+and enters bounded retry backoff if it cannot obtain its exclusive lock. The
+controller resets the role setting after a verified terminal run and keeps it
+in place while job termination is uncertain. Reconciliation verifies the
+post-run size rather than treating cron exit status alone as proof of recovery.
 
 A full main-table rewrite is not a routine fallback. If TOAST-only compaction
 finishes but the database remains above the safety threshold, the controller
@@ -160,8 +163,9 @@ unlikely after the current legacy TOAST allocation is reclaimed.
 A service-role-only admission RPC atomically locks the archive, compaction, and
 import singleton rows, then returns one decision from indexed or constant-time
 checks: `allowed`, `archiving`, `capacity_guard`, `compacting`, or
-`status_unavailable`. An allowed response includes a short-lived import lease;
-the handler releases the exact token in `finally`, with expiry as crash safety.
+`status_unavailable`. An allowed response includes a five-minute import lease,
+which exceeds the hosted function's worst-case wall time with margin; the
+handler releases the exact token in `finally`, with expiry as crash safety.
 Archive and compaction acquisition use the same row-lock order, so no two kinds
 of storage-heavy work can cross the admission check concurrently.
 
@@ -206,8 +210,8 @@ automatic controller is healthy. It shows a manual action only for an explicit
   retry later without advancing archive state.
 - Archive lease held: perform no second batch.
 - Capacity or admission check unavailable: reject imports and perform no writes.
-- Database busy at compaction time: `SKIP_LOCKED` skips; reconcile and retry with
-  backoff.
+- Database busy at compaction time: the cron-role `lock_timeout` fails within
+  five seconds; reconcile and retry with backoff.
 - Cron job failure or interruption: retain the original PostgreSQL relation;
   verify sizes and retry only after the backoff and quiet checks.
 - TOAST compaction succeeds but storage remains high: keep imports blocked and

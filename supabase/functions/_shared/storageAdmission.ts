@@ -117,7 +117,7 @@ export async function assertStorageAdmission(
   try {
     const { data, error } = await admin.rpc('claim_storage_import_admission', {
       p_owner_id: ownerId,
-      p_lease_seconds: 90,
+      p_lease_seconds: 300,
     });
     return decideStorageAdmission(data, error);
   } catch {

@@ -39,12 +39,15 @@ describe('resource-aware automatic storage recovery migration', () => {
   it('schedules only the fixed TOAST-only compaction command', () => {
     expect(sql).toContain('vacuum (');
     expect(sql).toContain('full,');
-    expect(sql).toContain('skip_locked,');
+    expect(sql).not.toContain('skip_locked');
     expect(sql).toContain('process_main false,');
     expect(sql).toContain('process_toast true');
     expect(sql).toContain(') public.deals;');
     expect(sql).not.toContain('vacuum full public.deals');
     expect(sql).not.toContain('process_main true');
+    expect(sql).toMatch(/set lock_timeout = %l[\s\S]*'5s'/);
+    expect(sql).toContain('reset lock_timeout');
+    expect(sql).toMatch(/set_storage_compaction_lock_timeout[\s\S]*cron\.alter_job/);
   });
 
   it('uses quiet checks, a non-blocking lock, and bounded retry backoff', () => {
@@ -69,6 +72,13 @@ describe('resource-aware automatic storage recovery migration', () => {
     expect(sql).toMatch(/claim_storage_archive_lease[\s\S]*storage_compaction_state[\s\S]*state in \('scheduled', 'running'\)[\s\S]*return null/);
   });
 
+  it('records productive archive writes transactionally with finalization', () => {
+    expect(sql).toMatch(/finalize_deal_archive_batch[\s\S]*last_archive_work_at = statement_timestamp\(\)/);
+    expect(sql).toMatch(/finalize_company_attachment_archive_batch[\s\S]*last_archive_work_at = statement_timestamp\(\)/);
+    expect(sql).toMatch(/if archived > 0[\s\S]*zero_candidate_observations = 0/);
+    expect(sql).toMatch(/if removed > 0[\s\S]*zero_candidate_observations = 0/);
+  });
+
   it('prevents imports from overlapping archive or compaction acquisition', () => {
     expect(sql).toContain('create table if not exists public.storage_import_state');
     expect(sql).toMatch(/claim_storage_archive_lease[\s\S]*storage_import_state[\s\S]*lease_expires_at/);
@@ -86,6 +96,7 @@ describe('resource-aware automatic storage recovery migration', () => {
     expect(sql).toMatch(/recovery_state\.state = 'failed_closed'[\s\S]*'capacity_guard'/);
     expect(sql).toMatch(/claim_storage_import_admission[\s\S]*storage_archive_owner_candidates\(\)/);
     expect(sql).toMatch(/claim_storage_import_admission[\s\S]*for update[\s\S]*lease_token/);
+    expect(sql).toMatch(/make_interval\(secs => greatest\(300, least\(p_lease_seconds, 300\)\)\)/);
     expect(sql).not.toMatch(/storage_compaction_status\(\)[\s\S]*left\(recovery\.last_error/);
   });
 

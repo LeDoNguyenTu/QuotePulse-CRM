@@ -33,6 +33,21 @@ const DATABASE_STOP_BYTES = 410_000_000;
 const DATABASE_LIMIT_BYTES = 500_000_000;
 const SAFE_COMPACTION_STATES = new Set(['idle', 'succeeded']);
 const KNOWN_DENIALS = new Set<StorageAdmissionDecision>(['archiving', 'capacity_guard', 'compacting']);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function admissionRow(data: unknown): Partial<StorageAdmissionRow> | undefined {
+  const row = Array.isArray(data) ? data[0] : data;
+  return row && typeof row === 'object' ? row as Partial<StorageAdmissionRow> : undefined;
+}
+
+function claimedLeaseToken(data: unknown): string | null {
+  const row = admissionRow(data);
+  return row?.decision === 'allowed'
+    && typeof row.lease_token === 'string'
+    && UUID_PATTERN.test(row.lease_token)
+    ? row.lease_token
+    : null;
+}
 
 function unavailable(message = 'Storage recovery status is unavailable. HubSpot import is paused to protect CRM data.'):
   StorageAdmissionResult {
@@ -61,7 +76,7 @@ function denialMessage(decision: StorageAdmissionDecision): string {
 
 export function decideStorageAdmission(data: unknown, error: unknown): StorageAdmissionResult {
   if (error) return unavailable();
-  const row = Array.isArray(data) ? data[0] as Partial<StorageAdmissionRow> | undefined : undefined;
+  const row = admissionRow(data);
   if (!row || typeof row.decision !== 'string') return unavailable();
 
   const databaseBytes = Number(row.database_bytes);
@@ -92,7 +107,7 @@ export function decideStorageAdmission(data: unknown, error: unknown): StorageAd
     || !SAFE_COMPACTION_STATES.has(row.compaction_state)
     || databaseBytes >= DATABASE_STOP_BYTES
     || typeof row.lease_token !== 'string'
-    || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(row.lease_token)
+    || !UUID_PATTERN.test(row.lease_token)
   ) {
     return unavailable('Storage admission returned an unsafe or invalid state. HubSpot import remains paused.');
   }
@@ -119,7 +134,10 @@ export async function assertStorageAdmission(
       p_owner_id: ownerId,
       p_lease_seconds: 300,
     });
-    return decideStorageAdmission(data, error);
+    const admission = decideStorageAdmission(data, error);
+    const orphanedToken = !admission.allowed ? claimedLeaseToken(data) : null;
+    if (orphanedToken) await releaseStorageAdmission(admin, orphanedToken);
+    return admission;
   } catch {
     return unavailable();
   }

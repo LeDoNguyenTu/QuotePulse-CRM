@@ -26,6 +26,15 @@ describe('server-side storage admission', () => {
     });
   });
 
+  it('accepts the safe singleton row returned by the admission RPC', () => {
+    expect(decideStorageAdmission(allowedRow, null)).toMatchObject({
+      allowed: true,
+      decision: 'allowed',
+      databaseBytes: 300_000_000,
+      leaseToken: '11111111-1111-4111-8111-111111111111',
+    });
+  });
+
   it.each([
     ['archiving', 'idle'],
     ['capacity_guard', 'cooldown'],
@@ -65,6 +74,21 @@ describe('server-side storage admission', () => {
     expect(rpc).toHaveBeenCalledWith('claim_storage_import_admission', {
       p_owner_id: 'owner-123',
       p_lease_seconds: 300,
+    });
+  });
+
+  it('releases a claimed lease when its response fails closed validation', async () => {
+    const unsafeClaim = { ...allowedRow, compaction_state: 'failed_closed' };
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: [unsafeClaim], error: null })
+      .mockResolvedValueOnce({ data: true, error: null });
+
+    await expect(assertStorageAdmission({ rpc } as never, 'owner-123')).resolves.toMatchObject({
+      allowed: false,
+      decision: 'status_unavailable',
+    });
+    expect(rpc).toHaveBeenNthCalledWith(2, 'release_storage_import_lease', {
+      p_token: '11111111-1111-4111-8111-111111111111',
     });
   });
 

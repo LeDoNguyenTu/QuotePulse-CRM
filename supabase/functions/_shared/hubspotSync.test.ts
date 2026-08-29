@@ -1,17 +1,105 @@
 import { describe, expect, it } from 'vitest';
 import {
+  backfillStartCursor,
   canAdvanceIncrementalWatermark,
+  encodeIncrementalSyncCursor,
   encodeVerifiedDealTotal,
+  fullReconciliationDue,
+  incrementalSearchStartCursors,
+  incrementalSearchNeedsReconciliation,
+  incrementalWatermarkWithOverlap,
   isDealCountCaughtUp,
   isVerifiedIncrementalTotalCurrent,
   pageFullyProcessed,
+  resumeIncrementalSyncCursor,
   shouldSkipUnchangedDeal,
+  syncRunComplete,
 } from './hubspotSync';
 
 describe('HubSpot sync cursor guards', () => {
   it('does not advance an incremental watermark when any object failed', () => {
     expect(canAdvanceIncrementalWatermark(0)).toBe(true);
     expect(canAdvanceIncrementalWatermark(1)).toBe(false);
+  });
+
+  it('persists and resumes an incremental page only for the same watermark', () => {
+    const encoded = encodeIncrementalSyncCursor({
+      watermark: '2026-08-26T00:00:07.663Z',
+      startedAt: '2026-08-29T12:30:00.000Z',
+      after: '200',
+    });
+    expect(resumeIncrementalSyncCursor(
+      encoded,
+      '2026-08-26T00:00:07.663Z',
+      '2026-08-29T12:31:00.000Z',
+    )).toEqual({
+      watermark: '2026-08-26T00:00:07.663Z',
+      startedAt: '2026-08-29T12:30:00.000Z',
+      after: '200',
+    });
+    expect(resumeIncrementalSyncCursor(
+      encoded,
+      '2026-08-29T12:32:00.000Z',
+      '2026-08-29T12:33:00.000Z',
+    )).toEqual({
+      watermark: '2026-08-29T12:32:00.000Z',
+      startedAt: '2026-08-29T12:33:00.000Z',
+      after: null,
+    });
+  });
+
+  it('checks the newest page before resuming the saved incremental backlog', () => {
+    expect(incrementalSearchStartCursors('200'))
+      .toEqual([undefined, '200']);
+    expect(incrementalSearchStartCursors(null))
+      .toEqual([undefined]);
+  });
+
+  it('starts reconciliation from the top instead of using a verified-total marker', () => {
+    expect(backfillStartCursor('incremental', 'verified-total:186734')).toBeUndefined();
+    expect(backfillStartCursor('backfill', '18368245929')).toBe('18368245929');
+  });
+
+  it('falls back to full reconciliation before requesting beyond HubSpot search limits', () => {
+    expect(incrementalSearchNeedsReconciliation('9900')).toBe(false);
+    expect(incrementalSearchNeedsReconciliation('10000')).toBe(true);
+    expect(incrementalSearchNeedsReconciliation(null)).toBe(false);
+  });
+
+  it('keeps an overlap when advancing the incremental watermark', () => {
+    expect(incrementalWatermarkWithOverlap(
+      '2026-08-29T12:00:00.000Z',
+      '2026-08-29T12:20:00.000Z',
+      15 * 60 * 1000,
+    )).toBe('2026-08-29T12:05:00.000Z');
+    expect(incrementalWatermarkWithOverlap(
+      '2026-08-29T12:00:00.000Z',
+      '2026-08-29T12:05:00.000Z',
+      15 * 60 * 1000,
+    )).toBe('2026-08-29T12:00:00.000Z');
+  });
+
+  it('periodically requires a full reconciliation even when counts match', () => {
+    const now = Date.parse('2026-08-30T12:00:00.000Z');
+    expect(fullReconciliationDue(null, now, 24 * 60 * 60 * 1000)).toBe(true);
+    expect(fullReconciliationDue(
+      '2026-08-29T11:59:59.999Z',
+      now,
+      24 * 60 * 60 * 1000,
+    )).toBe(true);
+    expect(fullReconciliationDue(
+      '2026-08-29T12:00:00.001Z',
+      now,
+      24 * 60 * 60 * 1000,
+    )).toBe(false);
+  });
+
+  it('does not complete while a durable deal retry is unresolved or uncountable', () => {
+    const stages = [true, true, true, true, true];
+    expect(syncRunComplete(stages, 0)).toBe(true);
+    expect(syncRunComplete(stages, 1)).toBe(false);
+    expect(syncRunComplete(stages, null)).toBe(false);
+    expect(syncRunComplete([true, true, false, true, true], 0)).toBe(false);
   });
 
   it('does not advance a page cursor after a budget stop inside the page', () => {

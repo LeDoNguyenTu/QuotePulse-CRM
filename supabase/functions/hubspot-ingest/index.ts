@@ -48,13 +48,20 @@ import {
 import { isMissingAttachmentMetadata } from '../_shared/hubspotAttachments.ts';
 import { formatHubspotError } from '../_shared/hubspotErrors.ts';
 import {
-  canAdvanceIncrementalWatermark,
+  backfillStartCursor,
   decodeVerifiedDealTotal,
+  encodeIncrementalSyncCursor,
   encodeVerifiedDealTotal,
+  fullReconciliationDue,
+  incrementalSearchNeedsReconciliation,
+  incrementalWatermarkWithOverlap,
   isDealCountCaughtUp,
   isVerifiedIncrementalTotalCurrent,
   pageFullyProcessed,
+  resumeIncrementalSyncCursor,
   shouldSkipUnchangedDeal,
+  syncRunComplete,
+  type IncrementalSyncCursor,
 } from '../_shared/hubspotSync.ts';
 import { nullableHubspotTimestamp } from '../_shared/hubspotTimestamps.ts';
 import {
@@ -91,6 +98,12 @@ const DEAL_PROPS = [
 const CATCHUP_SLACK = 25;
 const PORTAL_GROWTH_RECHECK_THRESHOLD = 1_000;
 const PROGRESS_COUNT_STREAM = 'deals:progress-count';
+const INCREMENTAL_CURSOR_STREAM = 'deals:current:incremental-cursor';
+const FULL_RECONCILIATION_STREAM = 'deals:current:full-reconciliation';
+const DEAL_RETRY_STREAM_PREFIX = 'deals:retry:';
+const INCREMENTAL_WATERMARK_OVERLAP_MS = 15 * 60 * 1000;
+const FULL_RECONCILIATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DEAL_RETRY_BATCH_SIZE = 10;
 const PROGRESS_COUNT_CACHE_MS = 15 * 60 * 1000;
 const COMPANY_PROPS = ['name', 'domain', 'industry', 'website'];
 const CONTACT_PROPS = ['firstname', 'lastname', 'email', 'phone', 'jobtitle'];
@@ -281,7 +294,10 @@ Deno.serve(async (req) => {
     // Incremental mode is reusable only when it records the HubSpot total that
     // was verified at graduation. A larger replacement portal invalidates the
     // marker and re-enters backfill without a full local count on every slice.
-    const activeState = await loadSyncState(admin, userId, 'deals:current');
+    const [activeState, reconciliationState] = await Promise.all([
+      loadSyncState(admin, userId, 'deals:current'),
+      loadSyncState(admin, userId, FULL_RECONCILIATION_STREAM),
+    ]);
     const verifiedPortalStillCurrent = isVerifiedIncrementalTotalCurrent(
       activeState.page_cursor,
       dealTotal,
@@ -289,9 +305,14 @@ Deno.serve(async (req) => {
     );
     const freshCountShowsNoLargeGap = !activeDealSnapshot.exact || dealTotal == null ||
       activeDealSnapshot.count == null ||
-      activeDealSnapshot.count >= dealTotal - PORTAL_GROWTH_RECHECK_THRESHOLD;
+      isDealCountCaughtUp(activeDealSnapshot.count, dealTotal, CATCHUP_SLACK);
+    const reconciliationDue = fullReconciliationDue(
+      reconciliationState.last_synced_at,
+      Date.now(),
+      FULL_RECONCILIATION_INTERVAL_MS,
+    );
     const caughtUp = activeState.phase === 'incremental' && verifiedPortalStillCurrent &&
-      freshCountShowsNoLargeGap;
+      freshCountShowsNoLargeGap && !reconciliationDue;
 
     // Active deals: backfill until caught up, then cheap incremental catch-up.
     const activeDealsDone = await sweepDeals(ctx, {
@@ -335,9 +356,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    const done =
-      activeDealsDone && propertyBackfillDone && storedCoverageDone &&
-      archivedDealsDone && archivedCompaniesDone;
+    let pendingDealRetries: number | null = null;
+    try {
+      pendingDealRetries = await countDealRetries(admin, userId);
+    } catch (e) {
+      warnings.push(`Deal retry status is temporarily unavailable: ${msg(e)}`);
+    }
+    if (pendingDealRetries && pendingDealRetries > 0) {
+      warnings.push(`${pendingDealRetries} deal sync retries remain queued.`);
+    }
+
+    const done = syncRunComplete([
+      activeDealsDone,
+      propertyBackfillDone,
+      storedCoverageDone,
+      archivedDealsDone,
+      archivedCompaniesDone,
+    ], pendingDealRetries);
 
     const importedNothing =
       counts.companies === 0 && counts.deals === 0 && counts.contacts === 0 &&
@@ -571,7 +606,7 @@ async function sweepDeals(
   }
 ): Promise<boolean> {
   try {
-    const state = await loadSyncState(ctx.admin, ctx.userId, opts.stream);
+    let state = await loadSyncState(ctx.admin, ctx.userId, opts.stream);
     if (
       opts.archived && state.phase === 'incremental' &&
       syncCompletedRecently(state.last_synced_at, Date.now(), ARCHIVE_COMPLETION_WINDOW_MS)
@@ -579,54 +614,29 @@ async function sweepDeals(
       return true;
     }
 
-    // INCREMENTAL — only when the active backfill has genuinely caught up. Pulls
-    // just the deals modified since the watermark, which is cheap. Never taken
-    // while a gap remains, so it can no longer strand un-imported deals.
-    if (!opts.archived && opts.caughtUp && state.last_synced_at) {
-      const startedAt = new Date().toISOString();
-      let after: string | undefined;
-      let failedObjects = 0;
-      do {
-        if (outOfBudget(ctx)) return false;
-        const pageRes = await ctx.hs.searchModifiedSince(
-          'deals',
-          state.last_synced_at,
-          DEAL_PROPS,
-          after
-        );
-        for (const hit of pageRes.results) {
-          if (outOfBudget(ctx)) return false;
-          try {
-            // Search doesn't return associations — hydrate each changed deal.
-            const deal = await ctx.hs.getOne('deals', hit.id, DEAL_PROPS, ctx.assoc);
-            const [completeDeal] = await hydrateProperties(ctx, 'deals', [deal]);
-            await processDeal(ctx, completeDeal ?? deal, opts.priority);
-          } catch (e) {
-            ctx.errors.push(`deal ${hit.id}: ${msg(e)}`);
-            failedObjects++;
-          }
-          ctx.processed++;
-        }
-        after = pageRes.after;
-      } while (after);
-
-      if (!canAdvanceIncrementalWatermark(failedObjects)) return false;
-
-      await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
-        phase: 'incremental',
-        page_cursor: encodeVerifiedDealTotal(ctx.dealTotal) ?? state.page_cursor,
-        last_synced_at: startedAt,
-      });
-      return true;
+    // Always service the newest modified deals before resuming a full listing.
+    // The recent-change cursor is independent from the backfill cursor, so a
+    // long reconciliation can never make newly created deals wait behind it.
+    if (!opts.archived && state.last_synced_at) {
+      const recentResult = await sweepRecentDeals(
+        ctx,
+        opts.priority,
+        opts.stream,
+        state.last_synced_at,
+      );
+      if (recentResult === 'pending') return false;
+      state = await loadSyncState(ctx.admin, ctx.userId, opts.stream);
+      if (recentResult === 'complete' && opts.caughtUp) return true;
     }
+    if (opts.archived && !(await processDealRetries(ctx, opts.priority))) return false;
 
     // BACKFILL — page through everything, persisting the cursor so the next run
     // RESUMES instead of restarting. onlyChanged() makes re-encountering an
     // already-held deal a no-op (one DB lookup, no HubSpot fan-out), so even a
     // full re-page to hunt stragglers is cheap.
-    let cursor = state.page_cursor ?? undefined;
+    let cursor = backfillStartCursor(state.phase, state.page_cursor);
     const startedAt = new Date().toISOString();
-    const startedFromTop = !state.page_cursor;
+    const startedFromTop = !cursor;
     const importedAtStart = ctx.counts.deals;
 
     for (;;) {
@@ -655,10 +665,11 @@ async function sweepDeals(
         if (outOfBudget(ctx)) break;
         try {
           await processDeal(ctx, deal, opts.priority);
-          processedInPage++;
         } catch (e) {
-          ctx.errors.push(`deal ${deal.id}: ${msg(e)}`);
+          await saveDealRetry(ctx, deal, opts.priority);
+          ctx.warnings.push(`Deal ${deal.id} was queued for retry: ${msg(e)}`);
         }
+        processedInPage++;
         ctx.processed++;
       }
 
@@ -692,18 +703,234 @@ async function sweepDeals(
       const wholeListingNoNew = startedFromTop && ctx.counts.deals === importedAtStart;
       phase = caughtUp || wholeListingNoNew ? 'incremental' : 'backfill';
     }
+    const completedWatermark = state.last_synced_at
+      ? incrementalWatermarkWithOverlap(
+        state.last_synced_at,
+        startedAt,
+        INCREMENTAL_WATERMARK_OVERLAP_MS,
+      )
+      : startedAt;
     await saveSyncState(ctx.admin, ctx.userId, opts.stream, {
       phase,
       page_cursor: phase === 'incremental'
         ? encodeVerifiedDealTotal(ctx.dealTotal ?? ctx.activeDealCount)
         : null,
-      last_synced_at: phase === 'incremental' ? startedAt : state.last_synced_at,
+      last_synced_at: phase === 'incremental' ? completedWatermark : state.last_synced_at,
     });
+    if (!opts.archived) {
+      await saveSyncState(ctx.admin, ctx.userId, FULL_RECONCILIATION_STREAM, {
+        phase: 'incremental',
+        page_cursor: null,
+        last_synced_at: startedAt,
+      });
+      await clearSyncState(ctx.admin, ctx.userId, INCREMENTAL_CURSOR_STREAM);
+    }
     return true;
   } catch (e) {
     ctx.errors.push(`deals(${opts.priority}): ${msg(e)}`);
     return false;
   }
+}
+
+async function sweepRecentDeals(
+  ctx: Ctx,
+  priority: 'recycled' | 'current',
+  stream: string,
+  watermark: string,
+): Promise<'complete' | 'pending' | 'reconcile'> {
+  const saved = await loadSyncState(ctx.admin, ctx.userId, INCREMENTAL_CURSOR_STREAM);
+  const cycle = resumeIncrementalSyncCursor(saved.page_cursor, watermark, new Date().toISOString());
+  let backlogAfter = cycle.after;
+
+  if (outOfBudget(ctx)) return 'pending';
+  const newest = await ctx.hs.searchModifiedSince('deals', cycle.watermark, DEAL_PROPS);
+  if (!(await processIncrementalPage(ctx, newest.results, priority))) {
+    await saveIncrementalCursor(ctx, cycle, backlogAfter);
+    return 'pending';
+  }
+
+  // New deals are always handled before older retries or a saved backlog. A
+  // retry failure is rotated to the back of its owner-scoped queue and cannot
+  // block the other retries or the full-list cursor.
+  if (!(await processDealRetries(ctx, priority))) {
+    await saveIncrementalCursor(ctx, cycle, backlogAfter);
+    return 'pending';
+  }
+
+  // A prior slice hit HubSpot's 10,000-result search ceiling. Keep checking the
+  // newest page, then let the independent full-list cursor recover the rest.
+  if (cycle.needsReconciliation) {
+    await saveIncrementalCursor(ctx, cycle, null);
+    return 'reconcile';
+  }
+
+  // If there is no saved backlog, continue from the newest page we just read.
+  // Otherwise preserve the durable cursor instead of allowing new inserts at
+  // the head to push the backlog backwards.
+  backlogAfter ??= newest.after ?? null;
+  if (backlogAfter) await saveIncrementalCursor(ctx, cycle, backlogAfter);
+
+  while (backlogAfter) {
+    if (outOfBudget(ctx)) {
+      await saveIncrementalCursor(ctx, cycle, backlogAfter);
+      return 'pending';
+    }
+    if (incrementalSearchNeedsReconciliation(backlogAfter)) {
+      cycle.needsReconciliation = true;
+      await saveIncrementalCursor(ctx, cycle, null);
+      return 'reconcile';
+    }
+    const page = await ctx.hs.searchModifiedSince(
+      'deals',
+      cycle.watermark,
+      DEAL_PROPS,
+      backlogAfter,
+    );
+    if (!(await processIncrementalPage(ctx, page.results, priority))) {
+      await saveIncrementalCursor(ctx, cycle, backlogAfter);
+      return 'pending';
+    }
+    backlogAfter = page.after ?? null;
+    if (backlogAfter) await saveIncrementalCursor(ctx, cycle, backlogAfter);
+  }
+
+  const current = await loadSyncState(ctx.admin, ctx.userId, stream);
+  await saveSyncState(ctx.admin, ctx.userId, stream, {
+    phase: current.phase,
+    page_cursor: current.phase === 'incremental'
+      ? encodeVerifiedDealTotal(ctx.dealTotal) ?? current.page_cursor
+      : current.page_cursor,
+    last_synced_at: incrementalWatermarkWithOverlap(
+      cycle.watermark,
+      cycle.startedAt,
+      INCREMENTAL_WATERMARK_OVERLAP_MS,
+    ),
+  });
+  await clearSyncState(ctx.admin, ctx.userId, INCREMENTAL_CURSOR_STREAM);
+  return 'complete';
+}
+
+async function processIncrementalPage(
+  ctx: Ctx,
+  hits: HsObject[],
+  priority: 'recycled' | 'current',
+): Promise<boolean> {
+  const changed = await onlyChanged(ctx, hits);
+  for (const hit of changed) {
+    if (outOfBudget(ctx)) return false;
+    try {
+      // Search does not return associations, so hydrate only genuinely changed
+      // deals after the cheap timestamp comparison above.
+      const deal = await ctx.hs.getOne('deals', hit.id, DEAL_PROPS, ctx.assoc);
+      const [completeDeal] = await hydrateProperties(ctx, 'deals', [deal]);
+      await processDeal(ctx, completeDeal ?? deal, priority);
+    } catch (e) {
+      await saveDealRetry(ctx, hit, priority);
+      ctx.warnings.push(`Deal ${hit.id} was queued for retry: ${msg(e)}`);
+    }
+    ctx.processed++;
+  }
+  return true;
+}
+
+async function saveIncrementalCursor(
+  ctx: Ctx,
+  cycle: IncrementalSyncCursor,
+  after: string | null,
+): Promise<void> {
+  await saveSyncState(ctx.admin, ctx.userId, INCREMENTAL_CURSOR_STREAM, {
+    phase: 'incremental',
+    page_cursor: encodeIncrementalSyncCursor({ ...cycle, after }),
+    last_synced_at: cycle.startedAt,
+  });
+}
+
+interface DealRetry {
+  stream: string;
+  dealId: string;
+  modifiedAt: string | null;
+}
+
+function dealRetryPrefix(priority: 'recycled' | 'current'): string {
+  return `${DEAL_RETRY_STREAM_PREFIX}${priority}:`;
+}
+
+function dealRetryStream(priority: 'recycled' | 'current', dealId: string): string {
+  return `${dealRetryPrefix(priority)}${encodeURIComponent(dealId)}`;
+}
+
+async function saveDealRetry(
+  ctx: Ctx,
+  deal: HsObject,
+  priority: 'recycled' | 'current',
+): Promise<void> {
+  await saveSyncState(ctx.admin, ctx.userId, dealRetryStream(priority, deal.id), {
+    phase: 'backfill',
+    page_cursor: nullableHubspotTimestamp(deal.properties.hs_lastmodifieddate),
+    last_synced_at: null,
+  });
+}
+
+async function loadDealRetries(
+  ctx: Ctx,
+  priority: 'recycled' | 'current',
+): Promise<DealRetry[]> {
+  const prefix = dealRetryPrefix(priority);
+  const { data, error } = await ctx.admin
+    .from('sync_state')
+    .select('object_type, page_cursor')
+    .eq('owner_id', ctx.userId)
+    .like('object_type', `${prefix}%`)
+    .order('updated_at', { ascending: true })
+    .limit(DEAL_RETRY_BATCH_SIZE);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    stream: row.object_type,
+    dealId: decodeURIComponent(row.object_type.slice(prefix.length)),
+    modifiedAt: nullableHubspotTimestamp(row.page_cursor),
+  }));
+}
+
+async function countDealRetries(admin: SupabaseClient, userId: string): Promise<number> {
+  const { count, error } = await admin
+    .from('sync_state')
+    .select('object_type', { count: 'exact', head: true })
+    .eq('owner_id', userId)
+    .like('object_type', `${DEAL_RETRY_STREAM_PREFIX}%`);
+  if (error || count == null) throw error ?? new Error('Deal retry count was unavailable.');
+  return count;
+}
+
+async function processDealRetries(
+  ctx: Ctx,
+  priority: 'recycled' | 'current',
+): Promise<boolean> {
+  const retries = await loadDealRetries(ctx, priority);
+  for (const retry of retries) {
+    if (outOfBudget(ctx)) return false;
+    try {
+      const deal = await ctx.hs.getOne(
+        'deals',
+        retry.dealId,
+        DEAL_PROPS,
+        ctx.assoc,
+        priority === 'recycled',
+      );
+      const [completeDeal] = await hydrateProperties(ctx, 'deals', [deal]);
+      await processDeal(ctx, completeDeal ?? deal, priority);
+      await clearSyncState(ctx.admin, ctx.userId, retry.stream);
+    } catch (e) {
+      // Re-save to rotate a persistent failure behind other owner-scoped work.
+      await saveSyncState(ctx.admin, ctx.userId, retry.stream, {
+        phase: 'backfill',
+        page_cursor: retry.modifiedAt,
+        last_synced_at: null,
+      });
+      ctx.warnings.push(`Deal retry ${retry.dealId} remains queued: ${msg(e)}`);
+    }
+    ctx.processed++;
+  }
+  return true;
 }
 
 /**
@@ -1349,10 +1576,24 @@ async function saveSyncState(
   stream: string,
   state: SyncState
 ) {
-  await admin.from('sync_state').upsert(
+  const { error } = await admin.from('sync_state').upsert(
     { owner_id: userId, object_type: stream, ...state },
     { onConflict: 'owner_id,object_type' }
   );
+  if (error) throw error;
+}
+
+async function clearSyncState(
+  admin: SupabaseClient,
+  userId: string,
+  stream: string,
+): Promise<void> {
+  const { error } = await admin
+    .from('sync_state')
+    .delete()
+    .eq('owner_id', userId)
+    .eq('object_type', stream);
+  if (error) throw error;
 }
 
 /**

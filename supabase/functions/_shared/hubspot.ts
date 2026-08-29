@@ -239,7 +239,7 @@ export class HubSpotClient {
             ],
           },
         ],
-        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
         properties,
         limit: 100,
         ...(after ? { after } : {}),
@@ -344,9 +344,10 @@ export class HubSpotClient {
     objectType: string,
     id: string,
     properties: string[] = [],
-    associations: string[] = []
+    associations: string[] = [],
+    archived = false,
   ): Promise<HsObject> {
-    const params: Record<string, string> = { archived: 'false' };
+    const params: Record<string, string> = { archived: String(archived) };
     if (properties.length) params.properties = properties.join(',');
     if (associations.length) params.associations = associations.join(',');
     const url = new URL(`${BASE}/crm/v3/objects/${objectType}/${id}`);

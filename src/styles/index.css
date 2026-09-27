@@ -4,6 +4,13 @@
 
 :root {
   color-scheme: light;
+  /* Workspace foundation tokens: calm operational navy, cool canvas,
+     blue action, and teal verification. Layout carries the identity;
+     decoration never competes with customer data. */
+  --workspace-ink: #0f172a;
+  --workspace-canvas: #f4f7fb;
+  --workspace-blue: #2563eb;
+  --workspace-teal: #0f766e;
 }
 
 body {
@@ -13,6 +20,67 @@ body {
   -webkit-font-smoothing: antialiased;
   background: #f8fafc;
   color: #0f172a;
+}
+
+.workspace-selector {
+  background:
+    linear-gradient(120deg, rgba(37, 99, 235, 0.08), transparent 38%),
+    var(--workspace-canvas);
+}
+
+.workspace-choice {
+  display: flex;
+  min-height: 15rem;
+  gap: 1.25rem;
+  border: 1px solid #cbd5e1;
+  border-top-width: 4px;
+  background: white;
+  padding: 1.5rem;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.workspace-choice:hover {
+  border-color: var(--workspace-blue);
+  transform: translateY(-2px);
+}
+
+.workspace-choice:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 3px;
+}
+
+.workspace-choice--legacy {
+  border-top-color: #475569;
+}
+
+.workspace-choice--sales_crm {
+  border-top-color: var(--workspace-teal);
+}
+
+.workspace-choice__marker {
+  display: grid;
+  height: 2.75rem;
+  width: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: var(--workspace-ink);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.workspace-canvas--sales {
+  background: var(--workspace-canvas);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-choice {
+    transition: none;
+  }
 }
 
 @layer components {

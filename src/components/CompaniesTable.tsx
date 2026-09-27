@@ -3,6 +3,8 @@ import type { CompanyDashboardRow } from '../lib/types';
 import { formatDate, formatRelative } from '../lib/dates';
 import { Flag, PriorityBadge, StatusBadge } from './ui';
 import { detailNavigationState, saveScrollPosition } from '../lib/returnNavigation';
+import { useActiveWorkspace } from '../hooks/useWorkspaces';
+import { legacyPath } from '../lib/appRoutes';
 
 /** Relative label ("3d ago") with the absolute date on hover; em dash when empty. */
 function RelativeDate({ value }: { value: string | null }) {
@@ -32,6 +34,7 @@ export function CompaniesTable({
 }: CompaniesTableProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const workspace = useActiveWorkspace();
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const shown = new Set(visibleColumns);
 
@@ -67,7 +70,7 @@ export function CompaniesTable({
               onClick={() => {
                 const state = detailNavigationState(location, window.scrollY);
                 saveScrollPosition(window.sessionStorage, state.from, state.scrollY);
-                navigate(`/company/${r.id}`, { state });
+                navigate(legacyPath(workspace.id, `company/${r.id}`), { state });
               }}
             >
               <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>

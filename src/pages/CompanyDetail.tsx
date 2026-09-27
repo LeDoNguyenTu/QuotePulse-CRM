@@ -20,11 +20,14 @@ import { HistoryBackLink } from '../components/HistoryBackLink';
 import { ImportRecoveryWarning } from '../components/ImportRecoveryWarning';
 import { useStorageStatus } from '../hooks/useStorageStatus';
 import { importRecoveryLock } from '../lib/storageStatus';
+import { useActiveWorkspace } from '../hooks/useWorkspaces';
+import { legacyPath } from '../lib/appRoutes';
 
 type Tab = 'hubspot' | 'kyc' | 'emails';
 
 export function CompanyDetail() {
   const { id } = useParams<{ id: string }>();
+  const workspace = useActiveWorkspace();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('hubspot');
   const [importing, setImporting] = useState(false);
@@ -72,7 +75,7 @@ export function CompanyDetail() {
 
   return (
     <div className="space-y-4">
-      <HistoryBackLink fallback="/">← Back to previous view</HistoryBackLink>
+      <HistoryBackLink fallback={legacyPath(workspace.id)}>← Back to previous view</HistoryBackLink>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

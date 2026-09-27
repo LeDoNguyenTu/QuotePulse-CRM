@@ -79,3 +79,7 @@ export function useActiveWorkspace(): Workspace {
   }
   return value;
 }
+
+export function useOptionalActiveWorkspace(): Workspace | null {
+  return useContext(ActiveWorkspaceContext) ?? null;
+}

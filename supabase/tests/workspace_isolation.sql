@@ -21,6 +21,17 @@ values
 select private.ensure_default_workspaces('81000000-0000-0000-0000-000000000001');
 select private.ensure_default_workspaces('81000000-0000-0000-0000-000000000001');
 
+insert into public.workspace_archives (
+  workspace_id, archive_version, schema_version, status, created_by
+)
+select workspace.id, 1, 'workspace-foundation-test', 'building', workspace.created_by
+from public.workspaces workspace
+where workspace.kind = 'legacy'
+  and workspace.created_by in (
+    '81000000-0000-0000-0000-000000000001',
+    '81000000-0000-0000-0000-000000000002'
+  );
+
 do $$
 declare
   workspace_count integer;
@@ -56,7 +67,7 @@ begin
   select count(*) into visible_memberships from public.workspace_members;
   select count(*) into visible_archives from public.workspace_archives;
 
-  if visible_workspaces <> 2 or visible_memberships <> 2 or visible_archives <> 0 then
+  if visible_workspaces <> 2 or visible_memberships <> 2 or visible_archives <> 1 then
     raise exception 'workspace RLS leaked or hid rows: %, %, %',
       visible_workspaces, visible_memberships, visible_archives;
   end if;

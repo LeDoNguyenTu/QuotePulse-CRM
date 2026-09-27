@@ -430,7 +430,7 @@ git commit -m "feat: route authenticated users through workspaces"
 - Consumes: complete Phase A branch.
 - Produces: verified Phase A evidence and exact deployment/manual follow-up state.
 
-- [ ] **Step 1: Run the complete automated suite**
+- [x] **Step 1: Run the complete automated suite**
 
 Run separately and preserve exact output:
 
@@ -443,30 +443,29 @@ npm run build
 
 Expected: all PASS with no omitted failures.
 
-- [ ] **Step 2: Run Supabase checks**
+- [x] **Step 2: Run Supabase checks**
 
 Run CLI help before commands whose installed syntax may vary, then run available migration/database lint and `npx supabase test db`. If Docker/linkage prevents live checks, record the exact command and blocker. Do not claim the hosted migration is applied.
 
-- [ ] **Step 3: Run rendered browser smoke checks**
+- [x] **Step 3: Run rendered browser smoke checks**
 
 Start the Vite application and inspect actual desktop and mobile screenshots for login, selector, Sales shell, and Legacy shell using a test session if available. Verify keyboard-visible controls, horizontal overflow, workspace switcher reachability, route mismatch handling, and console errors. Do not claim authenticated pages were checked if no authenticated session is available.
 
-- [ ] **Step 4: Review security and data scope**
+- [x] **Step 4: Review security and data scope**
 
 Confirm the frontend receives no service/R2 secrets, no legacy business table gained `workspace_id`, no service-role function was broadened, and the migration grants authenticated users read-only workspace metadata.
 
-- [ ] **Step 5: Write the handoff**
+- [x] **Step 5: Write the handoff**
 
 Record branch, commits, files/schema, environment or dashboard requirements, exact test results, browser evidence, deployment status, blockers, and the first Phase B action. State clearly that migration/deployment is unverified unless direct remote evidence exists.
 
-- [ ] **Step 6: Final GitNexus and diff review**
+- [x] **Step 6: Final GitNexus and diff review**
 
 Run `gitnexus_detect_changes(scope: "compare", base_ref: "QuotePulse-CRM/main")`, inspect `git diff --check`, `git status`, and the complete branch diff. Resolve only Phase A issues.
 
-- [ ] **Step 7: Commit the verified handoff**
+- [x] **Step 7: Commit the verified handoff**
 
 ```bash
 git add docs/development/WORKSPACE_FOUNDATION_HANDOFF.md
 git commit -m "docs: hand off workspace foundation"
 ```
-

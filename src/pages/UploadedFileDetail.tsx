@@ -6,9 +6,12 @@ import { functions } from "../lib/functions";
 import { useSettings } from "../hooks/useSettings";
 import { hubspotRecordUrl } from "../lib/hubspotLinks";
 import { HistoryBackLink } from "../components/HistoryBackLink";
+import { useActiveWorkspace } from "../hooks/useWorkspaces";
+import { legacyPath } from "../lib/appRoutes";
 
 export function UploadedFileDetail() {
   const { id } = useParams();
+  const workspace = useActiveWorkspace();
   const file = useUploadedFile(id);
   const settings = useSettings();
   const [policy, setPolicy] = useState({
@@ -45,7 +48,7 @@ export function UploadedFileDetail() {
   }
   return (
     <div className="space-y-4">
-      <HistoryBackLink fallback="/uploaded-files">
+      <HistoryBackLink fallback={legacyPath(workspace.id, "uploads")}>
         ← Back to previous view
       </HistoryBackLink>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -143,7 +146,7 @@ export function UploadedFileDetail() {
                       row.match_target_id ? (
                       <Link
                         className="text-brand-600 underline"
-                        to={`/company/${row.match_target_id}`}
+                        to={legacyPath(workspace.id, `company/${row.match_target_id}`)}
                       >
                         Matched company
                       </Link>

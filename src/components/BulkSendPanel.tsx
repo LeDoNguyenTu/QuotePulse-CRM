@@ -8,6 +8,8 @@ import { renderTemplate } from '../lib/render';
 import { emailProviderConfigurationError } from '../lib/emailProviderConfig';
 import { Modal } from './Modal';
 import { ErrorState, Spinner } from './ui';
+import { useActiveWorkspace } from '../hooks/useWorkspaces';
+import { legacyPath } from '../lib/appRoutes';
 
 function hiddenLegacyProgress(): { sent: number; failed: number; blocked: number; remaining: number } | null {
   return null;
@@ -20,6 +22,7 @@ interface BulkSendPanelProps {
 }
 
 export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) {
+  const workspace = useActiveWorkspace();
   const { data: templates } = useTemplates();
   const { data: settings } = useSettings();
   const { enqueue, running, error, MIN_COOLDOWN } = useEmailQueue();
@@ -239,7 +242,7 @@ export function BulkSendPanel({ open, onClose, companies }: BulkSendPanelProps) 
             {settings?.email_provider === 'brevo' ? <>{providerConfigurationError}</> : (
               <>
             No Microsoft mailbox connected — connect one in{' '}
-            <Link className="underline" to="/settings">
+            <Link className="underline" to={legacyPath(workspace.id, 'settings')}>
               Settings
             </Link>{' '}
             to send.

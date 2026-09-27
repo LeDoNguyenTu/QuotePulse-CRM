@@ -6,6 +6,8 @@ import {
 } from '../lib/hubspotObjectTable';
 import type { HubspotObjectRow } from '../hooks/useHubspotObjects';
 import { detailNavigationState, saveScrollPosition } from '../lib/returnNavigation';
+import { useActiveWorkspace } from '../hooks/useWorkspaces';
+import { legacyPath } from '../lib/appRoutes';
 
 const DATE_COLUMNS = new Set([
   'hubspot_created_at',
@@ -36,6 +38,7 @@ export function HubspotObjectTable({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const workspace = useActiveWorkspace();
   return (
     <div className="card overflow-x-auto">
       <table className="min-w-full text-sm">
@@ -55,7 +58,7 @@ export function HubspotObjectTable({
                   if (!companyId) return;
                   const state = detailNavigationState(location, window.scrollY);
                   saveScrollPosition(window.sessionStorage, state.from, state.scrollY);
-                  navigate(`/company/${companyId}`, { state });
+                  navigate(legacyPath(workspace.id, `company/${companyId}`), { state });
                 }}
               >
                 {columns.map((column) => {

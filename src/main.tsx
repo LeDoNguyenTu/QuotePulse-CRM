@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { AuthProvider } from './hooks/useAuth';
 import { HubspotImportProvider, HubspotImportToast } from './hooks/useHubspotImport';
+import { WorkspaceProvider } from './hooks/useWorkspaces';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -22,10 +23,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <HubspotImportProvider>
-            <App />
-            <HubspotImportToast />
-          </HubspotImportProvider>
+          <WorkspaceProvider>
+            <HubspotImportProvider>
+              <App />
+              <HubspotImportToast />
+            </HubspotImportProvider>
+          </WorkspaceProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

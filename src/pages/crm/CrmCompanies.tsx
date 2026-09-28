@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
-import { useCrmCompanies, useCrmCompanyMutations } from '../../hooks/crm/useCrmCompanies';
+import { useCrmCompanies, useCrmCompanyMutations, useCrmIndustryOptions } from '../../hooks/crm/useCrmCompanies';
 import type { CrmCompany, CrmCompanyInput } from '../../lib/crm/types';
 import { canDeleteCrmRecords } from '../../lib/crm/permissions';
 import { displayText } from '../../lib/crm/presenters';
@@ -19,8 +19,11 @@ export function CrmCompanies() {
   const workspace = useActiveWorkspace();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [sort, setSort] = useState('name_asc');
   const [editing, setEditing] = useState<CrmCompany | null | undefined>(undefined);
-  const query = useCrmCompanies(workspace.id, { page, search });
+  const query = useCrmCompanies(workspace.id, { page, search, industry, sort });
+  const industries = useCrmIndustryOptions(workspace.id);
   const mutations = useCrmCompanyMutations(workspace.id);
   const closeEditor = () => { setEditing(undefined); mutations.create.reset(); mutations.update.reset(); };
   const save = (input: CrmCompanyInput) => {
@@ -37,8 +40,11 @@ export function CrmCompanies() {
   return (
     <div className="space-y-5">
       <CrmPageHeader eyebrow="Account ledger" title="Companies" description="The durable account directory for contacts, deals, and future import lineage." action={<button type="button" className="btn-primary" onClick={() => setEditing(null)}>Add company</button>} />
-      <CrmFilterBar search={search} placeholder="Search companies" onSearchChange={(value) => { setSearch(value); setPage(1); }} />
-      {mutations.remove.error && <ErrorState error={mutations.remove.error} />}
+      <CrmFilterBar search={search} placeholder="Search companies" onSearchChange={(value) => { setSearch(value); setPage(1); }}>
+        <label><span className="sr-only">Industry</span><select className="input min-w-40" value={industry} onChange={(event) => { setIndustry(event.target.value); setPage(1); }}><option value="">All industries</option>{(industries.data ?? []).map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label><span className="sr-only">Sort companies</span><select className="input min-w-36" value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}><option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option><option value="recent">Newest</option></select></label>
+      </CrmFilterBar>
+      {(mutations.remove.error || industries.error) && <ErrorState error={mutations.remove.error ?? industries.error} />}
       <CrmResourceState loading={query.isLoading} error={query.error} empty={rows.length === 0}>
         <div className="crm-table-wrap">
           <table className="crm-table"><thead><tr><th>Company</th><th>Industry</th><th>Location</th><th>Contact</th><th><span className="sr-only">Actions</span></th></tr></thead>

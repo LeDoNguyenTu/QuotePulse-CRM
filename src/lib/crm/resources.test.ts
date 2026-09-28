@@ -42,4 +42,53 @@ describe('CRM resource query contracts', () => {
       filters: [{ column: 'status', value: 'won' }],
     });
   });
+
+  it('builds allow-listed company filters and descending name order', () => {
+    expect(crmListSpec('companies', 'workspace-a', {
+      page: 1,
+      search: '',
+      industry: ' Engineering ',
+      sort: 'name_desc',
+    })).toMatchObject({
+      filters: [{ column: 'industry', value: 'Engineering' }],
+      order: [
+        { column: 'name', ascending: false },
+        { column: 'id', ascending: true },
+      ],
+    });
+  });
+
+  it('filters contacts by company and sorts newest first', () => {
+    expect(crmListSpec('contacts', 'workspace-a', {
+      page: 1,
+      search: '',
+      companyId: 'company-1',
+      sort: 'recent',
+    })).toMatchObject({
+      filters: [{ column: 'company_id', value: 'company-1' }],
+      order: [
+        { column: 'created_at', ascending: false },
+        { column: 'id', ascending: true },
+      ],
+    });
+  });
+
+  it('combines deal company/status filters with an allow-listed value sort', () => {
+    expect(crmListSpec('deals', 'workspace-a', {
+      page: 1,
+      search: '',
+      status: 'open',
+      companyId: 'company-1',
+      sort: 'value_desc',
+    })).toMatchObject({
+      filters: [
+        { column: 'status', value: 'open' },
+        { column: 'company_id', value: 'company-1' },
+      ],
+      order: [
+        { column: 'amount', ascending: false },
+        { column: 'id', ascending: true },
+      ],
+    });
+  });
 });

@@ -43,8 +43,8 @@ Fresh branch checks before publication:
 - `npm run lint`: passed.
 - `npm run build`: passed; Vite reported the non-blocking 629.42 kB main-chunk
   size warning.
-- `git diff --check`: corrected four Markdown trailing-space findings; rerun is
-  required on the final handoff commit.
+- `git diff --check main...HEAD`: passed after correcting four Markdown
+  trailing-space findings.
 - Authenticated production Chrome inspection: confirmed the real Sales CRM
   workspace shell, workspace switcher, navigation, and logged-in session.
   Phase B CRUD was not yet deployed at inspection time and was not represented

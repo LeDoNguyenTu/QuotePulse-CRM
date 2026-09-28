@@ -49,4 +49,16 @@ describe('Sales CRM import preview', () => {
       'Follow-up date is invalid.',
     ]));
   });
+
+  it('never anchors a valid duplicate to an invalid row that will not be committed', () => {
+    const rows = normalizeCrmImportRows([
+      { Account: 'Acme', Email: 'bad', Opportunity: '', Value: '', Currency: '', 'Follow Up': '' },
+      { Account: 'Acme', Email: 'bad', Opportunity: '', Value: '', Currency: '', 'Follow Up': '' },
+      { Account: 'Acme', Email: '', Opportunity: '', Value: '', Currency: '', 'Follow Up': '' },
+    ], mapping, { companies: [], contacts: [] });
+    expect(rows[0].valid).toBe(false);
+    expect(rows[1].duplicateOfRow).toBeNull();
+    expect(rows[2].valid).toBe(true);
+    expect(rows[2].duplicateOfRow).toBeNull();
+  });
 });

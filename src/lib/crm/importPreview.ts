@@ -97,12 +97,13 @@ export function normalizeCrmImportRows(
     const lastCall = dateValue(mapped(source, mapping, 'lastCallAt'), 'Last call', issues);
     const followUp = dateValue(mapped(source, mapping, 'followUpAt'), 'Follow-up', issues);
     const duplicateKey = `${key(companyName)}|${emailText}`;
-    const duplicateOfRow = seen.get(duplicateKey) ?? null;
-    if (companyName && !seen.has(duplicateKey)) seen.set(duplicateKey, index + 1);
+    const rowIsValid = issues.length === 0;
+    const duplicateOfRow = rowIsValid ? seen.get(duplicateKey) ?? null : null;
+    if (rowIsValid && companyName && !seen.has(duplicateKey)) seen.set(duplicateKey, index + 1);
 
     return {
       rowNumber: index + 1,
-      valid: issues.length === 0,
+      valid: rowIsValid,
       issues,
       duplicateOfRow,
       existingCompanyId: companyIds.get(key(companyName)) ?? null,

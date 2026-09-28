@@ -17,6 +17,6 @@ export function CrmRecordDetailPage({ kind, recordId }: { kind: CrmDetailKind; r
   const query = useCrmDetail(kind, workspace.id, recordId);
   return <div className="space-y-5">
     <Link className="crm-back-link" to={salesPath(workspace.id, moduleByKind[kind])}>Back to {moduleByKind[kind]}</Link>
-    {query.isLoading ? <div className="crm-state"><Spinner label="Loading record…" /></div> : query.error ? <ErrorState error={query.error} /> : <CrmDetailContent kind={kind} workspaceId={workspace.id} data={query.data ?? { record: null, associations: [], lineage: [] }} />}
+    {query.isLoading ? <div className="crm-state"><Spinner label="Loading record…" /></div> : query.error ? <ErrorState error={query.error} /> : <CrmDetailContent kind={kind} workspaceId={workspace.id} data={query.data ?? { record: null, associations: [], associationCounts: [], lineage: [], lineageCount: 0 }} />}
   </div>;
 }

@@ -6,7 +6,7 @@ interface ResourceDefinition {
   table: string;
   select: string;
   searchColumn: string;
-  order: Array<{ column: string; ascending: boolean }>;
+  order: Array<{ column: string; ascending: boolean; nullsFirst?: boolean }>;
 }
 
 export const CRM_RESOURCES: Record<CrmResourceName, ResourceDefinition> = {
@@ -61,7 +61,7 @@ const SORT_ORDERS: Record<CrmResourceName, Record<string, ResourceDefinition['or
   },
   deals: {
     recent: CRM_RESOURCES.deals.order,
-    value_desc: [{ column: 'amount', ascending: false }, { column: 'id', ascending: true }],
+    value_desc: [{ column: 'amount', ascending: false, nullsFirst: false }, { column: 'id', ascending: true }],
     follow_up: [{ column: 'follow_up_at', ascending: true }, { column: 'id', ascending: true }],
   },
 };

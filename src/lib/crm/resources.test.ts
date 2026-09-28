@@ -86,7 +86,7 @@ describe('CRM resource query contracts', () => {
         { column: 'company_id', value: 'company-1' },
       ],
       order: [
-        { column: 'amount', ascending: false },
+        { column: 'amount', ascending: false, nullsFirst: false },
         { column: 'id', ascending: true },
       ],
     });

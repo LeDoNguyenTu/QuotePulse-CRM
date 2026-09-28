@@ -29,7 +29,9 @@ export interface CrmSourceLineage {
 export interface CrmDetailData<TRecord = unknown> {
   record: TRecord | null;
   associations: unknown[][];
+  associationCounts: number[];
   lineage: CrmSourceLineage[];
+  lineageCount: number;
 }
 
 const primarySelect: Record<CrmDetailKind, string> = {

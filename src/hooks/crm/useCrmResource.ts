@@ -38,7 +38,10 @@ async function fetchCrmPage<T>(
     query = query.eq(filter.column, filter.value);
   }
   for (const order of spec.order) {
-    query = query.order(order.column, { ascending: order.ascending });
+    query = query.order(order.column, {
+      ascending: order.ascending,
+      ...(order.nullsFirst === undefined ? {} : { nullsFirst: order.nullsFirst }),
+    });
   }
 
   const { data, count, error } = await query;

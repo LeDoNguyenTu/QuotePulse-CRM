@@ -7,19 +7,19 @@ import {
   type CrmDetailQuery,
 } from '../../lib/crm/detailQueries';
 
-async function fetchAssociation(querySpec: CrmDetailQuery): Promise<unknown[]> {
+async function fetchAssociation(querySpec: CrmDetailQuery): Promise<{ rows: unknown[]; count: number }> {
   let query = (supabase as any)
     .from(querySpec.table)
-    .select(querySpec.select)
+    .select(querySpec.select, { count: 'exact' })
     .eq('workspace_id', querySpec.workspaceId)
     .eq(querySpec.foreignKey, querySpec.recordId);
   if (querySpec.order) {
     query = query.order(querySpec.order.column, { ascending: querySpec.order.ascending });
   }
   if (querySpec.limit) query = query.limit(querySpec.limit);
-  const { data, error } = await query;
+  const { data, count, error } = await query;
   if (error) throw error;
-  return data ?? [];
+  return { rows: data ?? [], count: count ?? 0 };
 }
 
 async function fetchCrmDetail(
@@ -40,7 +40,13 @@ async function fetchCrmDetail(
     fetchAssociation(spec.lineage),
   ]);
   if (primary.error) throw primary.error;
-  return { record: primary.data ?? null, associations, lineage: lineage as CrmDetailData['lineage'] };
+  return {
+    record: primary.data ?? null,
+    associations: associations.map((association) => association.rows),
+    associationCounts: associations.map((association) => association.count),
+    lineage: lineage.rows as CrmDetailData['lineage'],
+    lineageCount: lineage.count,
+  };
 }
 
 export function useCrmDetail(kind: CrmDetailKind, workspaceId: string, recordId: string) {

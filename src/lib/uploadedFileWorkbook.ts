@@ -6,6 +6,10 @@ export type ParsedWorkbook = { sheets: ParsedSheet[] };
 const MAX_BYTES = 25 * 1024 * 1024;
 const decoder = new TextDecoder();
 
+export function parseWorkbookDateSystem(workbookXml: string): '1900' | '1904' {
+  return /\bdate1904\s*=\s*["'](?:1|true)["']/i.test(workbookXml) ? '1904' : '1900';
+}
+
 function text(bytes: Uint8Array | undefined): string { return bytes ? decoder.decode(bytes) : ''; }
 function parseXml(value: string): Document { return new DOMParser().parseFromString(value, 'application/xml'); }
 function nodeText(node: Element | null): string { return node?.textContent ?? ''; }
@@ -18,7 +22,9 @@ export async function parseUploadedWorkbook(file: File): Promise<ParsedWorkbook>
   const entries = unzipSync(new Uint8Array(await file.arrayBuffer()));
   const shared = parseXml(text(entries['xl/sharedStrings.xml']));
   const strings = Array.from(shared.querySelectorAll('si')).map((node) => node.textContent ?? '');
-  const book = parseXml(text(entries['xl/workbook.xml']));
+  const workbookXml = text(entries['xl/workbook.xml']);
+  const book = parseXml(workbookXml);
+  const dateSystem = parseWorkbookDateSystem(workbookXml);
   const rels = parseXml(text(entries['xl/_rels/workbook.xml.rels']));
   const targets = new Map(Array.from(rels.querySelectorAll('Relationship')).map((r) => [r.getAttribute('Id'), r.getAttribute('Target')]));
   const sheets: ParsedSheet[] = [];
@@ -27,31 +33,39 @@ export async function parseUploadedWorkbook(file: File): Promise<ParsedWorkbook>
     if (!target) continue;
     const path = target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`;
     const xml = parseXml(text(entries[path]));
-    const grid = Array.from(xml.querySelectorAll('sheetData > row')).map((row) => {
+    const grid = Array.from(xml.querySelectorAll('sheetData > row')).map((row, index) => {
       const values: string[] = [];
       for (const cell of Array.from(row.querySelectorAll('c'))) {
         const column = cellColumn(cell.getAttribute('r') ?? 'A1');
         const value = cell.getAttribute('t') === 's' ? strings[Number(nodeText(cell.querySelector('v')))] ?? '' : nodeText(cell.querySelector('v')) || nodeText(cell.querySelector('is t'));
         values[column - 1] = value;
       }
-      return values;
+      return { rowNumber: Number(row.getAttribute('r')) || index + 1, values };
     });
     if (!grid.length) continue;
-    sheets.push(makeSheet(sheet.getAttribute('name') ?? 'Sheet', grid));
+    sheets.push(makeSheet(sheet.getAttribute('name') ?? 'Sheet', grid, dateSystem));
   }
   if (!sheets.length) throw new Error('No readable worksheet with a header row was found.');
   return { sheets };
 }
 
 function csvWorkbook(value: string): ParsedWorkbook {
-  const rows = value.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean).map((line) => line.split(',').map((cell) => cell.trim()));
-  return { sheets: [makeSheet('CSV', rows)] };
+  const rows = value.replace(/^\uFEFF/, '').split(/\r?\n/).map((line, index) => ({ rowNumber: index + 1, values: line.split(',').map((cell) => cell.trim()) })).filter((row) => row.values.some(Boolean));
+  return { sheets: [makeSheet('CSV', rows, '1900')] };
 }
 
-function makeSheet(name: string, grid: string[][]): ParsedSheet {
-  const headers = grid[0].map((value) => value.trim());
+function makeSheet(name: string, grid: Array<{ rowNumber: number; values: string[] }>, dateSystem: '1900' | '1904'): ParsedSheet {
+  const headers = grid[0].values.map((value) => value.trim());
   if (!headers.length || headers.some((header) => !header)) throw new Error(`${name} has a blank header.`);
   if (new Set(headers.map((header) => header.toLowerCase())).size !== headers.length) throw new Error(`${name} has duplicate headers.`);
   if (headers.length > 200 || grid.length - 1 > 20000) throw new Error(`${name} exceeds the upload column or row limit.`);
-  return { name, headers, rows: grid.slice(1).filter((row) => row.some(Boolean)).map((row) => Object.fromEntries(headers.map((header, index) => [header, String(row[index] ?? '').slice(0, 32000)]))) };
+  const rows = grid.slice(1).filter((row) => row.values.some(Boolean)).map((row) => {
+    const record = Object.fromEntries(headers.map((header, index) => [header, String(row.values[index] ?? '').slice(0, 32000)]));
+    Object.defineProperties(record, {
+      __sourceRowNumber: { value: row.rowNumber, enumerable: false },
+      __excelDateSystem: { value: dateSystem, enumerable: false },
+    });
+    return record;
+  });
+  return { name, headers, rows };
 }

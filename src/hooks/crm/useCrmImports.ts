@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import type { CrmImportPreviewRow } from '../../lib/crm/importPreview';
 
-export interface CrmImportResult { source_import_id: string; database_id: string; row_count: number; created_companies: number; created_contacts: number; created_deals: number; matched_rows: number }
+export interface CrmImportResult { source_import_id: string; database_id: string; row_count: number; created_companies: number; created_contacts: number; created_deals: number; created_activities: number; matched_rows: number }
 
 export function useCrmImports(workspaceId: string) {
   const queryClient = useQueryClient();
@@ -19,7 +19,7 @@ export function useCrmImports(workspaceId: string) {
     return { companies: companies.data ?? [], contacts: contacts.data ?? [] };
   }});
   const commit = useMutation({ mutationFn: async (input: { filename: string; sheetName: string; checksum: string; sourceRowCount: number; rows: CrmImportPreviewRow[] }) => {
-    const { data, error } = await (supabase as any).rpc('crm_commit_import', {
+    const { data, error } = await (supabase as any).rpc('crm_commit_import_with_activities', {
       p_workspace_id: workspaceId, p_original_filename: input.filename,
       p_sheet_name: input.sheetName, p_checksum_sha256: input.checksum,
       p_source_row_count: input.sourceRowCount, p_rows: input.rows,

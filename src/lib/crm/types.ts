@@ -47,6 +47,21 @@ export interface CrmDeal extends CrmAuditFields {
   company?: Pick<CrmCompany, 'id' | 'name'> | null;
 }
 
+export interface CrmActivity {
+  id: string;
+  workspace_id: string;
+  company_id: string | null;
+  deal_id: string | null;
+  contact_id: string | null;
+  kind: 'note' | 'call' | 'task_event';
+  body: string;
+  occurred_at: string;
+  created_by: string;
+  created_at: string;
+  source_column?: string | null;
+  source_row_number?: number | null;
+}
+
 export type CrmCompanyInput = Pick<
   CrmCompany,
   | 'name'

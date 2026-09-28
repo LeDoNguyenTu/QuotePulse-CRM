@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 // needed here — keeping vite.config free of node:url avoids requiring @types/node.
 export default defineConfig({
   plugins: [react()],
+  resolve: { alias: { fs: '/src/lib/pst/fsShim.ts' } },
   server: {
     port: 5173,
   },

@@ -8,9 +8,9 @@ import { CrmImports } from './crm/CrmImports';
 import { CrmRecordDetailPage } from './crm/CrmRecordDetailPage';
 import { CrmTasks } from './crm/CrmTasks';
 import { CrmEmailCampaigns } from './crm/CrmEmailCampaigns';
+import { CrmPstExtractor } from './crm/CrmPstExtractor';
 
 const MODULE_CONTENT: Record<string, { title: string; description: string }> = {
-  'pst-extractor': { title: 'PST Extractor', description: 'PST support begins with a fixture-backed parser spike in Phase H.' },
   settings: { title: 'Settings', description: 'Workspace-specific settings will appear as their features are introduced.' },
 };
 
@@ -24,6 +24,7 @@ export function SalesWorkspacePage() {
   if (resolution === 'imports') return <CrmImports />;
   if (resolution === 'placeholder' && module === 'tasks') return <CrmTasks />;
   if (resolution === 'placeholder' && module === 'email-campaigns') return <CrmEmailCampaigns />;
+  if (resolution === 'placeholder' && module === 'pst-extractor') return <CrmPstExtractor />;
   if (resolution === 'company-detail') return <CrmRecordDetailPage kind="company" recordId={recordId!} />;
   if (resolution === 'contact-detail') return <CrmRecordDetailPage kind="contact" recordId={recordId!} />;
   if (resolution === 'deal-detail') return <CrmRecordDetailPage kind="deal" recordId={recordId!} />;

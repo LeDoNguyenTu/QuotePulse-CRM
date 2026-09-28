@@ -1,0 +1,27 @@
+diff --git a/node_modules/@hiraokahypertools/pst-extractor/dist/PropertyContextUtil.js b/node_modules/@hiraokahypertools/pst-extractor/dist/PropertyContextUtil.js
+index ceffc04..c60b6ba 100644
+--- a/node_modules/@hiraokahypertools/pst-extractor/dist/PropertyContextUtil.js
++++ b/node_modules/@hiraokahypertools/pst-extractor/dist/PropertyContextUtil.js
+@@ -4,6 +4,10 @@ function copy(array) {
+     return array
+         .map(it => Object.assign({}, it));
+ }
++export function shouldSkipUnsupportedProperty(key, type, error) {
++    return key >= 0x0f47 && key <= 0x0f4a && type === 0x1014
++        && String(error).includes("property type 0x1014 is unknown");
++}
+ export async function getPropertyContext(heap, resolver) {
+     if (heap.bClientSig !== bTypePC) {
+         throw new Error("bClientSig must be bTypePC");
+@@ -43,6 +47,11 @@ export async function getPropertyContext(heap, resolver) {
+                     });
+                 }
+                 catch (ex) {
++                    // This exact unsupported property appears in otherwise readable
++                    // PST folders. Every other parser/property failure stays fatal.
++                    if (shouldSkipUnsupportedProperty(it.key, it.type, ex)) {
++                        continue;
++                    }
+                     throw new Error(`getPropertyContext.list() resolving property`
+                         + ` key=0x${it.key.toString(16).padStart(4, '0')}`
+                         + ` type=0x${it.type.toString(16).padStart(4, '0')}`

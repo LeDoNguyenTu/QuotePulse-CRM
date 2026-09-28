@@ -1,0 +1,86 @@
+export type CrmDealStatus = 'open' | 'won' | 'lost' | 'on_hold';
+
+export interface CrmAuditFields {
+  id: string;
+  workspace_id: string;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmCompany extends CrmAuditFields {
+  name: string;
+  industry: string | null;
+  website: string | null;
+  domain: string | null;
+  phone: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state_region: string | null;
+  postal_code: string | null;
+  country: string | null;
+}
+
+export interface CrmContact extends CrmAuditFields {
+  company_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  job_title: string | null;
+  company?: Pick<CrmCompany, 'id' | 'name'> | null;
+}
+
+export interface CrmDeal extends CrmAuditFields {
+  company_id: string | null;
+  name: string;
+  stage: string;
+  amount: number | null;
+  currency: string;
+  owner_user_id: string | null;
+  status: CrmDealStatus;
+  last_call_at: string | null;
+  follow_up_at: string | null;
+  company?: Pick<CrmCompany, 'id' | 'name'> | null;
+}
+
+export type CrmCompanyInput = Pick<
+  CrmCompany,
+  | 'name'
+  | 'industry'
+  | 'website'
+  | 'domain'
+  | 'phone'
+  | 'address_line_1'
+  | 'address_line_2'
+  | 'city'
+  | 'state_region'
+  | 'postal_code'
+  | 'country'
+>;
+
+export type CrmContactInput = Pick<
+  CrmContact,
+  'company_id' | 'first_name' | 'last_name' | 'full_name' | 'email' | 'phone' | 'job_title'
+>;
+
+export type CrmDealInput = Pick<
+  CrmDeal,
+  | 'company_id'
+  | 'name'
+  | 'stage'
+  | 'amount'
+  | 'currency'
+  | 'owner_user_id'
+  | 'status'
+  | 'last_call_at'
+  | 'follow_up_at'
+>;
+
+export interface CrmPage<T> {
+  rows: T[];
+  count: number;
+}

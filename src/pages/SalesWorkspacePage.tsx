@@ -1,9 +1,11 @@
 import { useParams } from 'react-router-dom';
+import { resolveSalesModule } from '../lib/crm/salesRoutes';
+import { CrmCompanies } from './crm/CrmCompanies';
+import { CrmContacts } from './crm/CrmContacts';
+import { CrmDashboard } from './crm/CrmDashboard';
+import { CrmDeals } from './crm/CrmDeals';
 
 const MODULE_CONTENT: Record<string, { title: string; description: string }> = {
-  companies: { title: 'Companies', description: 'Company records and source lineage arrive in Phase B.' },
-  contacts: { title: 'Contacts', description: 'Contact management and company associations arrive in Phase B.' },
-  deals: { title: 'Deals', description: 'Pipeline management and deal detail arrive in Phase B.' },
   tasks: { title: 'Tasks', description: 'Follow-up tasks and durable reminders arrive in Phase F.' },
   'email-campaigns': { title: 'Email Campaigns', description: 'Campaign audiences will reuse the existing durable email queue in Phase G.' },
   imports: { title: 'Imports', description: 'Workbook mapping and Database ID lineage arrive in Phase C.' },
@@ -13,10 +15,13 @@ const MODULE_CONTENT: Record<string, { title: string; description: string }> = {
 
 export function SalesWorkspacePage() {
   const { module } = useParams();
-  const content = module ? MODULE_CONTENT[module] : {
-    title: 'Sales CRM',
-    description: 'Your Excel-driven sales workspace is ready for the next implementation phase.',
-  };
+  const resolution = resolveSalesModule(module);
+  if (resolution === 'dashboard') return <CrmDashboard />;
+  if (resolution === 'companies') return <CrmCompanies />;
+  if (resolution === 'contacts') return <CrmContacts />;
+  if (resolution === 'deals') return <CrmDeals />;
+
+  const content = resolution === 'placeholder' && module ? MODULE_CONTENT[module] : undefined;
 
   if (!content) {
     return (

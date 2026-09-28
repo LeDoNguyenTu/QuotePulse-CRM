@@ -5,6 +5,7 @@ import { useCrmCompanyOptions } from '../../hooks/crm/useCrmCompanies';
 import type { CrmContact, CrmContactInput } from '../../lib/crm/types';
 import { canDeleteCrmRecords } from '../../lib/crm/permissions';
 import { displayText } from '../../lib/crm/presenters';
+import { pageAfterDelete } from '../../lib/crm/pagination';
 import { Modal } from '../../components/Modal';
 import { ErrorState } from '../../components/ui';
 import { ContactEditor } from '../../components/crm/ContactEditor';
@@ -29,7 +30,9 @@ export function CrmContacts() {
   };
   const remove = (row: CrmContact) => {
     const name = row.full_name ?? row.email ?? 'this contact';
-    if (window.confirm(`Delete ${name}?`)) mutations.remove.mutate(row.id);
+    if (window.confirm(`Delete ${name}?`)) {
+      mutations.remove.mutate(row.id, { onSuccess: () => setPage((current) => pageAfterDelete(current, rows.length)) });
+    }
   };
   const rows = query.data?.rows ?? [];
   return (

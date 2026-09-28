@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CRM_PAGE_SIZE, crmPageCount, crmPageRange, normalizeCrmPage } from './pagination';
+import { CRM_PAGE_SIZE, crmPageCount, crmPageRange, normalizeCrmPage, pageAfterDelete } from './pagination';
 
 describe('CRM pagination', () => {
   it('builds zero-based inclusive Supabase ranges', () => {
@@ -19,5 +19,11 @@ describe('CRM pagination', () => {
     expect(crmPageCount(0)).toBe(1);
     expect(crmPageCount(25)).toBe(1);
     expect(crmPageCount(26)).toBe(2);
+  });
+
+  it('moves back after deleting the final row on a later page', () => {
+    expect(pageAfterDelete(3, 1)).toBe(2);
+    expect(pageAfterDelete(3, 2)).toBe(3);
+    expect(pageAfterDelete(1, 1)).toBe(1);
   });
 });

@@ -13,3 +13,7 @@ export function crmPageRange(page: number): { from: number; to: number } {
 export function crmPageCount(count: number): number {
   return Math.max(1, Math.ceil(Math.max(0, count) / CRM_PAGE_SIZE));
 }
+
+export function pageAfterDelete(page: number, visibleRowCount: number): number {
+  return page > 1 && visibleRowCount <= 1 ? page - 1 : page;
+}

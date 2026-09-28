@@ -4,6 +4,7 @@ import { useCrmCompanies, useCrmCompanyMutations } from '../../hooks/crm/useCrmC
 import type { CrmCompany, CrmCompanyInput } from '../../lib/crm/types';
 import { canDeleteCrmRecords } from '../../lib/crm/permissions';
 import { displayText } from '../../lib/crm/presenters';
+import { pageAfterDelete } from '../../lib/crm/pagination';
 import { Modal } from '../../components/Modal';
 import { ErrorState } from '../../components/ui';
 import { CompanyEditor } from '../../components/crm/CompanyEditor';
@@ -27,7 +28,7 @@ export function CrmCompanies() {
   };
   const remove = (row: CrmCompany) => {
     if (window.confirm(`Delete ${row.name}? Related contacts and deals will keep their records without this company.`)) {
-      mutations.remove.mutate(row.id);
+      mutations.remove.mutate(row.id, { onSuccess: () => setPage((current) => pageAfterDelete(current, rows.length)) });
     }
   };
   const rows = query.data?.rows ?? [];

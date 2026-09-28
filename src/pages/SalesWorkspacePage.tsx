@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom';
+import { resolveSalesModule } from '../lib/crm/salesRoutes';
 import { CrmCompanies } from './crm/CrmCompanies';
 import { CrmContacts } from './crm/CrmContacts';
 import { CrmDashboard } from './crm/CrmDashboard';
@@ -14,12 +15,13 @@ const MODULE_CONTENT: Record<string, { title: string; description: string }> = {
 
 export function SalesWorkspacePage() {
   const { module } = useParams();
-  if (!module) return <CrmDashboard />;
-  if (module === 'companies') return <CrmCompanies />;
-  if (module === 'contacts') return <CrmContacts />;
-  if (module === 'deals') return <CrmDeals />;
+  const resolution = resolveSalesModule(module);
+  if (resolution === 'dashboard') return <CrmDashboard />;
+  if (resolution === 'companies') return <CrmCompanies />;
+  if (resolution === 'contacts') return <CrmContacts />;
+  if (resolution === 'deals') return <CrmDeals />;
 
-  const content = MODULE_CONTENT[module];
+  const content = resolution === 'placeholder' && module ? MODULE_CONTENT[module] : undefined;
 
   if (!content) {
     return (

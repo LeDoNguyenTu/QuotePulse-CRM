@@ -5,6 +5,7 @@ import { useCrmCompanyOptions } from '../../hooks/crm/useCrmCompanies';
 import type { CrmDeal, CrmDealInput } from '../../lib/crm/types';
 import { canDeleteCrmRecords } from '../../lib/crm/permissions';
 import { displayText, formatCrmDate, formatCrmMoney } from '../../lib/crm/presenters';
+import { pageAfterDelete } from '../../lib/crm/pagination';
 import { Modal } from '../../components/Modal';
 import { ErrorState } from '../../components/ui';
 import { DealEditor } from '../../components/crm/DealEditor';
@@ -29,7 +30,9 @@ export function CrmDeals() {
     else mutations.create.mutate(input, { onSuccess });
   };
   const remove = (row: CrmDeal) => {
-    if (window.confirm(`Delete ${row.name}?`)) mutations.remove.mutate(row.id);
+    if (window.confirm(`Delete ${row.name}?`)) {
+      mutations.remove.mutate(row.id, { onSuccess: () => setPage((current) => pageAfterDelete(current, rows.length)) });
+    }
   };
   const rows = query.data?.rows ?? [];
   return (

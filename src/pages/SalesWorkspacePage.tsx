@@ -6,9 +6,9 @@ import { CrmDashboard } from './crm/CrmDashboard';
 import { CrmDeals } from './crm/CrmDeals';
 import { CrmImports } from './crm/CrmImports';
 import { CrmRecordDetailPage } from './crm/CrmRecordDetailPage';
+import { CrmTasks } from './crm/CrmTasks';
 
 const MODULE_CONTENT: Record<string, { title: string; description: string }> = {
-  tasks: { title: 'Tasks', description: 'Follow-up tasks and durable reminders arrive in Phase F.' },
   'email-campaigns': { title: 'Email Campaigns', description: 'Campaign audiences will reuse the existing durable email queue in Phase G.' },
   'pst-extractor': { title: 'PST Extractor', description: 'PST support begins with a fixture-backed parser spike in Phase H.' },
   settings: { title: 'Settings', description: 'Workspace-specific settings will appear as their features are introduced.' },
@@ -22,6 +22,7 @@ export function SalesWorkspacePage() {
   if (resolution === 'contacts') return <CrmContacts />;
   if (resolution === 'deals') return <CrmDeals />;
   if (resolution === 'imports') return <CrmImports />;
+  if (resolution === 'placeholder' && module === 'tasks') return <CrmTasks />;
   if (resolution === 'company-detail') return <CrmRecordDetailPage kind="company" recordId={recordId!} />;
   if (resolution === 'contact-detail') return <CrmRecordDetailPage kind="contact" recordId={recordId!} />;
   if (resolution === 'deal-detail') return <CrmRecordDetailPage kind="deal" recordId={recordId!} />;

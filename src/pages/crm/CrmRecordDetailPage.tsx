@@ -5,7 +5,7 @@ import type { CrmDetailKind } from '../../lib/crm/detailQueries';
 import { salesPath } from '../../lib/appRoutes';
 import { CrmDetailContent } from '../../components/crm/CrmDetailContent';
 import { CrmActivityComposer } from '../../components/crm/CrmActivityComposer';
-import { useCrmActivityMutation } from '../../hooks/crm/useCrmActivities';
+import { useCrmActivityMutation, useWorkspaceMemberOptions } from '../../hooks/crm/useCrmActivities';
 import { ErrorState, Spinner } from '../../components/ui';
 
 const moduleByKind: Record<CrmDetailKind, string> = {
@@ -18,9 +18,10 @@ export function CrmRecordDetailPage({ kind, recordId }: { kind: CrmDetailKind; r
   const workspace = useActiveWorkspace();
   const query = useCrmDetail(kind, workspace.id, recordId);
   const activity = useCrmActivityMutation(kind, workspace.id, recordId);
+  const members = useWorkspaceMemberOptions(workspace.id);
   return <div className="space-y-5">
     <Link className="crm-back-link" to={salesPath(workspace.id, moduleByKind[kind])}>Back to {moduleByKind[kind]}</Link>
-    {Boolean(query.data?.record) && <CrmActivityComposer targetKind={kind} pending={activity.isPending} onSave={(input) => activity.mutateAsync(input)} />}
+    {Boolean(query.data?.record) && <CrmActivityComposer targetKind={kind} pending={activity.isPending} members={members.data ?? []} onSave={(input) => activity.mutateAsync(input)} />}
     {query.isLoading ? <div className="crm-state"><Spinner label="Loading record…" /></div> : query.error ? <ErrorState error={query.error} /> : <CrmDetailContent kind={kind} workspaceId={workspace.id} data={query.data ?? { record: null, associations: [], associationCounts: [], lineage: [], lineageCount: 0, activities: [], activityCount: 0 }} />}
   </div>;
 }

@@ -3,6 +3,11 @@ export interface CrmActivityInput {
   body: string;
   occurredAt: string;
   updateLastCall: boolean;
+  taskTitle?: string;
+  taskDueAt?: string;
+  taskReminderAt?: string;
+  taskAssigneeId?: string;
+  createTask?: boolean;
 }
 
 export function localDateTimeValue(date = new Date()): string {
@@ -18,5 +23,17 @@ export function normalizeActivityInput(input: CrmActivityInput):
   if (body.length > 20000) return { ok: false, error: 'Activity text cannot exceed 20,000 characters.' };
   const date = input.occurredAt ? new Date(input.occurredAt) : new Date();
   if (Number.isNaN(date.getTime())) return { ok: false, error: 'Choose a valid activity date.' };
-  return { ok: true, value: { ...input, body, occurredAt: date.toISOString(), updateLastCall: input.kind === 'call' && input.updateLastCall } };
+  const taskTitle = input.taskTitle?.trim() || undefined;
+  const taskDue = input.taskDueAt ? new Date(input.taskDueAt) : null;
+  const taskReminder = input.taskReminderAt ? new Date(input.taskReminderAt) : null;
+  if (input.createTask && !taskTitle) return { ok: false, error: 'Task title is required.' };
+  if (input.createTask && (!taskDue || Number.isNaN(taskDue.getTime()))) return { ok: false, error: 'Choose a task due date.' };
+  if (input.createTask && taskReminder && Number.isNaN(taskReminder.getTime())) return { ok: false, error: 'Choose a valid reminder date.' };
+  if (taskReminder && taskDue && taskReminder > taskDue) return { ok: false, error: 'Reminder cannot be after the due date.' };
+  return { ok: true, value: {
+    ...input, body, occurredAt: date.toISOString(), updateLastCall: input.kind === 'call' && input.updateLastCall,
+    taskTitle, taskDueAt: taskDue?.toISOString(), taskReminderAt: taskReminder?.toISOString(),
+    taskAssigneeId: input.taskAssigneeId || undefined,
+    createTask: Boolean(input.createTask),
+  } };
 }

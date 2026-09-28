@@ -1,0 +1,2 @@
+import { describe, expect, it } from 'vitest'; import { normalizeEmail, uniqueEmails } from './normalize';
+describe('PST address normalization',()=>{it('normalizes and deduplicates SMTP addresses',()=>{expect(normalizeEmail(' Test@Example.com ')).toBe('test@example.com');expect(normalizeEmail('/O=EXCHANGE/CN=USER')).toBeNull();expect(uniqueEmails(['B@x.com','b@x.com','a@x.com'])).toEqual(['a@x.com','b@x.com'])})});

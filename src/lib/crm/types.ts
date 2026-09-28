@@ -62,6 +62,28 @@ export interface CrmActivity {
   source_row_number?: number | null;
 }
 
+export interface CrmTask {
+  id: string;
+  workspace_id: string;
+  company_id: string | null;
+  deal_id: string | null;
+  contact_id: string | null;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+  reminder_at: string | null;
+  status: 'open' | 'in_progress' | 'completed' | 'cancelled';
+  assignee_id: string | null;
+  completed_at: string | null;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+  company?: { id: string; name: string } | null;
+  contact?: { id: string; full_name: string | null } | null;
+  deal?: { id: string; name: string } | null;
+}
+
 export type CrmCompanyInput = Pick<
   CrmCompany,
   | 'name'

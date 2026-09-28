@@ -32,7 +32,7 @@ export function CrmImports() {
   };
   const commit = async () => {
     if (!file || !sheet || mappingError || !validRows.length) return;
-    try { setResult(await api.commit.mutateAsync({ filename: file.name, sheetName: sheet.name, checksum: await sha256(file), rows: validRows })); setLocalError(null); }
+    try { setResult(await api.commit.mutateAsync({ filename: file.name, sheetName: sheet.name, checksum: await sha256(file), sourceRowCount: preview.length, rows: validRows })); setLocalError(null); }
     catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); }
   };
   return <div className="space-y-6">

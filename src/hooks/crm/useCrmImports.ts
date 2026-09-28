@@ -18,10 +18,11 @@ export function useCrmImports(workspaceId: string) {
     if (companies.error) throw companies.error; if (contacts.error) throw contacts.error;
     return { companies: companies.data ?? [], contacts: contacts.data ?? [] };
   }});
-  const commit = useMutation({ mutationFn: async (input: { filename: string; sheetName: string; checksum: string; rows: CrmImportPreviewRow[] }) => {
+  const commit = useMutation({ mutationFn: async (input: { filename: string; sheetName: string; checksum: string; sourceRowCount: number; rows: CrmImportPreviewRow[] }) => {
     const { data, error } = await (supabase as any).rpc('crm_commit_import', {
       p_workspace_id: workspaceId, p_original_filename: input.filename,
-      p_sheet_name: input.sheetName, p_checksum_sha256: input.checksum, p_rows: input.rows,
+      p_sheet_name: input.sheetName, p_checksum_sha256: input.checksum,
+      p_source_row_count: input.sourceRowCount, p_rows: input.rows,
     });
     if (error) throw error; return data as CrmImportResult;
   }, onSuccess: async () => {

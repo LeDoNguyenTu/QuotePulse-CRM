@@ -48,8 +48,8 @@ least one valid row exists.
 - The commit RPC additionally caps the JSON row count and rejects unknown fields.
 - Every query and write is workspace-scoped. Composite foreign keys retain the
   cross-workspace integrity established in Phase B.
-- The RPC is `security definer` with an empty search path, explicit membership
-  checks, and execute permission only for `authenticated`.
+- The RPC is `security invoker` with an empty search path, explicit membership
+  checks, RLS enforcement, and execute permission only for `authenticated`.
 
 ## Verification
 

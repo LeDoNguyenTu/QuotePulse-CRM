@@ -3,11 +3,12 @@ create or replace function public.crm_commit_import(
   p_original_filename text,
   p_sheet_name text,
   p_checksum_sha256 text,
+  p_source_row_count integer,
   p_rows jsonb
 )
 returns jsonb
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -38,6 +39,9 @@ begin
   if p_rows is null or jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) < 1 or jsonb_array_length(p_rows) > 20000 then
     raise exception 'import rows must contain between 1 and 20000 records' using errcode = '22023';
   end if;
+  if p_source_row_count < jsonb_array_length(p_rows) or p_source_row_count > 20000 then
+    raise exception 'invalid source row count' using errcode = '22023';
+  end if;
   if p_checksum_sha256 is not null and p_checksum_sha256 !~ '^[a-f0-9]{64}$' then
     raise exception 'invalid SHA-256 checksum' using errcode = '22023';
   end if;
@@ -49,8 +53,12 @@ begin
     source_metadata, imported_by, created_by
   ) values (
     p_workspace_id, btrim(p_original_filename), nullif(btrim(p_sheet_name), ''),
-    jsonb_array_length(p_rows), p_checksum_sha256,
-    jsonb_build_object('format', 'normalized-crm-import-v1'), v_user_id, v_user_id
+    p_source_row_count, p_checksum_sha256,
+    jsonb_build_object(
+      'format', 'normalized-crm-import-v1',
+      'committed_rows', jsonb_array_length(p_rows),
+      'skipped_invalid_rows', p_source_row_count - jsonb_array_length(p_rows)
+    ), v_user_id, v_user_id
   ) returning * into v_import;
 
   for v_row in select value from jsonb_array_elements(p_rows)
@@ -148,5 +156,5 @@ begin
 end;
 $$;
 
-revoke all on function public.crm_commit_import(uuid, text, text, text, jsonb) from public, anon;
-grant execute on function public.crm_commit_import(uuid, text, text, text, jsonb) to authenticated;
+revoke all on function public.crm_commit_import(uuid, text, text, text, integer, jsonb) from public, anon;
+grant execute on function public.crm_commit_import(uuid, text, text, text, integer, jsonb) to authenticated;

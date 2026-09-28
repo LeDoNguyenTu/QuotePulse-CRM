@@ -58,10 +58,13 @@ Deno.serve(async (request) => {
       if (sentCount >= dailyLimit) {
         await finish(admin, row, { status: 'blocked', error_message: `Daily send limit (${dailyLimit}) reached.` }); result.blocked++; continue;
       }
-      const vars = await resolveVars(admin, ownerId, row.company_id, row.to_email);
+      const vars = await resolveVars(admin, ownerId, row.company_id, row.to_email, row.recipient_snapshot);
       const subject = renderTemplate(row.subject ?? '', vars);
       const bodyText = renderTemplate(row.body_rendered ?? '', vars);
       const provider = (row.provider ?? settings.email_provider ?? 'microsoft_graph') as EmailProvider;
+      if (await isSuppressed(admin, ownerId, row.to_email)) {
+        await finish(admin, row, { status: 'blocked', error_message: 'Recipient unsubscribed or is suppressed.' }); result.blocked++; continue;
+      }
       const providerResult = await sendWithProvider(provider, settings, tokenByOwner, ownerId, {
         toEmail: row.to_email, subject, bodyText, senderEmail: settings.brevo_sender_email,
         senderName: settings.brevo_sender_name,
@@ -105,12 +108,20 @@ async function sendWithProvider(provider: EmailProvider, settings: UserSettingsR
 }
 
 async function finish(admin: SupabaseClient, row: Record<string, unknown>, patch: Record<string, unknown>) {
-  const { error } = await admin.from('email_sends').update({ ...patch, claimed_at: null, lease_expires_at: null })
+  let query = admin.from('email_sends').update({ ...patch, claimed_at: null, lease_expires_at: null })
     .eq('id', row.id).eq('created_by', row.created_by);
+  if (row.workspace_id) query = query.eq('workspace_id', row.workspace_id);
+  if (row.campaign_id) query = query.eq('campaign_id', row.campaign_id);
+  const { error } = await query;
   if (error) throw error;
 }
 
-async function resolveVars(admin: SupabaseClient, userId: string, companyId: string | null, toEmail: string) {
+async function resolveVars(admin: SupabaseClient, userId: string, companyId: string | null, toEmail: string, snapshot?: Record<string, unknown> | null) {
+  if (snapshot) return {
+    company_name: typeof snapshot.company_name === 'string' ? snapshot.company_name : null,
+    industry: typeof snapshot.industry === 'string' ? snapshot.industry : null,
+    contact_name: typeof snapshot.contact_name === 'string' ? snapshot.contact_name : null,
+  };
   let company_name: string | null = null, industry: string | null = null, contact_name: string | null = null;
   if (companyId) {
     const { data: company } = await admin.from('companies').select('name_clean, industry').eq('id', companyId).eq('owner_id', userId).maybeSingle();
@@ -126,4 +137,11 @@ async function countSentLast24h(admin: SupabaseClient, userId: string) {
     .eq('created_by', userId).eq('status', 'sent').gte('sent_at', new Date(Date.now() - 86_400_000).toISOString());
   if (error) throw error;
   return count ?? 0;
+}
+
+async function isSuppressed(admin: SupabaseClient, userId: string, email: string) {
+  const { count, error } = await admin.from('email_suppressions').select('id', { count: 'exact', head: true })
+    .eq('owner_id', userId).eq('email_normalized', email.trim().toLowerCase());
+  if (error) throw error;
+  return (count ?? 0) > 0;
 }

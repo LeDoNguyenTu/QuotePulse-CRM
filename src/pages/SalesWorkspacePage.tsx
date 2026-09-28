@@ -5,6 +5,7 @@ import { CrmContacts } from './crm/CrmContacts';
 import { CrmDashboard } from './crm/CrmDashboard';
 import { CrmDeals } from './crm/CrmDeals';
 import { CrmImports } from './crm/CrmImports';
+import { CrmRecordDetailPage } from './crm/CrmRecordDetailPage';
 
 const MODULE_CONTENT: Record<string, { title: string; description: string }> = {
   tasks: { title: 'Tasks', description: 'Follow-up tasks and durable reminders arrive in Phase F.' },
@@ -14,13 +15,16 @@ const MODULE_CONTENT: Record<string, { title: string; description: string }> = {
 };
 
 export function SalesWorkspacePage() {
-  const { module } = useParams();
-  const resolution = resolveSalesModule(module);
+  const { module, recordId } = useParams();
+  const resolution = resolveSalesModule(module, recordId);
   if (resolution === 'dashboard') return <CrmDashboard />;
   if (resolution === 'companies') return <CrmCompanies />;
   if (resolution === 'contacts') return <CrmContacts />;
   if (resolution === 'deals') return <CrmDeals />;
   if (resolution === 'imports') return <CrmImports />;
+  if (resolution === 'company-detail') return <CrmRecordDetailPage kind="company" recordId={recordId!} />;
+  if (resolution === 'contact-detail') return <CrmRecordDetailPage kind="contact" recordId={recordId!} />;
+  if (resolution === 'deal-detail') return <CrmRecordDetailPage kind="deal" recordId={recordId!} />;
 
   const content = resolution === 'placeholder' && module ? MODULE_CONTENT[module] : undefined;
 

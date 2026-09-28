@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { useCrmCompanies, useCrmCompanyMutations } from '../../hooks/crm/useCrmCompanies';
 import type { CrmCompany, CrmCompanyInput } from '../../lib/crm/types';
@@ -10,6 +11,7 @@ import { ErrorState } from '../../components/ui';
 import { CompanyEditor } from '../../components/crm/CompanyEditor';
 import { CrmFilterBar, CrmPageHeader, CrmResourceState, CrmRowActions } from '../../components/crm/CrmPageChrome';
 import { CrmPagination } from '../../components/crm/CrmPagination';
+import { crmRecordPath } from '../../lib/crm/salesRoutes';
 
 const PAGE_SIZE = 25;
 
@@ -40,7 +42,7 @@ export function CrmCompanies() {
       <CrmResourceState loading={query.isLoading} error={query.error} empty={rows.length === 0}>
         <div className="crm-table-wrap">
           <table className="crm-table"><thead><tr><th>Company</th><th>Industry</th><th>Location</th><th>Contact</th><th><span className="sr-only">Actions</span></th></tr></thead>
-            <tbody>{rows.map((row) => <tr key={row.id}><td data-label="Company"><div className="font-semibold text-slate-950">{row.name}</div><div className="crm-secondary">{displayText(row.domain)}</div></td><td data-label="Industry">{displayText(row.industry)}</td><td data-label="Location">{displayText([row.city, row.country].filter(Boolean).join(', '))}</td><td data-label="Contact"><div>{displayText(row.phone)}</div><div className="crm-secondary">{displayText(row.website)}</div></td><td data-label="Actions"><CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} /></td></tr>)}</tbody>
+            <tbody>{rows.map((row) => <tr key={row.id}><td data-label="Company"><Link className="crm-record-link font-semibold" to={crmRecordPath(workspace.id, 'company', row.id)}>{row.name}</Link><div className="crm-secondary">{displayText(row.domain)}</div></td><td data-label="Industry">{displayText(row.industry)}</td><td data-label="Location">{displayText([row.city, row.country].filter(Boolean).join(', '))}</td><td data-label="Contact"><div>{displayText(row.phone)}</div><div className="crm-secondary">{displayText(row.website)}</div></td><td data-label="Actions"><CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} /></td></tr>)}</tbody>
           </table>
         </div>
       </CrmResourceState>

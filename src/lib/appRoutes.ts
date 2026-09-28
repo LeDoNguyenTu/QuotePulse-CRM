@@ -26,6 +26,7 @@ export const workspaceRoutePaths = {
   legacyUploadDetail: '/w/:workspaceId/legacy/uploads/:id',
   salesHome: '/w/:workspaceId/sales',
   salesModule: '/w/:workspaceId/sales/:module',
+  salesRecord: '/w/:workspaceId/sales/:module/:recordId',
 } as const;
 
 export function authenticatedLandingPath(): string {

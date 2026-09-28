@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { useCrmContacts, useCrmContactMutations } from '../../hooks/crm/useCrmContacts';
 import { useCrmCompanyOptions } from '../../hooks/crm/useCrmCompanies';
@@ -11,6 +12,7 @@ import { ErrorState } from '../../components/ui';
 import { ContactEditor } from '../../components/crm/ContactEditor';
 import { CrmFilterBar, CrmPageHeader, CrmResourceState, CrmRowActions } from '../../components/crm/CrmPageChrome';
 import { CrmPagination } from '../../components/crm/CrmPagination';
+import { crmRecordPath } from '../../lib/crm/salesRoutes';
 
 const PAGE_SIZE = 25;
 
@@ -42,7 +44,7 @@ export function CrmContacts() {
       {(mutations.remove.error || companies.error) && <ErrorState error={mutations.remove.error ?? companies.error} />}
       <CrmResourceState loading={query.isLoading} error={query.error} empty={rows.length === 0}>
         <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Contact</th><th>Company</th><th>Role</th><th>Reach</th><th><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>{rows.map((row) => <tr key={row.id}><td data-label="Contact"><div className="font-semibold text-slate-950">{displayText(row.full_name ?? [row.first_name, row.last_name].filter(Boolean).join(' '), 'Unnamed contact')}</div><div className="crm-secondary">{displayText(row.email)}</div></td><td data-label="Company">{displayText(row.company?.name)}</td><td data-label="Role">{displayText(row.job_title)}</td><td data-label="Reach">{displayText(row.phone)}</td><td data-label="Actions"><CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} /></td></tr>)}</tbody>
+          <tbody>{rows.map((row) => <tr key={row.id}><td data-label="Contact"><Link className="crm-record-link font-semibold" to={crmRecordPath(workspace.id, 'contact', row.id)}>{displayText(row.full_name ?? [row.first_name, row.last_name].filter(Boolean).join(' '), 'Unnamed contact')}</Link><div className="crm-secondary">{displayText(row.email)}</div></td><td data-label="Company">{displayText(row.company?.name)}</td><td data-label="Role">{displayText(row.job_title)}</td><td data-label="Reach">{displayText(row.phone)}</td><td data-label="Actions"><CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} /></td></tr>)}</tbody>
         </table></div>
       </CrmResourceState>
       <CrmPagination page={page} pageSize={PAGE_SIZE} count={query.data?.count ?? 0} onPageChange={setPage} />

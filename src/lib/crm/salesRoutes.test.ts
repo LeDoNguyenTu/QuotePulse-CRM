@@ -7,6 +7,7 @@ describe('Sales CRM route dispatch', () => {
     expect(resolveSalesModule('companies')).toBe('companies');
     expect(resolveSalesModule('contacts')).toBe('contacts');
     expect(resolveSalesModule('deals')).toBe('deals');
+    expect(resolveSalesModule('imports')).toBe('imports');
   });
 
   it('keeps planned modules as placeholders and rejects unknown routes', () => {

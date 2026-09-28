@@ -20,18 +20,37 @@ export function normalizeDomain(value: unknown): string | null {
   return withoutProtocol.replace(/^www\./i, '').split(/[/?#]/, 1)[0].toLowerCase() || null;
 }
 
+export function normalizeWebsiteUrl(value: unknown): string | null {
+  const text = optionalText(value);
+  if (!text) return null;
+  const hasHttpScheme = /^https?:\/\//i.test(text);
+  if (/^(?:javascript|data|vbscript|file|mailto|tel):/i.test(text)) return null;
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(text) && !hasHttpScheme) return null;
+  try {
+    const url = new URL(hasHttpScheme ? text : `https://${text}`);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeCompanyInput(
   input: Partial<Record<keyof CrmCompanyInput, unknown>>,
 ): InputResult<CrmCompanyInput> {
   const name = optionalText(input.name);
   if (!name) return { ok: false, error: 'Company name is required.' };
+  const websiteText = optionalText(input.website);
+  const website = normalizeWebsiteUrl(websiteText);
+  if (websiteText && !website) {
+    return { ok: false, error: 'Company website must use http or https.' };
+  }
 
   return {
     ok: true,
     value: {
       name,
       industry: optionalText(input.industry),
-      website: optionalText(input.website),
+      website,
       domain: normalizeDomain(input.domain),
       phone: optionalText(input.phone),
       address_line_1: optionalText(input.address_line_1),

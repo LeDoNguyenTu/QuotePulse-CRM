@@ -1,4 +1,4 @@
-import { normalizeDomain } from './inputs';
+import { normalizeDomain, normalizeWebsiteUrl } from './inputs';
 
 export type CrmImportMapping = Partial<Record<
   | 'companyName' | 'companyIndustry' | 'companyWebsite' | 'companyDomain'
@@ -79,6 +79,9 @@ export function normalizeCrmImportRows(
     const issues: string[] = [];
     const companyName = mapped(source, mapping, 'companyName');
     if (!companyName) issues.push('Company name is required.');
+    const websiteText = mapped(source, mapping, 'companyWebsite');
+    const website = normalizeWebsiteUrl(websiteText);
+    if (websiteText && !website) issues.push('Company website must use http or https.');
     const emailText = mapped(source, mapping, 'contactEmail').toLowerCase();
     if (emailText && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailText)) issues.push('Contact email is invalid.');
     const firstName = mapped(source, mapping, 'contactFirstName');
@@ -111,7 +114,7 @@ export function normalizeCrmImportRows(
       company: {
         name: companyName,
         industry: optional(mapped(source, mapping, 'companyIndustry')),
-        website: optional(mapped(source, mapping, 'companyWebsite')),
+        website,
         domain: normalizeDomain(mapped(source, mapping, 'companyDomain')),
         phone: optional(mapped(source, mapping, 'companyPhone')),
         address_line_1: optional(mapped(source, mapping, 'companyAddress')),

@@ -61,4 +61,14 @@ describe('Sales CRM import preview', () => {
     expect(rows[2].valid).toBe(true);
     expect(rows[2].duplicateOfRow).toBeNull();
   });
+
+  it('rejects unsafe company website protocols before import', () => {
+    const [row] = normalizeCrmImportRows([
+      { Account: 'Acme', Website: 'javascript:alert(1)' },
+    ], { companyName: 'Account', companyWebsite: 'Website' }, { companies: [], contacts: [] });
+
+    expect(row.valid).toBe(false);
+    expect(row.issues).toContain('Company website must use http or https.');
+    expect(row.company.website).toBeNull();
+  });
 });

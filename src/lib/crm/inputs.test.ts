@@ -4,6 +4,7 @@ import {
   normalizeContactInput,
   normalizeDealInput,
   normalizeDomain,
+  normalizeWebsiteUrl,
 } from './inputs';
 
 describe('CRM input normalization', () => {
@@ -36,6 +37,19 @@ describe('CRM input normalization', () => {
         postal_code: '123456',
         country: 'SG',
       },
+    });
+  });
+
+  it('allows only HTTP website links and normalizes bare domains', () => {
+    expect(normalizeWebsiteUrl('example.com/about')).toBe('https://example.com/about');
+    expect(normalizeWebsiteUrl('example.com:8443/about')).toBe('https://example.com:8443/about');
+    expect(normalizeWebsiteUrl('localhost:3000')).toBe('https://localhost:3000/');
+    expect(normalizeWebsiteUrl(' HTTP://Example.com ')).toBe('http://example.com/');
+    expect(normalizeWebsiteUrl('javascript:alert(1)')).toBeNull();
+    expect(normalizeWebsiteUrl('data:text/html,unsafe')).toBeNull();
+    expect(normalizeCompanyInput({ name: 'Acme', website: 'javascript:alert(1)' })).toEqual({
+      ok: false,
+      error: 'Company website must use http or https.',
     });
   });
 

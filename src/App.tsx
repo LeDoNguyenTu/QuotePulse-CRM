@@ -66,6 +66,7 @@ export default function App() {
 
         <Route path={workspaceRoutePaths.salesHome} element={<GuardedWorkspacePage area="sales"><SalesWorkspacePage /></GuardedWorkspacePage>} />
         <Route path={workspaceRoutePaths.salesModule} element={<GuardedWorkspacePage area="sales"><SalesWorkspacePage /></GuardedWorkspacePage>} />
+        <Route path={workspaceRoutePaths.salesRecord} element={<GuardedWorkspacePage area="sales"><SalesWorkspacePage /></GuardedWorkspacePage>} />
 
         <Route path="/" element={<SelectorRedirect />} />
         <Route path="/company/:id" element={<SelectorRedirect />} />

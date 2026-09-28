@@ -199,11 +199,11 @@ create table public.crm_source_references (
 );
 
 create index crm_companies_workspace_name_idx
-  on public.crm_companies (workspace_id, lower(name), id);
+  on public.crm_companies (workspace_id, name, id);
 create index crm_companies_name_search_idx
   on public.crm_companies using gin (name extensions.gin_trgm_ops);
 create index crm_contacts_workspace_name_idx
-  on public.crm_contacts (workspace_id, lower(coalesce(full_name, last_name, first_name, email)), id);
+  on public.crm_contacts (workspace_id, full_name, id);
 create index crm_contacts_name_search_idx
   on public.crm_contacts using gin (full_name extensions.gin_trgm_ops);
 create index crm_contacts_email_search_idx

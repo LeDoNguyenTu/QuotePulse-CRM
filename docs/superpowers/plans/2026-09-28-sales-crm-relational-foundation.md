@@ -6,8 +6,8 @@
 **Goal:** Deliver workspace-isolated, paginated CRUD for Sales CRM companies,
 contacts, and deals plus the relational foundations for later CRM phases.
 
-**Base:** `main` at merge commit `5a9758c`  
-**Branch:** `feature/sales-crm-relational-foundation`  
+**Base:** `main` at merge commit `5a9758c`
+**Branch:** `feature/sales-crm-relational-foundation`
 **Design:** `docs/superpowers/specs/2026-09-28-sales-crm-relational-foundation-design.md`
 
 ## Task 1: Schema, RLS, and executable isolation contract

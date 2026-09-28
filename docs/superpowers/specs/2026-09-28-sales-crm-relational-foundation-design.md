@@ -1,7 +1,7 @@
 # Sales CRM relational foundation design
 
-Date: 2026-09-28  
-Status: approved for autonomous execution  
+Date: 2026-09-28
+Status: approved for autonomous execution
 Roadmap phase: B
 
 ## Intent

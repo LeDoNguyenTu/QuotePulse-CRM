@@ -31,7 +31,7 @@ export interface CrmContact extends CrmAuditFields {
   email: string | null;
   phone: string | null;
   job_title: string | null;
-  company?: Pick<CrmCompany, 'id' | 'name'> | null;
+  company?: Pick<CrmCompany, 'id' | 'name' | 'industry'> | null;
 }
 
 export interface CrmDeal extends CrmAuditFields {
@@ -82,6 +82,26 @@ export interface CrmTask {
   company?: { id: string; name: string } | null;
   contact?: { id: string; full_name: string | null } | null;
   deal?: { id: string; name: string } | null;
+}
+
+export interface CrmEmailCampaign extends CrmAuditFields {
+  name: string;
+  template_id: string | null;
+  subject: string;
+  body: string;
+  provider: 'microsoft_graph' | 'brevo';
+  cooldown_seconds: number;
+  audience_filter: Record<string, unknown>;
+  status: 'draft' | 'queued' | 'active' | 'completed' | 'cancelled';
+  recipient_count: number;
+  queued_count: number;
+  scheduled_count: number;
+  sending_count: number;
+  retrying_count: number;
+  sent_count: number;
+  deferred_count: number;
+  blocked_count: number;
+  failed_count: number;
 }
 
 export type CrmCompanyInput = Pick<

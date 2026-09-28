@@ -193,6 +193,15 @@ body {
 .crm-lineage-list small { margin-top: 0.25rem; color: #64748b; font-size: 0.72rem; }
 .crm-panel-empty { padding: 1.25rem 1.1rem; color: #64748b; font-size: 0.85rem; line-height: 1.6; }
 .crm-activity-preview { border-left: 4px solid #94a3b8; }
+.crm-activity-composer { border: 1px solid #cbd5e1; border-left: 4px solid #0f766e; background: #fff; padding: 1rem; display: grid; gap: 0.85rem; }
+.crm-activity-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.crm-activity-fields label, .crm-activity-composer > label { display: grid; gap: 0.35rem; font-size: 0.875rem; font-weight: 600; }
+.crm-activity-check { display: flex !important; grid-template-columns: none; align-items: center; gap: 0.5rem !important; font-weight: 500 !important; }
+.crm-activity-list { display: grid; gap: 0.85rem; }
+.crm-activity-list li { border-left: 2px solid #0f766e; padding-left: 0.85rem; }
+.crm-activity-list li > div { display: flex; justify-content: space-between; gap: 1rem; }
+.crm-activity-list time, .crm-activity-list small { color: #64748b; font-size: 0.75rem; }
+.crm-activity-list p { margin: 0.35rem 0; white-space: pre-wrap; color: #334155; }
 
 @media (prefers-reduced-motion: reduce) {
   .workspace-choice,
@@ -202,6 +211,7 @@ body {
 }
 
 @media (max-width: 767px) {
+  .crm-activity-fields { grid-template-columns: 1fr; }
   .crm-page-header { align-items: stretch; flex-direction: column; }
   .crm-module-grid { grid-template-columns: 1fr; }
   .crm-module-link { min-height: 11rem; }

@@ -7,6 +7,7 @@ export interface CrmDetailQuery {
   foreignKey: string;
   recordId: string;
   order?: { column: string; ascending: boolean };
+  secondaryOrder?: { column: string; ascending: boolean };
   limit?: number;
 }
 
@@ -14,6 +15,7 @@ export interface CrmDetailSpec {
   primary: Omit<CrmDetailQuery, 'foreignKey'>;
   associations: CrmDetailQuery[];
   lineage: CrmDetailQuery;
+  activity: CrmDetailQuery;
 }
 
 export interface CrmSourceLineage {
@@ -32,6 +34,8 @@ export interface CrmDetailData<TRecord = unknown> {
   associationCounts: number[];
   lineage: CrmSourceLineage[];
   lineageCount: number;
+  activities: import('./types').CrmActivity[];
+  activityCount: number;
 }
 
 const primarySelect: Record<CrmDetailKind, string> = {
@@ -106,6 +110,16 @@ export function crmDetailSpec(
       foreignKey: lineageKey[kind],
       recordId,
       order: { column: 'created_at', ascending: false },
+      limit: 100,
+    },
+    activity: {
+      table: 'crm_activities',
+      select: '*',
+      workspaceId,
+      foreignKey: lineageKey[kind],
+      recordId,
+      order: { column: 'occurred_at', ascending: false },
+      secondaryOrder: { column: 'id', ascending: false },
       limit: 100,
     },
   };

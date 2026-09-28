@@ -32,6 +32,13 @@ describe('Sales CRM detail content', () => {
               source_import: { database_id: 'CRM-ABC123DEF456', original_filename: 'accounts.xlsx', sheet_name: 'Customers', created_at: '2026-09-28T00:00:00Z' },
             }],
             lineageCount: 1,
+            activities: [{
+              id: 'activity-1', workspace_id: 'workspace-1', company_id: 'company-1', deal_id: null,
+              contact_id: 'contact-1', kind: 'call', body: 'Called buyer and scheduled follow-up.',
+              occurred_at: '2026-09-27T08:30:00Z', created_by: 'user-1', created_at: '2026-09-27T08:31:00Z',
+              source_column: 'Call Log', source_row_number: 2,
+            }],
+            activityCount: 1,
           }}
         />
       </StaticRouter>,
@@ -43,7 +50,8 @@ describe('Sales CRM detail content', () => {
     expect(html).toContain('CRM-ABC123DEF456');
     expect(html).toContain('accounts.xlsx');
     expect(html).toContain('Row 14');
-    expect(html).toContain('Activity history is not loaded in this record view yet.');
+    expect(html).toContain('Called buyer and scheduled follow-up.');
+    expect(html).toContain('Call Log');
   });
 
   it('does not render imported unsafe website protocols as links', () => {
@@ -57,7 +65,7 @@ describe('Sales CRM detail content', () => {
             created_by: 'user-1', updated_by: 'user-1', created_at: '2026-09-01T00:00:00Z',
             updated_at: '2026-09-28T00:00:00Z',
           },
-          associations: [[], []], associationCounts: [0, 0], lineage: [], lineageCount: 0,
+          associations: [[], []], associationCounts: [0, 0], lineage: [], lineageCount: 0, activities: [], activityCount: 0,
         }} />
       </StaticRouter>,
     );
@@ -76,7 +84,7 @@ describe('Sales CRM detail content', () => {
             city: null, state_region: null, postal_code: null, country: null, created_by: 'user-1',
             updated_by: 'user-1', created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-28T00:00:00Z',
           },
-          associations: [[], []], associationCounts: [125, 0], lineage: [], lineageCount: 140,
+          associations: [[], []], associationCounts: [125, 0], lineage: [], lineageCount: 140, activities: [], activityCount: 0,
         }} />
       </StaticRouter>,
     );
@@ -92,7 +100,7 @@ describe('Sales CRM detail content', () => {
         <CrmDetailContent
           kind="deal"
           workspaceId="workspace-1"
-          data={{ record: null, associations: [[]], associationCounts: [0], lineage: [], lineageCount: 0 }}
+          data={{ record: null, associations: [[]], associationCounts: [0], lineage: [], lineageCount: 0, activities: [], activityCount: 0 }}
         />
       </StaticRouter>,
     );

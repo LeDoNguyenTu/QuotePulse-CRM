@@ -16,6 +16,9 @@ async function fetchAssociation(querySpec: CrmDetailQuery): Promise<{ rows: unkn
   if (querySpec.order) {
     query = query.order(querySpec.order.column, { ascending: querySpec.order.ascending });
   }
+  if (querySpec.secondaryOrder) {
+    query = query.order(querySpec.secondaryOrder.column, { ascending: querySpec.secondaryOrder.ascending });
+  }
   if (querySpec.limit) query = query.limit(querySpec.limit);
   const { data, count, error } = await query;
   if (error) throw error;
@@ -34,10 +37,11 @@ async function fetchCrmDetail(
     .eq('workspace_id', workspaceId)
     .eq('id', recordId)
     .maybeSingle();
-  const [primary, associations, lineage] = await Promise.all([
+  const [primary, associations, lineage, activity] = await Promise.all([
     primaryPromise,
     Promise.all(spec.associations.map(fetchAssociation)),
     fetchAssociation(spec.lineage),
+    fetchAssociation(spec.activity),
   ]);
   if (primary.error) throw primary.error;
   return {
@@ -46,6 +50,8 @@ async function fetchCrmDetail(
     associationCounts: associations.map((association) => association.count),
     lineage: lineage.rows as CrmDetailData['lineage'],
     lineageCount: lineage.count,
+    activities: activity.rows as CrmDetailData['activities'],
+    activityCount: activity.count,
   };
 }
 

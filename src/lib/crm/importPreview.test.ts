@@ -1,13 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeCrmImportRows, validateCrmImportMapping, type CrmImportMapping } from './importPreview';
+import { normalizeCrmImportRows, suggestCrmImportMapping, validateCrmImportMapping, type CrmImportMapping } from './importPreview';
 
 const mapping: CrmImportMapping = {
   companyName: 'Account', contactEmail: 'Email', contactFirstName: 'First',
   contactLastName: 'Last', dealName: 'Opportunity', dealAmount: 'Value',
   dealCurrency: 'Currency', followUpAt: 'Follow Up',
+  activityOccurredAt: 'Last Contact', callLog: 'Call Log', remarks: 'Remarks', comments: 'Comments',
 };
 
 describe('Sales CRM import preview', () => {
+  it('suggests mappings for the real leads workbook activity columns', () => {
+    expect(suggestCrmImportMapping(['Last Contact Date', 'Follow-up Date', 'Call Log', 'Company Name', 'Name', 'Remarks', 'Comment'])).toMatchObject({
+      companyName: 'Company Name', contactFullName: 'Name', activityOccurredAt: 'Last Contact Date',
+      lastCallAt: 'Last Contact Date', followUpAt: 'Follow-up Date', callLog: 'Call Log', remarks: 'Remarks', comments: 'Comment',
+    });
+  });
+
+  it('preserves physical worksheet rows and the Excel 1904 date system', () => {
+    const source: Record<string, unknown> = { Account: 'Acme', When: '1', Notes: 'Called' };
+    Object.defineProperties(source, {
+      __sourceRowNumber: { value: 4 },
+      __excelDateSystem: { value: '1904' },
+    });
+    const [row] = normalizeCrmImportRows([source], {
+      companyName: 'Account', activityOccurredAt: 'When', callLog: 'Notes',
+    }, { companies: [], contacts: [] });
+    expect(row.rowNumber).toBe(4);
+    expect(row.activities[0]).toMatchObject({ occurred_at: '1904-01-02T00:00:00.000Z', source_column: 'Notes' });
+  });
+
+  it('reports mapped activity headers that exceed the database provenance limit', () => {
+    const header = 'N'.repeat(101);
+    const [row] = normalizeCrmImportRows([{ Account: 'Acme', [header]: 'Called' }], {
+      companyName: 'Account', callLog: header,
+    }, { companies: [], contacts: [] });
+    expect(row.valid).toBe(false);
+    expect(row.issues).toContain('Call Log source column exceeds 100 characters.');
+  });
   it('requires a mapped company column and rejects missing source headers', () => {
     expect(validateCrmImportMapping({}, ['Account'])).toEqual({ error: 'Map a company name column.' });
     expect(validateCrmImportMapping({ companyName: 'Missing' }, ['Account'])).toEqual({
@@ -17,7 +46,7 @@ describe('Sales CRM import preview', () => {
 
   it('normalizes CRM rows and classifies existing and in-file duplicates', () => {
     const rows = normalizeCrmImportRows([
-      { Account: ' Acme Pte Ltd ', Email: ' ADA@EXAMPLE.COM ', First: 'Ada', Last: 'Lovelace', Opportunity: 'Renewal', Value: '1,200.50', Currency: 'sgd', 'Follow Up': '2026-10-01' },
+      { Account: ' Acme Pte Ltd ', Email: ' ADA@EXAMPLE.COM ', First: 'Ada', Last: 'Lovelace', Opportunity: 'Renewal', Value: '1,200.50', Currency: 'sgd', 'Follow Up': '2026-10-01', 'Last Contact': '46293.415277777778', 'Call Log': 'Called buyer', Remarks: 'Warm lead', Comments: 'Send deck' },
       { Account: 'ACME PTE LTD', Email: 'ada@example.com', First: '', Last: '', Opportunity: '', Value: '', Currency: '', 'Follow Up': '' },
     ], mapping, {
       companies: [{ id: 'company-1', name: 'Acme Pte Ltd' }],
@@ -25,15 +54,21 @@ describe('Sales CRM import preview', () => {
     });
 
     expect(rows[0]).toMatchObject({
-      rowNumber: 1,
+      rowNumber: 2,
       valid: true,
       company: { name: 'Acme Pte Ltd' },
       contact: { full_name: 'Ada Lovelace', email: 'ada@example.com' },
       deal: { name: 'Renewal', amount: 1200.5, currency: 'SGD' },
+      activities: [
+        expect.objectContaining({ kind: 'call', body: 'Called buyer', source_column: 'Call Log' }),
+        expect.objectContaining({ kind: 'note', body: 'Warm lead', source_column: 'Remarks' }),
+        expect.objectContaining({ kind: 'note', body: 'Send deck', source_column: 'Comments' }),
+      ],
       existingCompanyId: 'company-1',
       existingContactId: 'contact-1',
     });
-    expect(rows[1].duplicateOfRow).toBe(1);
+    expect(rows[0].activities[0].occurred_at).toBe('2026-09-28T09:58:00.000Z');
+    expect(rows[1].duplicateOfRow).toBe(2);
   });
 
   it('reports invalid amounts, dates, and empty company names without throwing', () => {

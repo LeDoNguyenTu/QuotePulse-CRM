@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import type { CrmCompany, CrmContact, CrmDeal } from '../../lib/crm/types';
+import type { CrmActivity, CrmCompany, CrmContact, CrmDeal } from '../../lib/crm/types';
 import type { CrmDetailData, CrmDetailKind, CrmSourceLineage } from '../../lib/crm/detailQueries';
 import { crmRecordPath } from '../../lib/crm/salesRoutes';
 import { displayText, formatCrmDate, formatCrmMoney } from '../../lib/crm/presenters';
@@ -30,10 +30,15 @@ function LineageRail({ lineage, total }: { lineage: CrmSourceLineage[]; total: n
   </aside>;
 }
 
-function ActivityPreview() {
+function ActivityTimeline({ activities, total }: { activities: CrmActivity[]; total: number }) {
   return <section className="crm-detail-panel crm-activity-preview">
-    <div className="crm-panel-heading"><h2>Activity and email history</h2><span>Not loaded</span></div>
-    <p className="crm-panel-empty">Activity history is not loaded in this record view yet.</p>
+    <div className="crm-panel-heading"><h2>Activity timeline</h2><span>{total}</span></div>
+    {activities.length ? <ol className="crm-activity-list">{activities.map((activity) => <li key={activity.id}>
+      <div><strong>{activity.kind === 'call' ? 'Call' : activity.kind === 'note' ? 'Note' : 'Task update'}</strong><time dateTime={activity.occurred_at}>{formatCrmDate(activity.occurred_at)}</time></div>
+      <p>{activity.body}</p>
+      {activity.source_column && <small>{activity.source_column}{activity.source_row_number ? ` · Source row ${activity.source_row_number}` : ''}</small>}
+    </li>)}</ol> : <p className="crm-panel-empty">No notes or calls have been recorded yet.</p>}
+    <TruncationNotice shown={activities.length} total={total} />
   </section>;
 }
 
@@ -56,7 +61,7 @@ function CompanyDetail({ workspaceId, data }: { workspaceId: string; data: CrmDe
       </dl></section>
       <section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Staff contacts</h2><span>{data.associationCounts[0] ?? contacts.length}</span></div>{contacts.length ? <div className="crm-association-list">{contacts.map((contact) => <div key={contact.id}><div><RecordLink workspaceId={workspaceId} kind="contact" id={contact.id}>{displayText(contact.full_name ?? [contact.first_name, contact.last_name].filter(Boolean).join(' '), 'Unnamed contact')}</RecordLink><p>{displayText(contact.job_title)}</p></div><span>{displayText(contact.email)}</span></div>)}</div> : <p className="crm-panel-empty">No staff contacts are linked to this company.</p>}<TruncationNotice shown={contacts.length} total={data.associationCounts[0] ?? contacts.length} /></section>
       <section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Associated deals</h2><span>{data.associationCounts[1] ?? deals.length}</span></div>{deals.length ? <div className="crm-association-list">{deals.map((deal) => <div key={deal.id}><div><RecordLink workspaceId={workspaceId} kind="deal" id={deal.id}>{deal.name}</RecordLink><p>{deal.stage}</p></div><strong>{formatCrmMoney(deal.amount, deal.currency)}</strong></div>)}</div> : <p className="crm-panel-empty">No deals are linked to this company.</p>}<TruncationNotice shown={deals.length} total={data.associationCounts[1] ?? deals.length} /></section>
-      <ActivityPreview />
+      <ActivityTimeline activities={data.activities} total={data.activityCount} />
     </main><LineageRail lineage={data.lineage} total={data.lineageCount} /></div>
   </>;
 }
@@ -71,7 +76,7 @@ function ContactDetail({ workspaceId, data }: { workspaceId: string; data: CrmDe
       <Fact label="Email" value={displayText(contact.email)} href={contact.email ? `mailto:${contact.email}` : null} /><Fact label="Phone" value={displayText(contact.phone)} />
       <Fact label="Job title" value={displayText(contact.job_title)} /><Fact label="Created" value={formatCrmDate(contact.created_at)} />
       <div className="crm-detail-fact"><dt>Company</dt><dd>{contact.company ? <RecordLink workspaceId={workspaceId} kind="company" id={contact.company.id}>{contact.company.name}</RecordLink> : '—'}</dd></div>
-    </dl></section><section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Associated deals</h2><span>{data.associationCounts[0] ?? deals.length}</span></div>{deals.length ? <div className="crm-association-list">{deals.map(({ deal, role }, index) => deal && <div key={deal.id ?? index}><div><RecordLink workspaceId={workspaceId} kind="deal" id={deal.id}>{deal.name}</RecordLink><p>{displayText(role, deal.stage)}</p></div><strong>{formatCrmMoney(deal.amount, deal.currency)}</strong></div>)}</div> : <p className="crm-panel-empty">No deals are linked to this contact.</p>}<TruncationNotice shown={deals.length} total={data.associationCounts[0] ?? deals.length} /></section><ActivityPreview /></main><LineageRail lineage={data.lineage} total={data.lineageCount} /></div>
+    </dl></section><section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Associated deals</h2><span>{data.associationCounts[0] ?? deals.length}</span></div>{deals.length ? <div className="crm-association-list">{deals.map(({ deal, role }, index) => deal && <div key={deal.id ?? index}><div><RecordLink workspaceId={workspaceId} kind="deal" id={deal.id}>{deal.name}</RecordLink><p>{displayText(role, deal.stage)}</p></div><strong>{formatCrmMoney(deal.amount, deal.currency)}</strong></div>)}</div> : <p className="crm-panel-empty">No deals are linked to this contact.</p>}<TruncationNotice shown={deals.length} total={data.associationCounts[0] ?? deals.length} /></section><ActivityTimeline activities={data.activities} total={data.activityCount} /></main><LineageRail lineage={data.lineage} total={data.lineageCount} /></div>
   </>;
 }
 
@@ -82,7 +87,7 @@ function DealDetail({ workspaceId, data }: { workspaceId: string; data: CrmDetai
     <header className="crm-detail-hero crm-detail-hero--deal"><div><p className="crm-detail-kicker">Deal record</p><h1>{deal.name}</h1><p>{deal.company ? <RecordLink workspaceId={workspaceId} kind="company" id={deal.company.id}>{deal.company.name}</RecordLink> : 'No company linked'}</p></div><div className="crm-detail-value"><span>{deal.stage}</span><strong>{formatCrmMoney(deal.amount, deal.currency)}</strong><em className={`crm-status crm-status--${deal.status}`}>{deal.status.replace('_', ' ')}</em></div></header>
     <div className="crm-detail-grid"><main className="space-y-5"><section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Pipeline position</h2><span>Core record</span></div><dl className="crm-detail-facts">
       <Fact label="Stage" value={deal.stage} /><Fact label="Status" value={deal.status.replace('_', ' ')} /><Fact label="Last call" value={formatCrmDate(deal.last_call_at)} /><Fact label="Follow up" value={formatCrmDate(deal.follow_up_at)} /><Fact label="Created" value={formatCrmDate(deal.created_at)} /><Fact label="Updated" value={formatCrmDate(deal.updated_at)} />
-    </dl></section><section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Buying contacts</h2><span>{data.associationCounts[0] ?? contacts.length}</span></div>{contacts.length ? <div className="crm-association-list">{contacts.map(({ contact, role }, index) => contact && <div key={contact.id ?? index}><div><RecordLink workspaceId={workspaceId} kind="contact" id={contact.id}>{displayText(contact.full_name ?? contact.email, 'Unnamed contact')}</RecordLink><p>{displayText(role ?? contact.job_title)}</p></div><span>{displayText(contact.email)}</span></div>)}</div> : <p className="crm-panel-empty">No contacts are linked to this deal.</p>}<TruncationNotice shown={contacts.length} total={data.associationCounts[0] ?? contacts.length} /></section><ActivityPreview /></main><LineageRail lineage={data.lineage} total={data.lineageCount} /></div>
+    </dl></section><section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Buying contacts</h2><span>{data.associationCounts[0] ?? contacts.length}</span></div>{contacts.length ? <div className="crm-association-list">{contacts.map(({ contact, role }, index) => contact && <div key={contact.id ?? index}><div><RecordLink workspaceId={workspaceId} kind="contact" id={contact.id}>{displayText(contact.full_name ?? contact.email, 'Unnamed contact')}</RecordLink><p>{displayText(role ?? contact.job_title)}</p></div><span>{displayText(contact.email)}</span></div>)}</div> : <p className="crm-panel-empty">No contacts are linked to this deal.</p>}<TruncationNotice shown={contacts.length} total={data.associationCounts[0] ?? contacts.length} /></section><ActivityTimeline activities={data.activities} total={data.activityCount} /></main><LineageRail lineage={data.lineage} total={data.lineageCount} /></div>
   </>;
 }
 

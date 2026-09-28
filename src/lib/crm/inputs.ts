@@ -49,7 +49,9 @@ export function normalizeContactInput(
 ): InputResult<CrmContactInput> {
   const firstName = optionalText(input.first_name);
   const lastName = optionalText(input.last_name);
-  const fullName = optionalText(input.full_name);
+  const suppliedFullName = optionalText(input.full_name);
+  const derivedFullName = [firstName, lastName].filter(Boolean).join(' ');
+  const fullName = suppliedFullName ?? (derivedFullName || null);
   const email = optionalText(input.email)?.toLowerCase() ?? null;
   if (!firstName && !lastName && !fullName && !email) {
     return { ok: false, error: 'Add a contact name or email address.' };

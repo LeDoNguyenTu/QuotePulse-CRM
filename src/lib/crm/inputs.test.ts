@@ -65,7 +65,7 @@ describe('CRM input normalization', () => {
         company_id: null,
         first_name: 'Ada',
         last_name: 'Lovelace',
-        full_name: null,
+        full_name: 'Ada Lovelace',
         email: 'ada@example.com',
         phone: null,
         job_title: 'Founder',

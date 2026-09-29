@@ -37,10 +37,22 @@ export const CRM_IMPORT_ROLES: Array<{ key: keyof CrmImportMapping; label: strin
 
 const HEADER_ALIASES: Partial<Record<keyof CrmImportMapping, string[]>> = {
   companyName: ['company name', 'company', 'account'],
+  companyIndustry: ['industry', 'vertical', 'business sector'],
+  companyWebsite: ['website', 'website url', 'company website'],
+  companyDomain: ['domain', 'company domain'],
+  companyPhone: ['company phone', 'office phone', 'main phone'],
+  companyAddress: ['address', 'company address', 'office address'],
+  contactFirstName: ['first name', 'contact first name'],
+  contactLastName: ['last name', 'contact last name'],
   contactFullName: ['name', 'contact name', 'full name'],
   contactEmail: ['email address', 'email'],
   contactPhone: ['contact number', 'phone'],
   contactJobTitle: ['designation', 'job title'],
+  dealName: ['deal name', 'opportunity', 'opportunity name'],
+  dealStage: ['deal stage', 'stage'],
+  dealAmount: ['deal value', 'deal amount', 'amount', 'value'],
+  dealCurrency: ['currency'],
+  dealOwner: ['owner', 'deal owner', 'sales owner'],
   lastCallAt: ['last contact date', 'last call date'],
   followUpAt: ['follow-up date', 'follow up date'],
   activityOccurredAt: ['last contact date', 'activity date'],
@@ -145,10 +157,19 @@ export function normalizeCrmImportRows(
       if (body.length > 20000) issues.push(`${label} exceeds 20,000 characters.`);
       return [{ kind, body: body.slice(0, 20000), occurred_at: activityAt, source_column: sourceColumn }];
     });
-    const duplicateKey = `${key(companyName)}|${emailText}`;
+    const contactIdentity = emailText
+      ? `email:${emailText}`
+      : fullName
+        ? `name:${key(fullName)}`
+        : 'no-contact';
+    const entityKey = `${key(companyName)}|${contactIdentity}`;
+    const duplicateKey = dealName ? `${entityKey}|deal:${key(dealName)}` : entityKey;
     const rowIsValid = issues.length === 0;
     const duplicateOfRow = rowIsValid ? seen.get(duplicateKey) ?? null : null;
-    if (rowIsValid && companyName && !seen.has(duplicateKey)) seen.set(duplicateKey, sourceRowNumber);
+    if (rowIsValid && companyName) {
+      if (!seen.has(entityKey)) seen.set(entityKey, sourceRowNumber);
+      if (!seen.has(duplicateKey)) seen.set(duplicateKey, sourceRowNumber);
+    }
 
     return {
       rowNumber: sourceRowNumber,

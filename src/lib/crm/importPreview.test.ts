@@ -16,6 +16,21 @@ describe('Sales CRM import preview', () => {
     });
   });
 
+  it('automatically maps common customer workbook headers across CRM groups', () => {
+    expect(suggestCrmImportMapping([
+      'Company Name', 'Industry', 'Website', 'Address', 'Name', 'Email Address',
+      'Contact Number', 'Designation', 'Deal Name', 'Deal Stage', 'Deal Value',
+      'Owner', 'Last Contact Date', 'Follow-up Date', 'Call Log', 'Remarks', 'Comments',
+    ])).toMatchObject({
+      companyName: 'Company Name', companyIndustry: 'Industry', companyWebsite: 'Website',
+      companyAddress: 'Address', contactFullName: 'Name', contactEmail: 'Email Address',
+      contactPhone: 'Contact Number', contactJobTitle: 'Designation', dealName: 'Deal Name',
+      dealStage: 'Deal Stage', dealAmount: 'Deal Value', dealOwner: 'Owner',
+      lastCallAt: 'Last Contact Date', followUpAt: 'Follow-up Date', callLog: 'Call Log',
+      remarks: 'Remarks', comments: 'Comments',
+    });
+  });
+
   it('preserves physical worksheet rows and the Excel 1904 date system', () => {
     const source: Record<string, unknown> = { Account: 'Acme', When: '1', Notes: 'Called' };
     Object.defineProperties(source, {
@@ -95,6 +110,27 @@ describe('Sales CRM import preview', () => {
     expect(rows[1].duplicateOfRow).toBeNull();
     expect(rows[2].valid).toBe(true);
     expect(rows[2].duplicateOfRow).toBeNull();
+  });
+
+  it('keeps different named contacts at the same company importable when email is blank', () => {
+    const rows = normalizeCrmImportRows([
+      { Account: 'Advancer Global Ltd', Name: 'Mr Asai' },
+      { Account: 'Advancer Global Ltd', Name: 'Kelvin Tong' },
+      { Account: 'Advancer Global Ltd', Name: 'Ms Ivy Goh' },
+      { Account: 'Advancer Global Ltd', Name: 'Mr Jose' },
+    ], { companyName: 'Account', contactFullName: 'Name' }, { companies: [], contacts: [] });
+
+    expect(rows.every((row) => row.valid)).toBe(true);
+    expect(rows.map((row) => row.duplicateOfRow)).toEqual([null, null, null, null]);
+  });
+
+  it('still identifies repeated named contacts without email as duplicates', () => {
+    const rows = normalizeCrmImportRows([
+      { Account: 'Acme', Name: 'Ada Lovelace' },
+      { Account: 'ACME', Name: ' ada  lovelace ' },
+    ], { companyName: 'Account', contactFullName: 'Name' }, { companies: [], contacts: [] });
+
+    expect(rows[1].duplicateOfRow).toBe(2);
   });
 
   it('rejects unsafe company website protocols before import', () => {

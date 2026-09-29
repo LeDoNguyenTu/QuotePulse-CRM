@@ -39,4 +39,14 @@ describe('table preferences', () => {
     expect(resolveVisibleColumns('contacts', { contacts: ['email'] })).toEqual(['email']);
     expect(saveVisibleColumns({ contacts: ['email'] }, 'contacts', null)).toEqual({});
   });
+
+  it('persists independent Sales CRM list columns in the same account setting', () => {
+    const companies = saveVisibleColumns(null, 'crm_companies', ['name', 'industry', 'website']);
+    const contacts = saveVisibleColumns(companies, 'crm_contacts', ['full_name', 'company', 'email']);
+    const deals = saveVisibleColumns(contacts, 'crm_deals', ['name', 'stage', 'amount', 'follow_up_at']);
+
+    expect(resolveVisibleColumns('crm_companies', deals)).toEqual(['name', 'industry', 'website']);
+    expect(resolveVisibleColumns('crm_contacts', deals)).toEqual(['full_name', 'company', 'email']);
+    expect(resolveVisibleColumns('crm_deals', deals)).toEqual(['name', 'stage', 'amount', 'follow_up_at']);
+  });
 });

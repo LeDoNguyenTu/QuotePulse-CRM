@@ -25,7 +25,7 @@ export function CrmDashboard() {
             <span className="crm-module-code">{module.code}</span>
             <span className="text-lg font-semibold text-slate-950">{module.label}</span>
             <span className="text-sm leading-6 text-slate-600">{module.description}</span>
-            <span className="mt-auto text-sm font-semibold text-brand-700">Open ledger →</span>
+            <span className="crm-module-action">Open ledger<svg aria-hidden="true" viewBox="0 0 20 20"><path d="m7.5 4.5 5.5 5.5-5.5 5.5" /></svg></span>
           </Link>
         ))}
       </div>

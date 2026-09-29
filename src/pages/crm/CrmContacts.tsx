@@ -13,6 +13,8 @@ import { ContactEditor } from '../../components/crm/ContactEditor';
 import { CrmFilterBar, CrmPageHeader, CrmResourceState, CrmRowActions } from '../../components/crm/CrmPageChrome';
 import { CrmPagination } from '../../components/crm/CrmPagination';
 import { crmRecordPath } from '../../lib/crm/salesRoutes';
+import { CrmColumnPicker, useCrmColumns } from '../../components/crm/CrmColumnPicker';
+import { CRM_COLUMN_OPTIONS } from '../../lib/crm/tableColumns';
 
 const PAGE_SIZE = 25;
 
@@ -23,6 +25,8 @@ export function CrmContacts() {
   const [companyId, setCompanyId] = useState('');
   const [sort, setSort] = useState('name_asc');
   const [editing, setEditing] = useState<CrmContact | null | undefined>(undefined);
+  const visibleColumns = useCrmColumns('crm_contacts');
+  const shows = (column: string) => visibleColumns.includes(column);
   const query = useCrmContacts(workspace.id, { page, search, companyId, sort });
   const companies = useCrmCompanyOptions(workspace.id);
   const mutations = useCrmContactMutations(workspace.id);
@@ -43,13 +47,14 @@ export function CrmContacts() {
     <div className="space-y-5">
       <CrmPageHeader eyebrow="People ledger" title="Contacts" description="Customer identities and their working relationships to company accounts." action={<button type="button" className="btn-primary" onClick={() => setEditing(null)}>Add contact</button>} />
       <CrmFilterBar search={search} placeholder="Search contacts by name" onSearchChange={(value) => { setSearch(value); setPage(1); }}>
+        <CrmColumnPicker table="crm_contacts" options={CRM_COLUMN_OPTIONS.crm_contacts} />
         <label><span className="sr-only">Company</span><select className="input min-w-44" value={companyId} onChange={(event) => { setCompanyId(event.target.value); setPage(1); }}><option value="">All companies</option>{(companies.data ?? []).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
         <label><span className="sr-only">Sort contacts</span><select className="input min-w-36" value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}><option value="name_asc">Name A–Z</option><option value="name_desc">Name Z–A</option><option value="recent">Newest</option></select></label>
       </CrmFilterBar>
       {(mutations.remove.error || companies.error) && <ErrorState error={mutations.remove.error ?? companies.error} />}
       <CrmResourceState loading={query.isLoading} error={query.error} empty={rows.length === 0}>
-        <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Contact</th><th>Company</th><th>Role</th><th>Reach</th><th><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>{rows.map((row) => <tr key={row.id}><td data-label="Contact"><Link className="crm-record-link font-semibold" to={crmRecordPath(workspace.id, 'contact', row.id)}>{displayText(row.full_name ?? [row.first_name, row.last_name].filter(Boolean).join(' '), 'Unnamed contact')}</Link><div className="crm-secondary">{displayText(row.email)}</div></td><td data-label="Company">{displayText(row.company?.name)}</td><td data-label="Role">{displayText(row.job_title)}</td><td data-label="Reach">{displayText(row.phone)}</td><td data-label="Actions"><CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} /></td></tr>)}</tbody>
+        <div className="crm-table-wrap"><table className="crm-table"><thead><tr>{shows('full_name') && <th>Contact</th>}{shows('company') && <th>Company</th>}{shows('job_title') && <th>Role</th>}{shows('email') && <th>Email</th>}{shows('phone') && <th>Phone</th>}<th><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody>{rows.map((row) => <tr key={row.id}>{shows('full_name') && <td data-label="Contact"><Link className="crm-record-link font-semibold" to={crmRecordPath(workspace.id, 'contact', row.id)}>{displayText(row.full_name ?? [row.first_name, row.last_name].filter(Boolean).join(' '), 'Unnamed contact')}</Link></td>}{shows('company') && <td data-label="Company">{displayText(row.company?.name)}</td>}{shows('job_title') && <td data-label="Role">{displayText(row.job_title)}</td>}{shows('email') && <td data-label="Email">{displayText(row.email)}</td>}{shows('phone') && <td data-label="Phone">{displayText(row.phone)}</td>}<td data-label="Actions"><CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} /></td></tr>)}</tbody>
         </table></div>
       </CrmResourceState>
       <CrmPagination page={page} pageSize={PAGE_SIZE} count={query.data?.count ?? 0} onPageChange={setPage} />

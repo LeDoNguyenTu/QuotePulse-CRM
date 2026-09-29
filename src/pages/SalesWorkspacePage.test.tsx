@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { SalesWorkspacePage } from './SalesWorkspacePage';
+import * as salesSettings from './crm/CrmSalesSettings';
 
 vi.mock('./crm/CrmCompanies', () => ({ CrmCompanies: () => <div /> }));
 vi.mock('./crm/CrmContacts', () => ({ CrmContacts: () => <div /> }));
@@ -29,14 +30,14 @@ vi.mock('../hooks/useAuth', () => ({
 vi.mock('../hooks/useSettings', () => ({
   useSettings: () => ({
     data: {
-      email_provider: 'microsoft_graph',
+      email_provider: 'brevo',
       daily_send_limit: 50,
       session_timeout_minutes: 60,
       ms_refresh_token: 'saved-token',
       ms_account_email: 'sales@example.com',
       brevo_sender_email: null,
       brevo_sender_name: null,
-      brevo_api_key: null,
+      brevo_api_key: 'saved-key',
     },
     isLoading: false,
   }),
@@ -75,5 +76,35 @@ describe('Sales CRM settings', () => {
     expect(html).toContain('Settings sections');
     expect(html).toContain('Save settings');
     expect(html).toContain('crm-settings-layout');
+  });
+
+  it('associates controls with labels and preserves secret-removal controls', () => {
+    const html = renderSettings();
+
+    expect(html).toContain('aria-labelledby="sales-email-provider-label"');
+    expect(html).toContain('aria-label="Daily send limit"');
+    expect(html).toContain('aria-label="Current password"');
+    expect(html).toContain('Remove the saved Brevo API key');
+    expect(html).toContain('does not revoke Microsoft-side access');
+  });
+
+  it('rejects delivery limits outside the persisted guard rail', () => {
+    const validate = (salesSettings as any).validateSalesSettingsDraft;
+    expect(validate).toBeTypeOf('function');
+    if (typeof validate !== 'function') return;
+
+    expect(validate(0, 60)).toContain('between 1 and 10,000');
+    expect(validate(10001, 60)).toContain('between 1 and 10,000');
+    expect(validate(50, 60)).toBeNull();
+  });
+
+  it('requires confirmation before forgetting the Microsoft token', () => {
+    const confirmDisconnect = (salesSettings as any).confirmMicrosoftDisconnect;
+    expect(confirmDisconnect).toBeTypeOf('function');
+    if (typeof confirmDisconnect !== 'function') return;
+    let prompt = '';
+
+    expect(confirmDisconnect((message: string) => { prompt = message; return false; })).toBe(false);
+    expect(prompt).toContain('does not revoke Microsoft-side access');
   });
 });

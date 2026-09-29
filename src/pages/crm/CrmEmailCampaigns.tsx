@@ -31,8 +31,10 @@ export function CrmEmailCampaigns() {
   const [templateId, setTemplateId] = useState('');
   const visible = api.contacts.data?.rows ?? [];
   const matchingCount = api.contacts.data?.count ?? 0;
-  const queueCount = selected.length || matchingCount;
-  const queueLabel = `Queue ${queueCount.toLocaleString()} recipient${queueCount === 1 ? '' : 's'}`;
+  const queueCount = sendAllMatching ? matchingCount : selected.length;
+  const queueLabel = queueCount
+    ? `Queue ${queueCount.toLocaleString()} recipient${queueCount === 1 ? '' : 's'}`
+    : 'Select recipients to continue';
 
   useEffect(() => {
     if (settings.data?.email_provider) setProvider(settings.data.email_provider);
@@ -223,7 +225,7 @@ export function CrmEmailCampaigns() {
 
             {error && <p className="crm-inline-status crm-inline-status--error">{error}</p>}
             {result && <p className="crm-inline-status crm-inline-status--success">{result}</p>}
-            <button className="btn-primary crm-primary-action" disabled={api.queue.isPending}>
+            <button className="btn-primary crm-primary-action" disabled={api.queue.isPending || queueCount === 0}>
               {api.queue.isPending ? 'Queueing campaign…' : queueLabel}
             </button>
             <p className="crm-action-note">Messages enter the durable queue; they are not sent from this screen immediately.</p>

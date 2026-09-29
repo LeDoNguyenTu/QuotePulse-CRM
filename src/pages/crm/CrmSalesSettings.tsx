@@ -13,6 +13,21 @@ import {
   parseSessionTimeoutDraft,
 } from '../../lib/sessionTimeout';
 
+export function validateSalesSettingsDraft(dailyLimit: number, sessionMinutes: number | ''): string | null {
+  if (!Number.isInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > 10_000) {
+    return 'Daily send limit must be a whole number between 1 and 10,000.';
+  }
+  return normalizeSessionTimeoutMinutes(sessionMinutes) === sessionMinutes
+    ? null
+    : `Automatic sign-out must be disabled or set from ${MIN_SESSION_TIMEOUT_MINUTES} to ${MAX_SESSION_TIMEOUT_MINUTES} minutes.`;
+}
+
+export function confirmMicrosoftDisconnect(
+  confirmAction: (message: string) => boolean = (message) => window.confirm(message),
+): boolean {
+  return confirmAction("Disconnect this Microsoft mailbox? This removes QuotePulse's saved token and stops Outlook delivery, but it does not revoke Microsoft-side access.");
+}
+
 export function CrmSalesSettings() {
   const workspace = useActiveWorkspace();
   const { user, changeLoginEmail, changePassword, applySessionTimeoutMinutes } = useAuth();
@@ -26,6 +41,7 @@ export function CrmSalesSettings() {
   const [senderEmail, setSenderEmail] = useState(data?.brevo_sender_email ?? '');
   const [senderName, setSenderName] = useState(data?.brevo_sender_name ?? '');
   const [brevoKey, setBrevoKey] = useState('');
+  const [clearBrevoKey, setClearBrevoKey] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -58,11 +74,12 @@ export function CrmSalesSettings() {
   };
 
   const saveDelivery = async () => {
-    const normalizedTimeout = normalizeSessionTimeoutMinutes(sessionMinutes);
-    if (normalizedTimeout !== sessionMinutes) {
-      setError(`Automatic sign-out must be disabled or set from ${MIN_SESSION_TIMEOUT_MINUTES} to ${MAX_SESSION_TIMEOUT_MINUTES} minutes.`);
+    const validationError = validateSalesSettingsDraft(dailyLimit, sessionMinutes);
+    if (validationError) {
+      setError(validationError);
       return;
     }
+    const normalizedTimeout = normalizeSessionTimeoutMinutes(sessionMinutes);
     await run('save', async () => {
       await save.mutateAsync({
         email_provider: provider,
@@ -70,9 +87,10 @@ export function CrmSalesSettings() {
         session_timeout_minutes: normalizedTimeout,
         brevo_sender_email: senderEmail || null,
         brevo_sender_name: senderName || null,
-        ...(brevoKey.trim() ? { brevo_api_key: brevoKey.trim() } : {}),
+        ...(brevoKey.trim() ? { brevo_api_key: brevoKey.trim() } : clearBrevoKey ? { brevo_api_key: null } : {}),
       });
       setBrevoKey('');
+      setClearBrevoKey(false);
       applySessionTimeoutMinutes(normalizedTimeout);
     }, 'Settings saved.');
   };
@@ -120,9 +138,9 @@ export function CrmSalesSettings() {
             </div>
 
             <div className="crm-settings-block">
-              <div><h3>Email provider</h3><p>The provider selected here becomes the default delivery route.</p></div>
+              <div><h3 id="sales-email-provider-label">Email provider</h3><p>The provider selected here becomes the default delivery route.</p></div>
               <div className="crm-settings-control">
-                <select className="input" value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}>
+                <select aria-labelledby="sales-email-provider-label" className="input" value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}>
                   <option value="microsoft_graph">Microsoft Outlook</option>
                   <option value="brevo">Brevo transactional email</option>
                 </select>
@@ -137,26 +155,28 @@ export function CrmSalesSettings() {
                     <span className="crm-connection-dot" />
                     <div><strong>{data.ms_account_email ?? 'Microsoft mailbox connected'}</strong><small>Ready for campaign delivery</small></div>
                     <button type="button" className="btn-secondary" onClick={() => void connectMicrosoft()} disabled={busyAction === 'microsoft'}>Switch</button>
-                    <button type="button" className="btn-quiet-danger" onClick={() => void run('disconnect', () => disconnectMicrosoft.mutateAsync(), 'Microsoft mailbox disconnected.')} disabled={busyAction === 'disconnect'}>Disconnect</button>
+                    <button type="button" className="btn-quiet-danger" onClick={() => { if (confirmMicrosoftDisconnect()) void run('disconnect', () => disconnectMicrosoft.mutateAsync(), 'Microsoft mailbox disconnected.'); }} disabled={busyAction === 'disconnect'}>Disconnect</button>
                   </div>
                 ) : <button type="button" className="btn-primary" onClick={() => void connectMicrosoft()} disabled={busyAction === 'microsoft'}>Connect Microsoft account</button>}
               </div>
             </div>
+            <p className="crm-settings-note">Disconnecting removes the saved token from QuotePulse, but does not revoke Microsoft-side access.</p>
 
             {provider === 'brevo' && (
               <div className="crm-settings-block">
                 <div><h3>Brevo sender</h3><p>Use a verified sender identity from your own Brevo account.</p></div>
                 <div className="crm-settings-control space-y-3">
-                  <input className="input" type="password" autoComplete="off" value={brevoKey} onChange={(event) => setBrevoKey(event.target.value)} placeholder={data?.brevo_api_key ? 'API key saved — enter a value to replace it' : 'Brevo API key'} />
-                  <input className="input" type="email" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)} placeholder="Verified sender email" />
-                  <input className="input" value={senderName} onChange={(event) => setSenderName(event.target.value)} placeholder="Sender display name" />
+                  <input aria-label="Brevo API key" className="input" type="password" autoComplete="off" value={brevoKey} onChange={(event) => { setBrevoKey(event.target.value); if (event.target.value) setClearBrevoKey(false); }} placeholder={data?.brevo_api_key ? 'API key saved — enter a value to replace it' : 'Brevo API key'} />
+                  <input aria-label="Verified Brevo sender email" className="input" type="email" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)} placeholder="Verified sender email" />
+                  <input aria-label="Sender display name" className="input" value={senderName} onChange={(event) => setSenderName(event.target.value)} placeholder="Sender display name" />
+                  {data?.brevo_api_key ? <label className="crm-check-row"><input type="checkbox" checked={clearBrevoKey} onChange={(event) => { setClearBrevoKey(event.target.checked); if (event.target.checked) setBrevoKey(''); }} /> Remove the saved Brevo API key</label> : null}
                 </div>
               </div>
             )}
 
             <div className="crm-settings-block">
               <div><h3>Daily send limit</h3><p>A hard application guard rail across campaigns for this account.</p></div>
-              <div className="crm-settings-control crm-number-control"><input className="input" type="number" min={1} max={10000} value={dailyLimit} onChange={(event) => setDailyLimit(Number(event.target.value))} /><span>messages / day</span></div>
+              <div className="crm-settings-control crm-number-control"><input aria-label="Daily send limit" className="input" type="number" min={1} max={10000} value={dailyLimit} onChange={(event) => setDailyLimit(Number(event.target.value))} /><span>messages / day</span></div>
             </div>
           </section>
 
@@ -168,14 +188,14 @@ export function CrmSalesSettings() {
 
             <div className="crm-settings-block">
               <div><h3>Login email</h3><p>Currently signed in as <strong>{user?.email ?? 'Unknown'}</strong>.</p></div>
-              <div className="crm-settings-control crm-inline-control"><input className="input" type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} placeholder="New login email" /><button type="button" className="btn-secondary" disabled={!newEmail.trim() || busyAction === 'email'} onClick={() => void run('email', async () => { await changeLoginEmail(newEmail); setNewEmail(''); }, 'Confirmation email sent.')}>Change email</button></div>
+              <div className="crm-settings-control crm-inline-control"><input aria-label="New login email" className="input" type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} placeholder="New login email" /><button type="button" className="btn-secondary" disabled={!newEmail.trim() || busyAction === 'email'} onClick={() => void run('email', async () => { await changeLoginEmail(newEmail); setNewEmail(''); }, 'Confirmation email sent.')}>Change email</button></div>
             </div>
 
             <div className="crm-settings-block">
               <div><h3>Password</h3><p>Confirm the current password before choosing a replacement.</p></div>
               <div className="crm-settings-control space-y-3">
-                <input className="input" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" />
-                <div className="crm-inline-control"><input className="input" type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="New password" /><input className="input" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" /></div>
+                <input aria-label="Current password" className="input" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" />
+                <div className="crm-inline-control"><input aria-label="New password" className="input" type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="New password" /><input aria-label="Confirm password" className="input" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" /></div>
                 <button type="button" className="btn-secondary self-start" disabled={!currentPassword || !newPassword || !confirmPassword || busyAction === 'password'} onClick={() => void run('password', async () => { await changePassword(currentPassword, newPassword, confirmPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }, 'Password changed.')}>Change password</button>
               </div>
             </div>
@@ -184,7 +204,7 @@ export function CrmSalesSettings() {
               <div><h3>Automatic sign-out</h3><p>Protect unattended sessions without interrupting active work.</p></div>
               <div className="crm-settings-control">
                 <label className="crm-choice-row"><input className="crm-checkbox" type="checkbox" checked={sessionMinutes === 0} onChange={(event) => setSessionMinutes(event.target.checked ? 0 : DEFAULT_SESSION_TIMEOUT_MINUTES)} /><span><strong>Keep this browser signed in</strong><small>Disable the inactivity timer.</small></span></label>
-                {sessionMinutes !== 0 && <div className="crm-number-control mt-3"><input className="input" type="number" min={MIN_SESSION_TIMEOUT_MINUTES} max={MAX_SESSION_TIMEOUT_MINUTES} value={sessionMinutes} onChange={(event) => setSessionMinutes(parseSessionTimeoutDraft(event.target.value))} /><span>minutes inactive</span></div>}
+                {sessionMinutes !== 0 && <div className="crm-number-control mt-3"><input aria-label="Automatic sign-out minutes" className="input" type="number" min={MIN_SESSION_TIMEOUT_MINUTES} max={MAX_SESSION_TIMEOUT_MINUTES} value={sessionMinutes} onChange={(event) => setSessionMinutes(parseSessionTimeoutDraft(event.target.value))} /><span>minutes inactive</span></div>}
               </div>
             </div>
           </section>

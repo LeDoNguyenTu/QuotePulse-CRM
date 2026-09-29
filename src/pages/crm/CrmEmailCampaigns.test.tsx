@@ -47,7 +47,7 @@ describe('CRM email campaign composer', () => {
     const html = renderToStaticMarkup(<CrmEmailCampaigns />);
 
     expect(html).toContain('crm-primary-action');
-    expect(html).toContain('Queue 1 recipient');
+    expect(html).toContain('Select recipients to continue');
     expect(html).toContain('Recipients expect this message');
   });
 

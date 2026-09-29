@@ -46,6 +46,21 @@ export function companyAttachmentBatchArchiveKey(ownerId: string, batchId: strin
   return `owners/${ownerId}/attachment-batches/${encodeURIComponent(batchId)}.json.gz`;
 }
 
+export function workspaceArchiveObjectKey(ownerId: string, workspaceId: string, archiveId: string, table: string, sequence: number, checksum?: string): string {
+  const suffix = checksum ? `-${checksum}` : '';
+  return `owners/${ownerId}/workspaces/${workspaceId}/archives/${archiveId}/tables/${encodeURIComponent(table)}/${sequence}${suffix}.json.gz`;
+}
+
+export function workspaceArchiveManifestKey(ownerId: string, workspaceId: string, archiveId: string, checksum?: string): string {
+  const suffix = checksum ? `-${checksum}` : '';
+  return `owners/${ownerId}/workspaces/${workspaceId}/archives/${archiveId}/manifest.v1${suffix}.json.gz`;
+}
+
+export function assertWorkspaceArchivePointer(key: string, ownerId: string, workspaceId: string, archiveId: string): void {
+  const prefix = `owners/${ownerId}/workspaces/${workspaceId}/archives/${archiveId}/`;
+  if (!key.startsWith(prefix)) throw new Error('Workspace archive pointer is outside the authenticated owner scope.');
+}
+
 export async function sha256Hex(value: string | Uint8Array): Promise<string> {
   const bytes = typeof value === 'string' ? encoder.encode(value) : value;
   const digest = await crypto.subtle.digest('SHA-256', arrayBuffer(bytes));

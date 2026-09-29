@@ -76,6 +76,8 @@ describe('Sales CRM settings', () => {
     expect(html).toContain('Settings sections');
     expect(html).toContain('Save settings');
     expect(html).toContain('crm-settings-layout');
+    expect(html).not.toContain('<main class="crm-settings-content"');
+    expect(html).toContain('aria-live="polite"');
   });
 
   it('associates controls with labels and preserves secret-removal controls', () => {

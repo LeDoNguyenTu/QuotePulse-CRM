@@ -130,7 +130,7 @@ export function CrmSalesSettings() {
           </div>
         </aside>
 
-        <main className="crm-settings-content">
+        <div className="crm-settings-content">
           <section id="delivery" className="crm-settings-section">
             <div className="crm-settings-section-header">
               <div><span>01</span><h2>Delivery defaults</h2></div>
@@ -221,9 +221,11 @@ export function CrmSalesSettings() {
             </div>
           </section>
 
-          {(error || message) && <div className="crm-settings-feedback">{error ? <ErrorState error={error} /> : <p>{message}</p>}</div>}
+          <div aria-live="polite" aria-atomic="true">
+            {(error || message) && <div className="crm-settings-feedback">{error ? <div role="alert"><ErrorState error={error} /></div> : <p>{message}</p>}</div>}
+          </div>
           <div className="crm-settings-savebar"><span>Changes apply to future campaign activity.</span><button type="button" className="btn-primary crm-primary-action" onClick={() => void saveDelivery()} disabled={busyAction === 'save'}>{busyAction === 'save' ? 'Saving…' : 'Save settings'}</button></div>
-        </main>
+        </div>
       </div>
     </div>
   );

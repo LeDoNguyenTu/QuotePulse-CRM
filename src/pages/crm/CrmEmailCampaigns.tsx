@@ -223,8 +223,10 @@ export function CrmEmailCampaigns() {
               <span><strong>Recipients expect this message</strong><small>They are customers, opted in, or have another legitimate expectation.</small></span>
             </label>
 
-            {error && <p className="crm-inline-status crm-inline-status--error">{error}</p>}
-            {result && <p className="crm-inline-status crm-inline-status--success">{result}</p>}
+            <div aria-live="polite" aria-atomic="true">
+              {error && <p role="alert" className="crm-inline-status crm-inline-status--error">{error}</p>}
+              {result && <p className="crm-inline-status crm-inline-status--success">{result}</p>}
+            </div>
             <button className="btn-primary crm-primary-action" disabled={api.queue.isPending || queueCount === 0}>
               {api.queue.isPending ? 'Queueing campaign…' : queueLabel}
             </button>

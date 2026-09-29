@@ -49,6 +49,7 @@ describe('CRM email campaign composer', () => {
     expect(html).toContain('crm-primary-action');
     expect(html).toContain('Select recipients to continue');
     expect(html).toContain('Recipients expect this message');
+    expect(html).toContain('aria-live="polite"');
   });
 
   it('uses the saved delivery provider as the campaign default', () => {

@@ -15,11 +15,19 @@ begin
   if has_table_privilege('authenticated', 'public.hubspot_property_catalog', 'delete') then
     raise exception 'authenticated must not delete HubSpot property catalogue rows';
   end if;
+  if has_table_privilege('authenticated', 'public.hubspot_property_catalog', 'insert')
+     or has_table_privilege('authenticated', 'public.hubspot_property_catalog', 'update') then
+    raise exception 'authenticated must not mutate HubSpot property catalogue rows';
+  end if;
   if not has_table_privilege('authenticated', 'public.email_sends', 'select') then
     raise exception 'authenticated cannot read its email queue';
   end if;
   if has_table_privilege('authenticated', 'public.email_sends', 'insert') then
     raise exception 'authenticated can bypass queue safeguards with a direct email_sends insert';
+  end if;
+  if has_table_privilege('authenticated', 'public.email_sends', 'update')
+     or has_table_privilege('authenticated', 'public.email_sends', 'delete') then
+    raise exception 'authenticated can mutate durable email queue rows directly';
   end if;
   if has_table_privilege('authenticated', 'public.email_unsubscribe_tokens', 'insert') then
     raise exception 'authenticated can bypass queue safeguards with a direct token insert';

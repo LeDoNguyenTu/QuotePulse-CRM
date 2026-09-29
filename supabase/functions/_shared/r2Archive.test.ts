@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   archiveObjectHeaders,
+  assertWorkspaceArchivePointer,
   companyAttachmentBatchArchiveKey,
   companyAttachmentArchiveKey,
   dealBatchArchiveKey,
   dealArchiveKey,
   sha256Hex,
   verifyArchivePayload,
+  workspaceArchiveManifestKey,
+  workspaceArchiveObjectKey,
 } from './r2Archive.ts';
 
 describe('R2 cold archive keys and verification', () => {
@@ -32,6 +35,14 @@ describe('R2 cold archive keys and verification', () => {
   it('uses one owner-scoped object for a generic attachment migration batch', () => {
     expect(companyAttachmentBatchArchiveKey('owner-a', 'batch-b'))
       .toBe('owners/owner-a/attachment-batches/batch-b.json.gz');
+  });
+
+  it('contains workspace archives beneath the owner and workspace scope', () => {
+    expect(workspaceArchiveObjectKey('owner-a','workspace-b','archive-c','deals',2))
+      .toBe('owners/owner-a/workspaces/workspace-b/archives/archive-c/tables/deals/2.json.gz');
+    expect(workspaceArchiveManifestKey('owner-a','workspace-b','archive-c'))
+      .toBe('owners/owner-a/workspaces/workspace-b/archives/archive-c/manifest.v1.json.gz');
+    expect(()=>assertWorkspaceArchivePointer('owners/other/workspaces/workspace-b/archives/archive-c/manifest.v1.json.gz','owner-a','workspace-b','archive-c')).toThrow(/outside/);
   });
 
   it('rejects an archive payload with a different checksum', async () => {

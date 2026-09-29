@@ -15,6 +15,7 @@ import {
   normalizeSessionTimeoutMinutes,
   parseSessionTimeoutDraft,
 } from '../lib/sessionTimeout';
+import { LegacyWorkspaceArchivePanel } from '../components/LegacyWorkspaceArchivePanel';
 
 export function Settings() {
   const { user, changeLoginEmail, changePassword, applySessionTimeoutMinutes } = useAuth();
@@ -438,6 +439,8 @@ export function Settings() {
           onChange={(e) => setNvidiaKey(e.target.value)}
         />
       </section>
+
+      <LegacyWorkspaceArchivePanel />
 
       {error && <ErrorState error={error} />}
       {saved && <p className="text-sm text-emerald-700">Saved.</p>}

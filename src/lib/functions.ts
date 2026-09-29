@@ -229,6 +229,9 @@ export const functions = {
   mergeUploadedFile: (file_id: string, policy: { companies: string; contacts: string; deals: string }) =>
     invoke<{ ok: boolean; counts: { created: number; updated: number; failed: number }; errors: string[] }>('uploaded-file-merge', { file_id, policy }),
 
+  workspaceArchive: (body: { action: 'archive'|'restore'|'dry_run_delete'|'status'; workspace_id: string; archive_id?: string }) =>
+    invoke<{ok:boolean;archive_id:string;status:string;table?:string;rows?:number;complete?:boolean;eligible?:boolean;deleted?:boolean;message?:string}>('workspace-archive', body),
+
 };
 
 // Excel export needs the raw bytes, not JSON, so it uses a direct fetch to the

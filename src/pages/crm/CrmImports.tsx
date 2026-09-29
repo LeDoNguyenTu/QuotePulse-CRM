@@ -4,6 +4,7 @@ import { useCrmImports } from '../../hooks/crm/useCrmImports';
 import { parseUploadedWorkbook, type ParsedWorkbook } from '../../lib/uploadedFileWorkbook';
 import { CRM_IMPORT_ROLES, normalizeCrmImportRows, suggestCrmImportMapping, validateCrmImportMapping, type CrmImportMapping } from '../../lib/crm/importPreview';
 import { CrmPageHeader } from '../../components/crm/CrmPageChrome';
+import { CrmFilePicker } from '../../components/crm/CrmFilePicker';
 import { ErrorState, Spinner } from '../../components/ui';
 
 async function sha256(file: File): Promise<string> {
@@ -38,7 +39,14 @@ export function CrmImports() {
   return <div className="space-y-6">
     <CrmPageHeader eyebrow="Source reconciliation" title="Imports" description="Map a workbook into CRM records, review issues, and retain a stable Database ID without storing the raw workbook." />
     <section className="crm-ledger-intro space-y-4">
-      <input aria-label="Choose workbook" type="file" accept=".xlsx,.xlsm,.csv" onChange={(event) => void choose(event.target.files?.[0] ?? null)} />
+      <CrmFilePicker
+        accept=".xlsx,.xlsm,.csv"
+        actionLabel="Select workbook"
+        description="Excel or CSV · .xlsx, .xlsm, or .csv"
+        fileName={file?.name}
+        title="Workbook source"
+        onSelect={(selected) => void choose(selected)}
+      />
       {sheet && <>
         {workbook!.sheets.length > 1 && <label className="block max-w-sm"><span className="label">Worksheet</span><select className="input" value={sheetIndex} onChange={(event) => { const index = Number(event.target.value); setSheetIndex(index); setMapping(suggestCrmImportMapping(workbook!.sheets[index]?.headers ?? [])); }}>{workbook!.sheets.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</select></label>}
         <p className="text-sm text-slate-600"><b>{file?.name}</b> · {sheet.name} · {sheet.rows.length.toLocaleString()} rows</p>

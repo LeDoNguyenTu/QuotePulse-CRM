@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { usePstExtractor } from '../../hooks/crm/usePstExtractor';
 import { CrmPageHeader } from '../../components/crm/CrmPageChrome';
+import { CrmFilePicker } from '../../components/crm/CrmFilePicker';
 import { ErrorState } from '../../components/ui';
 
 export function CrmPstExtractor(){
-  const workspace=useActiveWorkspace();const [search,setSearch]=useState('');const api=usePstExtractor(workspace.id,search);const preview=api.state.preview;
+  const workspace=useActiveWorkspace();const [search,setSearch]=useState('');const [selectedFileName,setSelectedFileName]=useState<string | null>(null);const api=usePstExtractor(workspace.id,search);const preview=api.state.preview;
   return <div className="space-y-6"><CrmPageHeader eyebrow="Local mailbox intelligence" title="PST extractor" description="Parse Outlook PST files in a browser worker. Raw files, message bodies, and attachments never upload to QuotePulse." />
-    <section className="crm-detail-panel space-y-4"><div className="crm-panel-heading"><h2>Extract local file</h2><span>400 MiB maximum</span></div><input className="input" type="file" accept=".pst,application/vnd.ms-outlook" onChange={(event)=>{const file=event.target.files?.[0];if(file)api.extract(file)}} />
+    <section className="crm-detail-panel space-y-4"><div className="crm-panel-heading"><h2>Extract local file</h2><span>400 MiB maximum</span></div><CrmFilePicker accept=".pst,application/vnd.ms-outlook" actionLabel="Select PST file" description="Stays on this device · PST up to 400 MiB" fileName={selectedFileName} title="Outlook archive" onSelect={(file)=>{setSelectedFileName(file.name);api.extract(file)}} />
       {api.state.status==='parsing'&&<p className="text-sm text-slate-600">Parsing locally... {api.state.messageCount} messages found across {api.state.folders} folders.</p>}
       {api.state.status==='error'&&<p className="text-sm text-red-700">{api.state.error}</p>}
       {api.state.status==='complete'&&<><p className="text-sm text-emerald-700">Found {api.state.messageCount} messages in {api.state.folders} folders with {api.state.errors} recoverable errors.</p><button className="btn-primary" disabled={api.save.isPending} onClick={()=>api.save.mutate()}>{api.save.isPending?'Saving metadata...':'Save searchable metadata'}</button></>}

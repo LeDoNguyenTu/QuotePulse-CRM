@@ -87,7 +87,7 @@ describe('Sales CRM settings', () => {
     expect(html).toContain('aria-label="Daily send limit"');
     expect(html).toContain('aria-label="Current password"');
     expect(html).toContain('Remove the saved Brevo API key');
-    expect(html).toContain('does not revoke Microsoft-side access');
+    expect(html).not.toContain('Disconnecting removes the saved token');
   });
 
   it('rejects delivery limits outside the persisted guard rail', () => {
@@ -109,4 +109,5 @@ describe('Sales CRM settings', () => {
     expect(confirmDisconnect((message: string) => { prompt = message; return false; })).toBe(false);
     expect(prompt).toContain('does not revoke Microsoft-side access');
   });
+
 });

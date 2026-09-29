@@ -160,7 +160,6 @@ export function CrmSalesSettings() {
                 ) : <button type="button" className="btn-primary" onClick={() => void connectMicrosoft()} disabled={busyAction === 'microsoft'}>Connect Microsoft account</button>}
               </div>
             </div>
-            <p className="crm-settings-note">Disconnecting removes the saved token from QuotePulse, but does not revoke Microsoft-side access.</p>
 
             {provider === 'brevo' && (
               <div className="crm-settings-block">

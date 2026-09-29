@@ -173,6 +173,17 @@ body {
 .crm-detail-value strong { display: block; margin: 0.2rem 0 0.5rem; color: #0f172a; font-size: 1.65rem; font-variant-numeric: tabular-nums; }
 .crm-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.34fr); gap: 1.25rem; align-items: start; }
 .crm-detail-panel, .crm-lineage-rail { border: 1px solid var(--workspace-line); border-radius: 1rem; background: white; box-shadow: 0 12px 30px rgba(16, 35, 63, 0.055); }
+.crm-file-picker { display: flex; min-height: 5.5rem; align-items: center; justify-content: space-between; gap: 1.25rem; border: 1px solid #d7e0ec; border-radius: 0.85rem; background: #fff; padding: 1rem 1.1rem; }
+.crm-file-picker-copy { display: flex; min-width: 0; align-items: center; gap: 0.85rem; }
+.crm-file-picker-copy > span:last-child { display: grid; min-width: 0; gap: 0.15rem; }
+.crm-file-picker-copy strong { overflow: hidden; color: var(--workspace-ink); font-size: 0.85rem; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.crm-file-picker-copy small { color: #718096; font-size: 0.72rem; line-height: 1.45; }
+.crm-file-picker-icon { display: grid; width: 2.55rem; height: 2.55rem; flex: 0 0 auto; place-items: center; border-radius: 0.7rem; background: #edf3ff; color: var(--workspace-blue); }
+.crm-file-picker-icon svg { width: 1.35rem; height: 1.35rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.crm-file-picker-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.crm-file-picker-action { display: inline-flex; min-height: 2.65rem; flex: 0 0 auto; cursor: pointer; align-items: center; justify-content: center; border-radius: 0.65rem; background: var(--workspace-blue); padding: 0.7rem 1rem; color: white; font-size: 0.78rem; font-weight: 750; box-shadow: 0 6px 15px rgba(47, 111, 237, 0.18); transition: background-color 140ms ease, box-shadow 140ms ease, transform 140ms ease; }
+.crm-file-picker-action:hover { background: var(--workspace-blue-dark); box-shadow: 0 8px 20px rgba(47, 111, 237, 0.24); transform: translateY(-1px); }
+.crm-file-picker-input:focus-visible + .crm-file-picker-action { outline: 3px solid rgba(47, 111, 237, 0.25); outline-offset: 3px; }
 .crm-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #e2e8f0; padding: 0.9rem 1.1rem; }
 .crm-panel-heading h2 { font-size: 0.9rem; font-weight: 800; }
 .crm-panel-heading span { color: #64748b; font-size: 0.7rem; font-weight: 700; }
@@ -277,7 +288,6 @@ body {
 .crm-settings-block h3 { color: #25354d; font-size: 0.85rem; font-weight: 700; }
 .crm-settings-block p { margin-top: 0.25rem; color: #7b8799; font-size: 0.73rem; line-height: 1.5; }
 .crm-settings-control { min-width: 0; }
-.crm-settings-note { margin: -0.45rem 1.35rem 0.9rem; color: #64748b; font-size: 0.7rem; line-height: 1.5; }
 .crm-check-row { display: flex; align-items: center; gap: 0.55rem; color: #475569; font-size: 0.75rem; font-weight: 650; }
 .crm-check-row input { width: 1rem; height: 1rem; accent-color: var(--workspace-blue); }
 .crm-inline-control { display: flex; gap: 0.7rem; }
@@ -304,12 +314,15 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .workspace-choice,
-  .crm-module-link {
+  .crm-module-link,
+  .crm-file-picker-action {
     transition: none;
   }
 }
 
 @media (max-width: 767px) {
+  .crm-file-picker { align-items: stretch; flex-direction: column; }
+  .crm-file-picker-action { width: 100%; }
   .crm-campaign-layout { grid-template-columns: 1fr; }
   .crm-campaign-main, .crm-campaign-sidebar { padding: 1rem; }
   .crm-campaign-sidebar { border-top: 1px solid var(--workspace-line); border-left: 0; }

@@ -13,6 +13,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { prepareLoginEmailChange } from '../lib/accountEmail';
 import { preparePasswordChange } from '../lib/accountPassword';
+import { updatePasswordWithReauthentication } from '../lib/passwordChange';
 import { useIdleTimeout } from './useIdleTimeout';
 import {
   DEFAULT_SESSION_TIMEOUT_MINUTES,
@@ -172,12 +173,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async changePassword(currentPassword, newPassword, confirmation) {
         const prepared = preparePasswordChange(currentPassword, newPassword, confirmation);
         if ('error' in prepared) throw new Error(prepared.error);
-
-        const { error } = await supabase.auth.updateUser({
-          current_password: prepared.currentPassword,
-          password: prepared.newPassword,
-        });
-        if (error) throw error;
+        const email = session?.user.email;
+        if (!email) throw new Error('Your signed-in account does not have a login email.');
+        await updatePasswordWithReauthentication(
+          supabase.auth,
+          email,
+          prepared.currentPassword,
+          prepared.newPassword,
+        );
       },
       async resetPassword(email, captchaToken) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {

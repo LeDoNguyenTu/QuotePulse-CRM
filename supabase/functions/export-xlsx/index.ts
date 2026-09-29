@@ -3,6 +3,7 @@
 // an .xlsx file (exceljs). Returns raw bytes, not JSON.
 import { corsHeaders, handleOptions, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
+import { neutralizeSpreadsheetRow } from '../_shared/spreadsheetSafety.ts';
 import ExcelJS from 'npm:exceljs@4.4.0';
 
 type ExportScope = { mode?: 'all' | 'hubspot_activity_range'; from?: string; to?: string };
@@ -47,7 +48,7 @@ Deno.serve(async (req) => {
     ws.getRow(1).font = { bold: true };
 
     for (const r of data ?? []) {
-      ws.addRow({
+      ws.addRow(neutralizeSpreadsheetRow({
         ...r,
         has_quote: r.has_quote ? 'Yes' : 'No',
         has_kyc: r.has_kyc ? 'Yes' : 'No',
@@ -55,7 +56,7 @@ Deno.serve(async (req) => {
         last_email_sent_at: r.last_email_sent_at
           ? new Date(r.last_email_sent_at).toISOString()
           : '',
-      });
+      }));
     }
 
     const buffer = await wb.xlsx.writeBuffer();
@@ -69,7 +70,8 @@ Deno.serve(async (req) => {
       },
     });
   } catch (e) {
-    return errorResponse(e instanceof Error ? e.message : String(e), 500);
+    console.error('export-xlsx failed', e);
+    return errorResponse('Unable to export companies right now.', 500);
   }
 });
 

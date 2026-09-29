@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { StaticRouter } from 'react-router-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { Workspace } from '../lib/workspaces';
 import { WorkspaceSelectorView } from './WorkspaceSelectorView';
@@ -11,7 +11,7 @@ const workspaces: Workspace[] = [
 
 function renderSelector(props: Partial<Parameters<typeof WorkspaceSelectorView>[0]> = {}) {
   return renderToStaticMarkup(
-    <StaticRouter location="/workspaces">
+    <MemoryRouter initialEntries={['/workspaces']}>
       <WorkspaceSelectorView
         workspaces={workspaces}
         isLoading={false}
@@ -19,7 +19,7 @@ function renderSelector(props: Partial<Parameters<typeof WorkspaceSelectorView>[
         onRetry={() => undefined}
         {...props}
       />
-    </StaticRouter>,
+    </MemoryRouter>,
   );
 }
 

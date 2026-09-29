@@ -1,12 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { StaticRouter } from 'react-router-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { CrmDetailContent } from './CrmDetailContent';
 
 describe('Sales CRM detail content', () => {
   it('renders company associations, audit dates, and source lineage as navigable CRM records', () => {
     const html = renderToStaticMarkup(
-      <StaticRouter location="/">
+      <MemoryRouter initialEntries={['/']}>
         <CrmDetailContent
           kind="company"
           workspaceId="workspace-1"
@@ -41,7 +41,7 @@ describe('Sales CRM detail content', () => {
             activityCount: 1,
           }}
         />
-      </StaticRouter>,
+      </MemoryRouter>,
     );
 
     expect(html).toContain('Northwind Labs');
@@ -56,7 +56,7 @@ describe('Sales CRM detail content', () => {
 
   it('does not render imported unsafe website protocols as links', () => {
     const html = renderToStaticMarkup(
-      <StaticRouter location="/">
+      <MemoryRouter initialEntries={['/']}>
         <CrmDetailContent kind="company" workspaceId="workspace-1" data={{
           record: {
             id: 'company-1', workspace_id: 'workspace-1', name: 'Unsafe Co', industry: null,
@@ -67,7 +67,7 @@ describe('Sales CRM detail content', () => {
           },
           associations: [[], []], associationCounts: [0, 0], lineage: [], lineageCount: 0, activities: [], activityCount: 0,
         }} />
-      </StaticRouter>,
+      </MemoryRouter>,
     );
 
     expect(html).toContain('javascript:alert(1)');
@@ -76,7 +76,7 @@ describe('Sales CRM detail content', () => {
 
   it('reports exact association totals when the rendered result is truncated', () => {
     const html = renderToStaticMarkup(
-      <StaticRouter location="/">
+      <MemoryRouter initialEntries={['/']}>
         <CrmDetailContent kind="company" workspaceId="workspace-1" data={{
           record: {
             id: 'company-1', workspace_id: 'workspace-1', name: 'Large Co', industry: null,
@@ -86,7 +86,7 @@ describe('Sales CRM detail content', () => {
           },
           associations: [[], []], associationCounts: [125, 0], lineage: [], lineageCount: 140, activities: [], activityCount: 0,
         }} />
-      </StaticRouter>,
+      </MemoryRouter>,
     );
 
     expect(html).toContain('<span>125</span>');
@@ -96,13 +96,13 @@ describe('Sales CRM detail content', () => {
 
   it('renders an explicit missing-record state', () => {
     const html = renderToStaticMarkup(
-      <StaticRouter location="/">
+      <MemoryRouter initialEntries={['/']}>
         <CrmDetailContent
           kind="deal"
           workspaceId="workspace-1"
           data={{ record: null, associations: [[]], associationCounts: [0], lineage: [], lineageCount: 0, activities: [], activityCount: 0 }}
         />
-      </StaticRouter>,
+      </MemoryRouter>,
     );
     expect(html).toContain('Record unavailable');
   });

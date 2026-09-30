@@ -5,7 +5,7 @@ import { ErrorState, Spinner } from '../../components/ui';
 import { useCrmImports } from '../../hooks/crm/useCrmImports';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import {
-  buildCrmHeaderMatches, CRM_IMPORT_ROLES, normalizeCrmImportRows,
+  buildCrmHeaderMatches, CRM_IMPORT_ROLES, formatCrmImportCell, normalizeCrmImportRows,
   suggestCrmImportMapping, unconfirmedSemanticHeaders, validateCrmImportMapping,
   type CrmHeaderMatch, type CrmImportMapping,
 } from '../../lib/crm/importPreview';
@@ -122,7 +122,7 @@ export function CrmImports() {
         <div className="crm-import-counts"><span><b>{validRows.length}</b> ready</span><span className="is-error"><b>{preview.length - validRows.length}</b> need attention</span><span><b>{duplicateRows.length}</b> exact {duplicateRows.length === 1 ? 'duplicate' : 'duplicates'}</span></div>
         {mappingError && <p className="text-sm text-red-700">{mappingError}</p>}
         {pendingConfirmations.length > 0 && <p className="crm-match-warning">Confirm {pendingConfirmations.length} suggested {pendingConfirmations.length === 1 ? 'match' : 'matches'} before importing.</p>}
-        {preview.length > 0 && <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Row</th>{sheet.headers.map((header) => <th key={header}>{header}</th>)}<th>Review</th></tr></thead><tbody>{preview.slice(0, 25).map((row, index) => <tr key={row.rowNumber}><td>{row.rowNumber}</td>{sheet.headers.map((header) => <td key={header}>{String(sheet.rows[index]?.[header] ?? '') || '—'}</td>)}<td>{row.issues.join(' ') || row.warnings.join(' ') || (row.duplicateOfRow ? `Same record as row ${row.duplicateOfRow}; lineage retained` : 'Ready')}</td></tr>)}</tbody></table></div>}
+        {preview.length > 0 && <div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Row</th>{sheet.headers.map((header) => <th key={header}>{header}</th>)}<th>Review</th></tr></thead><tbody>{preview.slice(0, 25).map((row, index) => <tr key={row.rowNumber}><td>{row.rowNumber}</td>{sheet.headers.map((header) => <td key={header}>{formatCrmImportCell(sheet.rows[index] ?? {}, header, mapping)}</td>)}<td>{row.issues.join(' ') || row.warnings.join(' ') || (row.duplicateOfRow ? `Same record as row ${row.duplicateOfRow}; lineage retained` : 'Ready')}</td></tr>)}</tbody></table></div>}
         <button className="btn-primary" disabled={Boolean(mappingError) || pendingConfirmations.length > 0 || !validRows.length || api.commit.isPending} onClick={() => void commit()}>{api.commit.isPending ? 'Importing…' : `Import ${validRows.length} ready rows`}</button>
       </>}
     </section>

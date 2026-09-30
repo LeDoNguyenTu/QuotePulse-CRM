@@ -1,4 +1,5 @@
 import { normalizeDomain, normalizeWebsiteUrl } from './inputs';
+import { formatCrmDateForDisplay, parseCrmDate } from './flexibleDate';
 
 export type CrmImportMapping = Partial<Record<
   | 'companyName' | 'companyIndustry' | 'companyWebsite' | 'companyDomain'
@@ -34,6 +35,17 @@ export const CRM_IMPORT_ROLES: Array<{ key: keyof CrmImportMapping; label: strin
   { key: 'remarks', label: 'Remarks', group: 'Activity' },
   { key: 'comments', label: 'Comments', group: 'Activity' },
 ];
+
+const CRM_DATE_ROLES = new Set<keyof CrmImportMapping>(['lastCallAt', 'followUpAt', 'activityOccurredAt']);
+
+export function formatCrmImportCell(row: Record<string, unknown>, header: string, mapping: CrmImportMapping): string {
+  const value = String(row[header] ?? '').trim();
+  if (!value) return '—';
+  const role = Object.entries(mapping).find(([, mappedHeader]) => mappedHeader === header)?.[0] as keyof CrmImportMapping | undefined;
+  if (!role || !CRM_DATE_ROLES.has(role)) return value;
+  const dateSystem = row.__excelDateSystem === '1904' ? '1904' : '1900';
+  return formatCrmDateForDisplay(value, dateSystem);
+}
 
 const HEADER_ALIASES: Partial<Record<keyof CrmImportMapping, string[]>> = {
   companyName: ['company name', 'company', 'account'],
@@ -136,15 +148,15 @@ function mapped(row: Record<string, unknown>, mapping: CrmImportMapping, role: k
 function optional(value: string): string | null { return value || null; }
 function dateValue(value: string, label: string, warnings: string[], dateSystem: '1900' | '1904'): string | null {
   if (!value) return null;
-  const serial = /^\d{1,7}(?:\.\d+)?$/.test(value) ? Number(value) : null;
-  const date = serial !== null && serial > 0 && serial < 2958466
-    ? new Date((dateSystem === '1904' ? Date.UTC(1904, 0, 1) : -25569 * 86_400_000) + serial * 86_400_000)
-    : new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const parsed = parseCrmDate(value, dateSystem);
+  if (parsed.kind === 'invalid') {
     warnings.push(`${label} date could not be tracked; the original workbook value will be preserved.`);
     return null;
   }
-  return date.toISOString();
+  if (parsed.kind === 'range') {
+    warnings.push(`${label} date range recognized; CRM tracking uses the first date and preserves the full range in the workbook.`);
+  }
+  return parsed.startIso;
 }
 
 export function validateCrmImportMapping(mapping: CrmImportMapping, headers: string[]): { error: string | null } {

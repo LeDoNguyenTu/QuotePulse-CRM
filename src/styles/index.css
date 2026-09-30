@@ -97,6 +97,13 @@ body {
   object-fit: contain;
 }
 
+/* The supplied R Systems mark includes generous transparent canvas. Scale that
+   canvas to the frame so the complete visible mark is legible without cropping. */
+.workspace-brand--sales_crm img {
+  transform: scale(1.18);
+  transform-origin: center;
+}
+
 .workspace-brand--legacy {
   border-color: #dbe3ec;
   background: #fff;

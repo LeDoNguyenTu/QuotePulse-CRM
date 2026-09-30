@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCrmHeaderMatches, normalizeCrmImportRows, suggestCrmImportMapping, unconfirmedSemanticHeaders, validateCrmImportMapping, type CrmImportMapping } from './importPreview';
+import { buildCrmHeaderMatches, formatCrmImportCell, normalizeCrmImportRows, suggestCrmImportMapping, unconfirmedSemanticHeaders, validateCrmImportMapping, type CrmImportMapping } from './importPreview';
 
 const mapping: CrmImportMapping = {
   companyName: 'Account', contactEmail: 'Email', contactFirstName: 'First',
@@ -9,6 +9,13 @@ const mapping: CrmImportMapping = {
 };
 
 describe('Sales CRM import preview', () => {
+  it('formats mapped date cells without changing ordinary numeric workbook cells', () => {
+    const source: Record<string, unknown> = { 'Last Contact Date': '46293.415277777778', Employees: '46293' };
+    Object.defineProperty(source, '__excelDateSystem', { value: '1900', enumerable: false });
+    expect(formatCrmImportCell(source, 'Last Contact Date', { activityOccurredAt: 'Last Contact Date' })).toBe('28 Sep 2026, 9:58 am');
+    expect(formatCrmImportCell(source, 'Employees', { activityOccurredAt: 'Last Contact Date' })).toBe('46293');
+  });
+
   it('reviews source columns in workbook order and requires confirmation for semantic matches', () => {
     const matches = buildCrmHeaderMatches([
       'Company Name', 'Name', 'Contact Number', 'Designation',
@@ -144,6 +151,25 @@ describe('Sales CRM import preview', () => {
     expect(row.issues).toEqual([]);
     expect(row.warnings).toContain('Activity date could not be tracked; the original workbook value will be preserved.');
     expect(row.activities[0]).toMatchObject({ body: 'Left voicemail', occurred_at: null });
+  });
+
+  it('rejects calendar-impossible dates instead of allowing JavaScript rollover', () => {
+    const [row] = normalizeCrmImportRows([
+      { Account: 'Acme', 'Last Contact': '2026-02-30', 'Call Log': 'Left voicemail' },
+    ], { companyName: 'Account', activityOccurredAt: 'Last Contact', callLog: 'Call Log' }, { companies: [], contacts: [] });
+
+    expect(row.valid).toBe(true);
+    expect(row.activities[0].occurred_at).toBeNull();
+    expect(row.warnings).toContain('Activity date could not be tracked; the original workbook value will be preserved.');
+  });
+
+  it('tracks the start of a recognized date range and preserves the full workbook value', () => {
+    const [row] = normalizeCrmImportRows([
+      { Account: 'Acme', 'Last Contact': '28 Sep 2026 to 30 Sep 2026', 'Call Log': 'Conference follow-up' },
+    ], { companyName: 'Account', activityOccurredAt: 'Last Contact', callLog: 'Call Log' }, { companies: [], contacts: [] });
+
+    expect(row.activities[0].occurred_at).toBe('2026-09-28T00:00:00.000Z');
+    expect(row.warnings).toContain('Activity date range recognized; CRM tracking uses the first date and preserves the full range in the workbook.');
   });
 
   it('never anchors a valid duplicate to an invalid row that will not be committed', () => {

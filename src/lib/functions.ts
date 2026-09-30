@@ -235,8 +235,14 @@ export const functions = {
   storeCrmWorkbookTemplate: (body: { workspace_id: string; filename: string; mime_type: string; checksum_sha256: string; base64: string }) =>
     invoke<{ ok: true; r2_key: string; r2_sha256: string }>('crm-workbook-template', { action: 'store', ...body }),
 
+  storeCrmWorkbookRowIndex: (body: { workspace_id: string; source_import_id: string; headers: string[]; source_rows: Array<{ row_number: number; cells: Record<string, string> }> }) =>
+    invoke<{ ok: true; r2_key: string; r2_sha256: string }>('crm-workbook-template', { action: 'store-index', ...body }),
+
   getCrmWorkbookTemplate: (workspace_id: string, source_import_id: string) =>
     invoke<{ ok: true; filename: string; mime_type: string; checksum_sha256: string; base64: string }>('crm-workbook-template', { action: 'get', workspace_id, source_import_id }),
+
+  getCrmSourceRows: (body: { workspace_id: string; source_import_id: string; row_numbers: number[]; headers: string[] }) =>
+    invoke<{ ok: true; rows: Array<{ row_number: number; cells: Record<string, string> }> }>('crm-source-rows', body),
 
 };
 

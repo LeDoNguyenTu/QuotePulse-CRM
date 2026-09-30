@@ -6,6 +6,7 @@ type LegacyTableColumnPreferences = Partial<Record<TablePreferenceKey, string[]>
 export interface VersionedTableColumnPreferences {
   version: 2;
   workspaces: Record<string, Partial<Record<CrmConfigurableTable, string[]>>>;
+  sourceColumns?: Record<string, Record<string, Partial<Record<CrmConfigurableTable, string[]>>>>;
 }
 
 export type TableColumnPreferences = LegacyTableColumnPreferences | (
@@ -23,9 +24,9 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<TablePreferenceKey, string[]> = {
     'hubspot_modified_at', 'is_archived',
   ],
   contacts: ['full_name', 'email', 'phone', 'role_title', 'is_primary_contact', 'source'],
-  crm_companies: ['name', 'industry', 'location', 'phone', 'website'],
-  crm_contacts: ['full_name', 'company', 'job_title', 'email', 'phone'],
-  crm_deals: ['name', 'company', 'stage', 'status', 'amount', 'follow_up_at'],
+  crm_companies: ['name', 'industry', 'location', 'phone', 'website', 'source'],
+  crm_contacts: ['full_name', 'company', 'job_title', 'email', 'phone', 'source'],
+  crm_deals: ['name', 'company', 'stage', 'status', 'amount', 'follow_up_at', 'source'],
 };
 
 export function resolveVisibleColumns(
@@ -55,11 +56,14 @@ export function resolveWorkspaceVisibleColumns(
   workspaceId: string,
   preferences: TableColumnPreferences | null | undefined,
   allowedIds: string[],
+  sourceId?: string | null,
 ): string[] {
   const versioned = versionedPreferences(preferences);
   const workspaceChoice = versioned?.workspaces[workspaceId]?.[table];
   const legacyChoice = (preferences as LegacyTableColumnPreferences | null | undefined)?.[table];
-  return safeColumns(workspaceChoice ?? legacyChoice, allowedIds, DEFAULT_VISIBLE_COLUMNS[table]);
+  const core = safeColumns(workspaceChoice ?? legacyChoice, allowedIds, DEFAULT_VISIBLE_COLUMNS[table]);
+  const sourceChoice = sourceId ? versioned?.sourceColumns?.[workspaceId]?.[sourceId]?.[table] ?? [] : [];
+  return [...new Set([...core, ...safeColumns(sourceChoice, allowedIds, [])])];
 }
 
 export function saveWorkspaceVisibleColumns(
@@ -68,13 +72,25 @@ export function saveWorkspaceVisibleColumns(
   workspaceId: string,
   columns: string[] | null,
   allowedIds: string[],
+  sourceId?: string | null,
 ): TableColumnPreferences {
   const currentVersioned = versionedPreferences(preferences);
   const legacy = { ...(preferences ?? {}) } as LegacyTableColumnPreferences & Partial<VersionedTableColumnPreferences>;
   delete legacy[table];
   const workspace = { ...(currentVersioned?.workspaces[workspaceId] ?? {}) };
+  const isSourceColumn = (id: string) => id.startsWith('source-column:');
   if (columns === null) delete workspace[table];
-  else workspace[table] = safeColumns(columns, allowedIds, DEFAULT_VISIBLE_COLUMNS[table]);
+  else workspace[table] = safeColumns(columns.filter((id) => !isSourceColumn(id)), allowedIds, DEFAULT_VISIBLE_COLUMNS[table]);
+
+  const sourceColumns = { ...(currentVersioned?.sourceColumns ?? {}) };
+  if (sourceId) {
+    const workspaceSources = { ...(sourceColumns[workspaceId] ?? {}) };
+    const sourceTables = { ...(workspaceSources[sourceId] ?? {}) };
+    if (columns === null) delete sourceTables[table];
+    else sourceTables[table] = safeColumns(columns.filter(isSourceColumn), allowedIds, []);
+    workspaceSources[sourceId] = sourceTables;
+    sourceColumns[workspaceId] = workspaceSources;
+  }
 
   return {
     ...legacy,
@@ -83,6 +99,7 @@ export function saveWorkspaceVisibleColumns(
       ...(currentVersioned?.workspaces ?? {}),
       [workspaceId]: workspace,
     },
+    sourceColumns,
   } as TableColumnPreferences;
 }
 

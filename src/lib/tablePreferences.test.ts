@@ -98,4 +98,21 @@ describe('table preferences', () => {
     expect(resolveWorkspaceVisibleColumns('crm_contacts', 'workspace-1', second, ['full_name', 'email'])).toEqual(['full_name', 'email']);
     expect(resolveWorkspaceVisibleColumns('crm_contacts', 'workspace-2', second, ['full_name', 'phone'])).toEqual(['phone']);
   });
+
+  it('keeps original workbook column choices independent per source', () => {
+    const allowed = ['full_name', 'source-column:Region'];
+    const saved = saveWorkspaceVisibleColumns(
+      null,
+      'crm_contacts',
+      'workspace-1',
+      ['full_name', 'source-column:Region'],
+      allowed,
+      'source-1',
+    );
+
+    expect(resolveWorkspaceVisibleColumns('crm_contacts', 'workspace-1', saved, allowed, 'source-1'))
+      .toEqual(['full_name', 'source-column:Region']);
+    expect(resolveWorkspaceVisibleColumns('crm_contacts', 'workspace-1', saved, ['full_name'], 'source-2'))
+      .toEqual(['full_name']);
+  });
 });

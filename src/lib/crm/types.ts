@@ -11,13 +11,17 @@ export interface CrmAuditFields {
 
 export interface CrmSourceSummary {
   id: string;
+  database_id: string;
   filename: string;
   source_type: 'workbook' | 'pst';
+  headers?: string[];
+  row_index_available?: boolean;
 }
 
 export interface CrmListMetadata {
   primary_source?: CrmSourceSummary | null;
   source_count?: number;
+  source_row_number?: number | null;
   task_count?: number;
 }
 

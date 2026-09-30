@@ -60,6 +60,20 @@ export function crmWorkbookTemplateKey(ownerId: string, workspaceId: string, che
   return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${encodeURIComponent(checksum)}/${encodeURIComponent(filename)}.json.gz`;
 }
 
+export function crmWorkbookRowIndexKey(ownerId: string, workspaceId: string, sourceImportId: string): string {
+  return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${sourceImportId}/source-row-index.v1.json.gz`;
+}
+
+export function assertWorkbookRowIndexPointer(
+  key: string,
+  ownerId: string,
+  workspaceId: string,
+  sourceImportId: string,
+): void {
+  const expected = crmWorkbookRowIndexKey(ownerId, workspaceId, sourceImportId);
+  if (key !== expected) throw new Error('Workbook row index pointer is outside the authenticated source scope.');
+}
+
 export function assertCrmWorkbookPointer(key: string, ownerId: string, workspaceId: string): void {
   const prefix = `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/`;
   if (!key.startsWith(prefix)) throw new Error('CRM workbook pointer is outside the authenticated user scope.');

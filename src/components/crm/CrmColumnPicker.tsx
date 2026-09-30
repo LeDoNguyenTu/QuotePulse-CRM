@@ -8,24 +8,30 @@ import {
 } from '../../lib/tablePreferences';
 import { CRM_COLUMN_OPTIONS, type CrmColumnOption } from '../../lib/crm/tableColumns';
 
-export function useCrmColumns(table: CrmConfigurableTable) {
+export function useCrmColumns(
+  table: CrmConfigurableTable,
+  options: CrmColumnOption[] = CRM_COLUMN_OPTIONS[table],
+  sourceId?: string | null,
+) {
   const settings = useSettings();
   const workspace = useActiveWorkspace();
-  const options = CRM_COLUMN_OPTIONS[table];
   return resolveWorkspaceVisibleColumns(
     table,
     workspace.id,
     settings.data?.table_column_preferences,
     options.map((option) => option.id),
+    sourceId,
   );
 }
 
 export function CrmColumnPicker({
   table,
   options,
+  sourceId,
 }: {
   table: CrmConfigurableTable;
   options: CrmColumnOption[];
+  sourceId?: string | null;
 }) {
   const settings = useSettings();
   const saveSettings = useSaveSettings();
@@ -36,6 +42,7 @@ export function CrmColumnPicker({
     workspace.id,
     settings.data?.table_column_preferences,
     allowedIds,
+    sourceId,
   );
 
   return (
@@ -49,6 +56,7 @@ export function CrmColumnPicker({
           workspace.id,
           next,
           allowedIds,
+          sourceId,
         ),
       })}
       onRestore={() => saveSettings.mutate({
@@ -58,6 +66,7 @@ export function CrmColumnPicker({
           workspace.id,
           null,
           allowedIds,
+          sourceId,
         ),
       })}
     />

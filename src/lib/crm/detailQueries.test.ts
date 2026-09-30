@@ -17,6 +17,7 @@ describe('Sales CRM detail query plans', () => {
     expect(spec.lineage).toMatchObject({ foreignKey: 'company_id', workspaceId: 'workspace-1' });
     expect(spec.activity).toMatchObject({ table: 'crm_activities', foreignKey: 'company_id', workspaceId: 'workspace-1' });
     expect(spec.activity.secondaryOrder).toEqual({ column: 'id', ascending: false });
+    expect(spec.tasks).toMatchObject({ table: 'crm_tasks', foreignKey: 'company_id', workspaceId: 'workspace-1' });
   });
 
   it('uses join rows for contact deals and deal contacts without an N+1 query', () => {

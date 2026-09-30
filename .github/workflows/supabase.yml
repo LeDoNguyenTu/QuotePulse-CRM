@@ -95,7 +95,7 @@ jobs:
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status storage-maintenance workspace-archive crm-workbook-template; do
+          for fn in hubspot-ingest enrich-kyc discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status storage-maintenance workspace-archive crm-workbook-template crm-source-rows; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api
             echo "::endgroup::"
@@ -109,6 +109,7 @@ jobs:
             supabase/tests/hubspot_property_coverage.sql \
             supabase/tests/phase_j_security_posture.sql \
             supabase/tests/query_performance_regressions.sql \
+            supabase/tests/crm_source_filters_and_counts.sql \
             supabase/tests/sales_crm_isolation.sql \
             supabase/tests/workspace_isolation.sql; do
             echo "::group::database test $test"

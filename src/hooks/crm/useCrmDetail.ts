@@ -37,11 +37,12 @@ async function fetchCrmDetail(
     .eq('workspace_id', workspaceId)
     .eq('id', recordId)
     .maybeSingle();
-  const [primary, associations, lineage, activity] = await Promise.all([
+  const [primary, associations, lineage, activity, tasks] = await Promise.all([
     primaryPromise,
     Promise.all(spec.associations.map(fetchAssociation)),
     fetchAssociation(spec.lineage),
     fetchAssociation(spec.activity),
+    fetchAssociation(spec.tasks),
   ]);
   if (primary.error) throw primary.error;
   return {
@@ -52,6 +53,8 @@ async function fetchCrmDetail(
     lineageCount: lineage.count,
     activities: activity.rows as CrmDetailData['activities'],
     activityCount: activity.count,
+    tasks: tasks.rows as CrmDetailData['tasks'],
+    taskCount: tasks.count,
   };
 }
 

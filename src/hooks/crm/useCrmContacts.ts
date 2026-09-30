@@ -4,7 +4,7 @@ import { useCrmMutations, useCrmPage } from './useCrmResource';
 
 export function useCrmContacts(
   workspaceId: string,
-  filters: { page: number; search: string; companyId: string; sort: string },
+  filters: { page: number; search: string; companyId: string; sort: string; sourceImportId?: string },
 ) {
   return useCrmPage<CrmContact>({
     resource: 'contacts',

@@ -4,7 +4,7 @@ import { useCrmMutations, useCrmPage } from './useCrmResource';
 
 export function useCrmDeals(
   workspaceId: string,
-  filters: { page: number; search: string; status: string; companyId: string; sort: string },
+  filters: { page: number; search: string; status: string; companyId: string; sort: string; sourceImportId?: string },
 ) {
   return useCrmPage<CrmDeal>({
     resource: 'deals',

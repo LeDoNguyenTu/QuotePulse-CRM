@@ -7,7 +7,7 @@ import { useCrmMutations, useCrmPage } from './useCrmResource';
 
 export function useCrmCompanies(
   workspaceId: string,
-  filters: { page: number; search: string; industry: string; sort: string },
+  filters: { page: number; search: string; industry: string; sort: string; sourceImportId?: string },
 ) {
   return useCrmPage<CrmCompany>({
     resource: 'companies',

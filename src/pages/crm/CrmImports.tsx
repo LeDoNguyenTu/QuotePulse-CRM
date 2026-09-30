@@ -116,9 +116,18 @@ export function CrmImports() {
   async function commit() {
     if (!file || !sheet || mappingError || pendingConfirmations.length || !validRows.length) return;
     try {
+      const validRowNumbers = new Set(validRows.map((row) => row.rowNumber));
+      const sourceRows = sheet.rows.flatMap((source, index) => {
+        const rowNumber = typeof source.__sourceRowNumber === 'number' ? source.__sourceRowNumber : index + 2;
+        if (!validRowNumbers.has(rowNumber)) return [];
+        return [{
+          row_number: rowNumber,
+          cells: Object.fromEntries(sheet.headers.map((header) => [header, String(source[header] ?? '')])),
+        }];
+      });
       const imported = await api.commit.mutateAsync({ filename: file.name, mimeType: file.type || 'application/octet-stream',
         sheetName: sheet.name, checksum: await sha256(file), sourceRowCount: preview.length,
-        rows: validRows, headers: sheet.headers, mapping, templateBase64: await fileBase64(file) });
+        rows: validRows, sourceRows, headers: sheet.headers, mapping, templateBase64: await fileBase64(file) });
       setResult(imported);
       const emptyDraft = emptyCrmImportDraft();
       setFile(emptyDraft.file);

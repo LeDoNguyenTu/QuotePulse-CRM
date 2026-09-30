@@ -1,11 +1,12 @@
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
 import {
-  assertCrmWorkbookPointer, crmWorkbookTemplateKey, getArchiveJson,
+  assertCrmWorkbookPointer, crmWorkbookRowIndexKey, crmWorkbookTemplateKey, getArchiveJson,
   putVerifiedArchive, sha256Hex,
 } from '../_shared/r2Archive.ts';
 
 export const MAX_WORKBOOK_BYTES = 25 * 1024 * 1024;
+export const MAX_ROW_INDEX_BYTES = 25 * 1024 * 1024;
 
 function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
@@ -50,16 +51,57 @@ Deno.serve(async (req) => {
       return json({ ok: true, r2_key: archived.key, r2_sha256: archived.checksum });
     }
 
+    if (action === 'store-index') {
+      const sourceImportId = String(body.source_import_id ?? '');
+      const headers = Array.isArray(body.headers)
+        ? [...new Set(body.headers.map(String).map((value) => value.trim()).filter(Boolean))]
+        : [];
+      const sourceRows = Array.isArray(body.source_rows) ? body.source_rows : [];
+      if (!sourceImportId || !headers.length || headers.length > 500 || sourceRows.length > 20000) {
+        return errorResponse('A valid source import, headers, and bounded source rows are required.', 400);
+      }
+      const { data: sourceImport, error } = await admin.from('crm_source_imports')
+        .select('id,imported_by').eq('id', sourceImportId).eq('workspace_id', workspaceId)
+        .eq('imported_by', userId).maybeSingle();
+      if (error) throw error;
+      if (!sourceImport) return errorResponse('Source import was not found for this uploader.', 404);
+      const rows = sourceRows.map((candidate) => {
+        const row = candidate as Record<string, unknown>;
+        const rowNumber = Number(row.row_number);
+        const suppliedCells = row.cells && typeof row.cells === 'object' ? row.cells as Record<string, unknown> : {};
+        if (!Number.isInteger(rowNumber) || rowNumber < 1) throw new Error('Source row number is invalid.');
+        return {
+          row_number: rowNumber,
+          cells: Object.fromEntries(headers.map((header) => [header, String(suppliedCells[header] ?? '')])),
+        };
+      });
+      const payload = {
+        format: 'source-row-index.v1',
+        source_import_id: sourceImportId,
+        workspace_id: workspaceId,
+        headers,
+        rows,
+      };
+      if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > MAX_ROW_INDEX_BYTES) {
+        return errorResponse('Workbook row index exceeds the allowed size.', 413);
+      }
+      const archived = await putVerifiedArchive(
+        crmWorkbookRowIndexKey(userId, workspaceId, sourceImportId),
+        payload,
+      );
+      return json({ ok: true, r2_key: archived.key, r2_sha256: archived.checksum });
+    }
+
     if (action === 'get') {
       const importId = String(body.source_import_id ?? '');
       const { data: sourceImport, error } = await admin.from('crm_source_imports')
-        .select('id,workspace_id,source_metadata').eq('id', importId).eq('workspace_id', workspaceId).maybeSingle();
+        .select('id,workspace_id,imported_by,source_metadata').eq('id', importId).eq('workspace_id', workspaceId).maybeSingle();
       if (error) throw error;
       if (!sourceImport) return errorResponse('Workbook import was not found.', 404);
       const metadata = (sourceImport.source_metadata ?? {}) as Record<string, unknown>;
       const key = String(metadata.template_r2_key ?? '');
       if (!key) return errorResponse('This import has no preserved workbook template.', 404);
-      assertCrmWorkbookPointer(key, userId, workspaceId);
+      assertCrmWorkbookPointer(key, String(sourceImport.imported_by), workspaceId);
       const payload = await getArchiveJson<Record<string, unknown>>(key);
       if (payload.format !== 'quotepulse-crm-workbook-v1') throw new Error('Stored workbook format is invalid.');
       return json({ ok: true, filename: payload.filename, mime_type: payload.mime_type, checksum_sha256: payload.checksum_sha256, base64: payload.base64 });

@@ -12,6 +12,8 @@ import {
   workspaceArchiveObjectKey,
   crmWorkbookTemplateKey,
   assertCrmWorkbookPointer,
+  assertWorkbookRowIndexPointer,
+  crmWorkbookRowIndexKey,
 } from './r2Archive.ts';
 
 describe('R2 cold archive keys and verification', () => {
@@ -53,6 +55,15 @@ describe('R2 cold archive keys and verification', () => {
     expect(() => assertCrmWorkbookPointer(
       'owners/other/workspaces/workspace-b/crm-imports/abc/template.json.gz',
       'owner-a', 'workspace-b',
+    )).toThrow(/outside/);
+  });
+
+  it('keeps workbook row indexes inside the exact source import scope', () => {
+    expect(crmWorkbookRowIndexKey('owner-a', 'workspace-b', 'source-c'))
+      .toBe('owners/owner-a/workspaces/workspace-b/crm-imports/source-c/source-row-index.v1.json.gz');
+    expect(() => assertWorkbookRowIndexPointer(
+      'owners/other/workspaces/workspace-b/crm-imports/source-c/source-row-index.v1.json.gz',
+      'owner-a', 'workspace-b', 'source-c',
     )).toThrow(/outside/);
   });
 

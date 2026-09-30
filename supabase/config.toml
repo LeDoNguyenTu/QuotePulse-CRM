@@ -84,3 +84,6 @@ verify_jwt = true
 
 [functions.crm-workbook-template]
 verify_jwt = true
+
+[functions.crm-source-rows]
+verify_jwt = true

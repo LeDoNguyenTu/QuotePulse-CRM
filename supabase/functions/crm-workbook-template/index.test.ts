@@ -16,5 +16,14 @@ describe('CRM workbook template function', () => {
     expect(source).toContain('MAX_WORKBOOK_BYTES');
     expect(source).toMatch(/crm_source_imports/);
     expect(source).toMatch(/source_metadata/);
+    expect(source).toContain("String(sourceImport.imported_by)");
+  });
+
+  it('stores a bounded row index beneath the exact source import', () => {
+    expect(source).toContain("action === 'store-index'");
+    expect(source).toContain('crmWorkbookRowIndexKey');
+    expect(source).toContain('source-row-index.v1');
+    expect(source).toContain('MAX_ROW_INDEX_BYTES');
+    expect(source).toMatch(/eq\('imported_by', userId\)/);
   });
 });

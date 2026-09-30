@@ -27,26 +27,68 @@ body {
 
 .workspace-selector {
   background:
-    linear-gradient(120deg, rgba(37, 99, 235, 0.08), transparent 38%),
+    radial-gradient(circle at 12% 8%, rgba(47, 111, 237, 0.1), transparent 28rem),
+    linear-gradient(180deg, #f8fafc 0%, var(--workspace-canvas) 100%),
     var(--workspace-canvas);
 }
 
-.workspace-choice {
-  display: flex;
-  min-height: 15rem;
+.workspace-selector__masthead {
+  max-width: 43rem;
+  margin-bottom: 2.75rem;
+}
+
+.workspace-selector__wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+  color: var(--workspace-ink);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.workspace-selector__wordmark > span {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 0.2rem;
+  background: linear-gradient(135deg, var(--workspace-blue) 0 50%, var(--workspace-teal) 50%);
+  box-shadow: 0 0 0 0.28rem rgba(47, 111, 237, 0.1);
+}
+
+.workspace-selector__intro {
+  max-width: 39rem;
+  margin-top: 0.9rem;
+  color: #52657d;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.workspace-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.25rem;
-  border: 1px solid #cbd5e1;
-  border-top-width: 4px;
-  background: white;
-  padding: 1.5rem;
+}
+
+.workspace-choice {
+  --choice-accent: var(--workspace-blue);
+  --choice-tint: #edf4ff;
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.78fr) minmax(0, 1.22fr);
+  min-height: 20rem;
+  overflow: hidden;
+  border: 1px solid #d6deea;
+  border-radius: 1.15rem;
+  background: var(--workspace-surface);
   color: inherit;
   text-decoration: none;
-  transition: border-color 150ms ease, transform 150ms ease;
+  box-shadow: 0 1.5rem 3.5rem -2.5rem rgba(16, 35, 63, 0.42);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .workspace-choice:hover {
-  border-color: var(--workspace-blue);
-  transform: translateY(-2px);
+  border-color: var(--choice-accent);
+  box-shadow: 0 1.8rem 4rem -2.3rem rgba(16, 35, 63, 0.48);
+  transform: translateY(-3px);
 }
 
 .workspace-choice:focus-visible {
@@ -55,67 +97,108 @@ body {
 }
 
 .workspace-choice--legacy {
-  border-top-color: #475569;
+  --choice-accent: #31588d;
+  --choice-tint: #edf3f9;
 }
 
 .workspace-choice--sales_crm {
-  border-top-color: var(--workspace-teal);
+  --choice-accent: #6f42dd;
+  --choice-tint: #f3efff;
 }
 
-.workspace-choice__marker {
+.workspace-choice__brand {
   display: grid;
-  height: 2.75rem;
-  width: 2.75rem;
-  flex: 0 0 auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   place-items: center;
-  border-radius: 0.75rem;
-  background: var(--workspace-ink);
-  color: white;
+  gap: 1.1rem;
+  min-width: 0;
+  padding: 1.65rem 1.25rem;
+  background: var(--choice-tint);
+  border-right: 1px solid rgba(100, 116, 139, 0.15);
+}
+
+.workspace-choice__company {
+  color: #40536b;
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.workspace-choice__content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 2rem 1.75rem 1.75rem;
+}
+
+.workspace-choice__category {
+  color: var(--choice-accent);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.workspace-choice__title {
+  display: block;
+  margin-top: 0.7rem;
+  color: #0f1f36;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.workspace-choice__description {
+  display: block;
+  margin-top: 0.85rem;
+  color: #52657d;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.workspace-choice__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6rem;
+  margin-top: auto;
+  border: 1px solid color-mix(in srgb, var(--choice-accent) 32%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--choice-accent) 8%, white);
+  padding: 0.62rem 0.9rem;
+  color: var(--choice-accent);
+  font-size: 0.82rem;
+  font-weight: 750;
 }
 
 .workspace-brand {
-  position: relative;
   display: grid;
-  width: 10rem;
-  height: 6rem;
+  width: 100%;
+  height: 9.5rem;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.75rem;
-  background: #fff;
-  overflow: hidden;
-  padding: 0.55rem;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  padding: 0;
 }
 
-.workspace-brand img {
+.workspace-brand__image {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
-}
-
-/* Keep the complete R Systems mark visible. The selector gets a modest lift to
-   balance the source artwork's lower visual weight without touching the frame. */
-.workspace-brand--sales_crm img {
   transform: none;
-  transform-origin: center;
-}
-
-.workspace-brand--sales_crm:not(.workspace-brand--compact) img {
-  transform: translateY(-0.2rem) scale(1.08);
 }
 
 .workspace-brand--legacy {
-  border-color: #dbe3ec;
-  background: #fff;
+  background: transparent;
 }
 
 .workspace-brand--compact {
   width: 6.75rem;
   height: 3.25rem;
+  overflow: hidden;
   border: 0;
   border-radius: 0;
   padding: 0.15rem 0;
@@ -435,6 +518,11 @@ body {
 }
 
 @media (max-width: 767px) {
+  .workspace-choice-grid { grid-template-columns: 1fr; }
+  .workspace-choice { grid-template-columns: minmax(8rem, 0.72fr) minmax(0, 1.28fr); min-height: 17rem; }
+  .workspace-choice__brand { padding: 1.25rem 0.9rem; }
+  .workspace-choice__content { padding: 1.5rem 1.2rem; }
+  .workspace-brand { height: 7rem; }
   .crm-file-picker { align-items: stretch; flex-direction: column; }
   .crm-file-picker-action { width: 100%; }
   .crm-upload-heading { align-items: flex-start; flex-direction: column; }
@@ -489,6 +577,14 @@ body {
   .crm-table td:last-child { border-bottom: 0; }
   .crm-import-preview-table { width: 100% !important; min-width: 0; }
   .crm-column-resizer { display: none; }
+}
+
+@media (max-width: 520px) {
+  .workspace-selector__masthead { margin-bottom: 2rem; }
+  .workspace-choice { grid-template-columns: 1fr; }
+  .workspace-choice__brand { min-height: 10.5rem; border-right: 0; border-bottom: 1px solid rgba(100, 116, 139, 0.15); }
+  .workspace-choice__content { min-height: 13rem; }
+  .workspace-brand { height: 7.5rem; max-width: 13rem; }
 }
 
 @layer components {

@@ -50,6 +50,12 @@ describe('workspace selector', () => {
 
     expect(html.match(/<h1/g)).toHaveLength(1);
     expect(html).toContain('<main');
+    expect(html).toContain('Choose the workspace for the job at hand');
+    expect(html).toContain('Innocom Technologies Pte Ltd workspace');
+    expect(html).toContain('R Systems Singapore Pte Ltd workspace');
+    expect(html.match(/workspace-choice__brand/g)).toHaveLength(2);
+    expect(html.match(/workspace-choice__content/g)).toHaveLength(2);
+    expect(html.match(/workspace-brand__image/g)).toHaveLength(2);
     expect(html).not.toContain('legacy-id</');
     expect(html).not.toContain('sales-id</');
   });

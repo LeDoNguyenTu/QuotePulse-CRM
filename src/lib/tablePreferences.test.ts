@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_VISIBLE_COLUMNS,
+  resolveWorkspaceVisibleColumns,
   resolveVisibleColumns,
+  saveWorkspaceVisibleColumns,
   saveVisibleColumns,
   type TableColumnPreferences,
 } from './tablePreferences';
@@ -48,5 +50,52 @@ describe('table preferences', () => {
     expect(resolveVisibleColumns('crm_companies', deals)).toEqual(['name', 'industry', 'website']);
     expect(resolveVisibleColumns('crm_contacts', deals)).toEqual(['full_name', 'company', 'email']);
     expect(resolveVisibleColumns('crm_deals', deals)).toEqual(['name', 'stage', 'amount', 'follow_up_at']);
+  });
+
+  it('reads legacy Sales CRM choices as a workspace fallback', () => {
+    const legacy: TableColumnPreferences = { crm_contacts: ['full_name', 'email'] };
+
+    expect(resolveWorkspaceVisibleColumns(
+      'crm_contacts',
+      'workspace-1',
+      legacy,
+      ['full_name', 'email'],
+    )).toEqual(['full_name', 'email']);
+  });
+
+  it('sanitizes missing saved columns and restores safe defaults', () => {
+    const preferences = {
+      version: 2 as const,
+      workspaces: { workspace_1: { crm_contacts: ['missing'] } },
+    };
+
+    expect(resolveWorkspaceVisibleColumns(
+      'crm_contacts',
+      'workspace_1',
+      preferences,
+      ['full_name'],
+    )).toEqual(['full_name']);
+  });
+
+  it('saves CRM choices independently per workspace without losing legacy preferences', () => {
+    const legacy: TableColumnPreferences = { companies: ['name_clean'], crm_contacts: ['email'] };
+    const first = saveWorkspaceVisibleColumns(
+      legacy,
+      'crm_contacts',
+      'workspace-1',
+      ['full_name', 'email', 'email'],
+      ['full_name', 'email'],
+    );
+    const second = saveWorkspaceVisibleColumns(
+      first,
+      'crm_contacts',
+      'workspace-2',
+      ['phone'],
+      ['full_name', 'phone'],
+    );
+
+    expect(resolveVisibleColumns('companies', second)).toEqual(['name_clean']);
+    expect(resolveWorkspaceVisibleColumns('crm_contacts', 'workspace-1', second, ['full_name', 'email'])).toEqual(['full_name', 'email']);
+    expect(resolveWorkspaceVisibleColumns('crm_contacts', 'workspace-2', second, ['full_name', 'phone'])).toEqual(['phone']);
   });
 });

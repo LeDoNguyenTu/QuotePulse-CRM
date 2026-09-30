@@ -9,7 +9,19 @@ export interface CrmAuditFields {
   updated_at: string;
 }
 
-export interface CrmCompany extends CrmAuditFields {
+export interface CrmSourceSummary {
+  id: string;
+  filename: string;
+  source_type: 'workbook' | 'pst';
+}
+
+export interface CrmListMetadata {
+  primary_source?: CrmSourceSummary | null;
+  source_count?: number;
+  task_count?: number;
+}
+
+export interface CrmCompany extends CrmAuditFields, CrmListMetadata {
   name: string;
   industry: string | null;
   website: string | null;
@@ -21,9 +33,11 @@ export interface CrmCompany extends CrmAuditFields {
   state_region: string | null;
   postal_code: string | null;
   country: string | null;
+  contact_count?: number;
+  deal_count?: number;
 }
 
-export interface CrmContact extends CrmAuditFields {
+export interface CrmContact extends CrmAuditFields, CrmListMetadata {
   company_id: string | null;
   first_name: string | null;
   last_name: string | null;
@@ -31,10 +45,11 @@ export interface CrmContact extends CrmAuditFields {
   email: string | null;
   phone: string | null;
   job_title: string | null;
+  deal_count?: number;
   company?: Pick<CrmCompany, 'id' | 'name' | 'industry'> | null;
 }
 
-export interface CrmDeal extends CrmAuditFields {
+export interface CrmDeal extends CrmAuditFields, CrmListMetadata {
   company_id: string | null;
   name: string;
   stage: string;

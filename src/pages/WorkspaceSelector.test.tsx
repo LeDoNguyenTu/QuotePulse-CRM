@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { Workspace } from '../lib/workspaces';
+import { WorkspaceBrand } from '../components/WorkspaceBrand';
 import { WorkspaceSelectorView } from './WorkspaceSelectorView';
 
 const workspaces: Workspace[] = [
@@ -58,5 +59,11 @@ describe('workspace selector', () => {
     expect(html.match(/workspace-brand__image/g)).toHaveLength(2);
     expect(html).not.toContain('legacy-id</');
     expect(html).not.toContain('sales-id</');
+  });
+
+  it('marks compact brand artwork for contained header sizing', () => {
+    const html = renderToStaticMarkup(<WorkspaceBrand kind="sales_crm" compact />);
+
+    expect(html).toContain('workspace-brand__image--compact');
   });
 });

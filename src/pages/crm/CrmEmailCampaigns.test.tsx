@@ -14,6 +14,7 @@ vi.mock('../../hooks/crm/useCrmCampaigns', () => ({
         rows: [{ contact_id: 'contact-1', contact_name: 'Avery Tan', email_normalized: 'avery@example.com', company_name: 'Northstar' }],
       },
       isLoading: false,
+      isFetching: true,
       error: null,
     },
     campaigns: { data: [], isLoading: false, error: null },
@@ -56,5 +57,12 @@ describe('CRM email campaign composer', () => {
     const html = renderToStaticMarkup(<CrmEmailCampaigns />);
 
     expect(html).toContain('<option value="brevo" selected="">Brevo</option>');
+  });
+
+  it('keeps the audience visible while refreshed results are loading', () => {
+    const html = renderToStaticMarkup(<CrmEmailCampaigns />);
+
+    expect(html).toContain('Updating audience');
+    expect(html).toContain('Avery Tan');
   });
 });

@@ -196,12 +196,18 @@ body {
 }
 
 .workspace-brand--compact {
-  width: 6.75rem;
-  height: 3.25rem;
-  overflow: hidden;
+  width: 4rem;
+  height: 1.75rem;
+  overflow: visible;
   border: 0;
   border-radius: 0;
-  padding: 0.15rem 0;
+  padding: 0;
+}
+
+.workspace-brand__image--compact {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .workspace-brand--legacy.workspace-brand--compact {
@@ -522,7 +528,7 @@ body {
   .workspace-choice { grid-template-columns: minmax(8rem, 0.72fr) minmax(0, 1.28fr); min-height: 17rem; }
   .workspace-choice__brand { padding: 1.25rem 0.9rem; }
   .workspace-choice__content { padding: 1.5rem 1.2rem; }
-  .workspace-brand { height: 7rem; }
+  .workspace-brand:not(.workspace-brand--compact) { height: 7rem; }
   .crm-file-picker { align-items: stretch; flex-direction: column; }
   .crm-file-picker-action { width: 100%; }
   .crm-upload-heading { align-items: flex-start; flex-direction: column; }
@@ -584,7 +590,7 @@ body {
   .workspace-choice { grid-template-columns: 1fr; }
   .workspace-choice__brand { min-height: 10.5rem; border-right: 0; border-bottom: 1px solid rgba(100, 116, 139, 0.15); }
   .workspace-choice__content { min-height: 13rem; }
-  .workspace-brand { height: 7.5rem; max-width: 13rem; }
+  .workspace-brand:not(.workspace-brand--compact) { height: 7.5rem; max-width: 13rem; }
 }
 
 @layer components {

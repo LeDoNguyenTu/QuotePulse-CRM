@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import type { PstMessageMetadata, PstWorkerEvent } from '../../lib/pst/types';
 
@@ -34,6 +34,6 @@ export function usePstExtractor(workspaceId: string, search: string) {
       await (supabase as any).rpc('crm_abort_mailbox_import',{p_workspace_id:workspaceId,p_import_id:importId}); throw error;
     }
   },onSuccess:()=>queryClient.invalidateQueries({queryKey:['crm',workspaceId,'mail-metadata']}) });
-  const saved = useQuery({queryKey:['crm',workspaceId,'mail-metadata',search],queryFn:async()=>{let query=(supabase as any).from('crm_mail_messages').select('id,subject,sender_email,recipient_emails,message_at,folder_path,has_attachments').eq('workspace_id',workspaceId);if(search.trim())query=query.ilike('subject',`%${search.trim().replace(/[\\%_]/g,'\\$&')}%`);const {data,error}=await query.order('message_at',{ascending:false,nullsFirst:false}).limit(100);if(error)throw error;return (data??[]) as Array<PstMessageMetadata & {id:string}>;}});
+  const saved = useQuery({queryKey:['crm',workspaceId,'mail-metadata',search],placeholderData:keepPreviousData,queryFn:async()=>{let query=(supabase as any).from('crm_mail_messages').select('id,subject,sender_email,recipient_emails,message_at,folder_path,has_attachments').eq('workspace_id',workspaceId);if(search.trim())query=query.ilike('subject',`%${search.trim().replace(/[\\%_]/g,'\\$&')}%`);const {data,error}=await query.order('message_at',{ascending:false,nullsFirst:false}).limit(100);if(error)throw error;return (data??[]) as Array<PstMessageMetadata & {id:string}>;}});
   return {state,extract,save,saved};
 }

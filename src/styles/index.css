@@ -79,15 +79,15 @@ body {
 .workspace-brand {
   position: relative;
   display: grid;
-  width: 8.5rem;
-  height: 4.25rem;
+  width: 10rem;
+  height: 6rem;
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid #e2e8f0;
   border-radius: 0.75rem;
   background: #fff;
   overflow: hidden;
-  padding: 0.7rem;
+  padding: 0.55rem;
 }
 
 .workspace-brand img {
@@ -103,11 +103,11 @@ body {
 }
 
 .workspace-brand--compact {
-  width: 5.75rem;
-  height: 2.5rem;
+  width: 6.75rem;
+  height: 3.25rem;
   border: 0;
   border-radius: 0;
-  padding: 0.2rem 0;
+  padding: 0.15rem 0;
 }
 
 .workspace-brand--legacy.workspace-brand--compact {

@@ -152,7 +152,7 @@ Then exercise the real flow — the failures in this codebase are overwhelmingly
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Client** (4344 symbols, 8110 relationships, 295 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **Client** (4362 symbols, 8128 relationships, 295 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

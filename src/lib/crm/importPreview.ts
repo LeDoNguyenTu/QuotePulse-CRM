@@ -1,5 +1,6 @@
 import { normalizeDomain, normalizeWebsiteUrl } from './inputs';
 import { formatCrmDateForDisplay, parseCrmDate } from './flexibleDate';
+import { classifyMissingIndustry, type CompanyFieldSources } from './companyEnrichment';
 
 export type CrmImportMapping = Partial<Record<
   | 'companyName' | 'companyIndustry' | 'companyWebsite' | 'companyDomain'
@@ -133,7 +134,7 @@ export interface CrmImportPreviewRow {
   duplicateOfRow: number | null;
   existingCompanyId: string | null;
   existingContactId: string | null;
-  company: { name: string; industry: string | null; website: string | null; domain: string | null; phone: string | null; address_line_1: string | null };
+  company: { name: string; industry: string | null; website: string | null; domain: string | null; phone: string | null; address_line_1: string | null; field_sources: CompanyFieldSources };
   contact: { first_name: string | null; last_name: string | null; full_name: string | null; email: string | null; phone: string | null; job_title: string | null } | null;
   deal: { name: string; stage: string; amount: number | null; currency: string; owner_label: string | null; last_call_at: string | null; follow_up_at: string | null } | null;
   activities: Array<{ kind: 'note' | 'call'; body: string; occurred_at: string | null; source_column: string }>;
@@ -186,6 +187,8 @@ export function normalizeCrmImportRows(
     if (!companyName) issues.push('Company name is required.');
     const websiteText = mapped(source, mapping, 'companyWebsite');
     const website = normalizeWebsiteUrl(websiteText);
+    const workbookIndustry = optional(mapped(source, mapping, 'companyIndustry'));
+    const classifiedIndustry = classifyMissingIndustry(companyName, workbookIndustry);
     if (websiteText && !website) issues.push('Company website must use http or https.');
     const emailText = mapped(source, mapping, 'contactEmail').toLowerCase();
     if (emailText && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailText)) issues.push('Contact email is invalid.');
@@ -242,11 +245,19 @@ export function normalizeCrmImportRows(
       existingContactId: emailText ? contactIds.get(emailText) ?? null : null,
       company: {
         name: companyName,
-        industry: optional(mapped(source, mapping, 'companyIndustry')),
+        industry: classifiedIndustry.value,
         website,
         domain: normalizeDomain(mapped(source, mapping, 'companyDomain')),
         phone: optional(mapped(source, mapping, 'companyPhone')),
         address_line_1: optional(mapped(source, mapping, 'companyAddress')),
+        field_sources: {
+          name: 'workbook',
+          ...(classifiedIndustry.value ? { industry: workbookIndustry ? 'workbook' : 'classifier' } : {}),
+          ...(website ? { website: 'workbook' } : {}),
+          ...(mapped(source, mapping, 'companyDomain') ? { domain: 'workbook' } : {}),
+          ...(mapped(source, mapping, 'companyPhone') ? { phone: 'workbook' } : {}),
+          ...(mapped(source, mapping, 'companyAddress') ? { address_line_1: 'workbook' } : {}),
+        },
       },
       contact: hasContact ? {
         first_name: optional(firstName), last_name: optional(lastName), full_name: optional(fullName),

@@ -9,6 +9,20 @@ const mapping: CrmImportMapping = {
 };
 
 describe('Sales CRM import preview', () => {
+  it('classifies a missing industry while preserving workbook provenance', () => {
+    const [classified] = normalizeCrmImportRows([{ Company: 'SUNLEY M&E ENGINEERING' }], {
+      companyName: 'Company',
+    }, { companies: [], contacts: [] });
+    expect(classified.company.industry).toBe('Engineering');
+    expect(classified.company.field_sources.industry).toBe('classifier');
+
+    const [supplied] = normalizeCrmImportRows([{
+      Company: 'SUNLEY M&E ENGINEERING', Industry: 'Construction',
+    }], { companyName: 'Company', companyIndustry: 'Industry' }, { companies: [], contacts: [] });
+    expect(supplied.company.industry).toBe('Construction');
+    expect(supplied.company.field_sources.industry).toBe('workbook');
+  });
+
   it('formats mapped date cells without changing ordinary numeric workbook cells', () => {
     const source: Record<string, unknown> = { 'Last Contact Date': '46293.415277777778', Employees: '46293' };
     Object.defineProperty(source, '__excelDateSystem', { value: '1900', enumerable: false });

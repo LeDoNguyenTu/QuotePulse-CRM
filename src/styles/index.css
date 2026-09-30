@@ -622,3 +622,4 @@ body {
     box-shadow: 0 12px 30px rgba(16, 35, 63, 0.055);
   }
 }
+.crm-field-source { display: block; margin-top: 0.2rem; color: #64748b; font-size: 0.72rem; font-weight: 600; }

@@ -4,6 +4,7 @@ import type { CrmDetailData, CrmDetailKind, CrmSourceLineage } from '../../lib/c
 import { crmRecordPath } from '../../lib/crm/salesRoutes';
 import { displayText, formatCrmDate, formatCrmMoney } from '../../lib/crm/presenters';
 import { normalizeWebsiteUrl } from '../../lib/crm/inputs';
+import { fieldSourceLabel } from '../../lib/crm/companyEnrichment';
 
 type DealContactRow = { role: string | null; contact: CrmContact | null };
 type ContactDealRow = { role: string | null; deal: CrmDeal | null };
@@ -76,7 +77,7 @@ function CompanyDetail({ workspaceId, data }: { workspaceId: string; data: CrmDe
     <header className="crm-detail-hero"><div><p className="crm-detail-kicker">Company account</p><h1>{company.name}</h1><p>{displayText(company.industry, 'Industry not classified')}</p></div><div className="crm-detail-stamp"><span>Updated</span><strong>{formatCrmDate(company.updated_at)}</strong></div></header>
     <div className="crm-detail-grid"><main className="space-y-5">
       <section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Account profile</h2><span>Core record</span></div><dl className="crm-detail-facts">
-        <Fact label="Industry" value={displayText(company.industry)} /><Fact label="Domain" value={displayText(company.domain)} />
+        <Fact label={`Industry · ${fieldSourceLabel(company.field_sources?.industry)}`} value={displayText(company.industry)} /><Fact label={`Domain · ${fieldSourceLabel(company.field_sources?.domain)}`} value={displayText(company.domain)} />
         <Fact label="Website" value={displayText(company.website)} href={normalizeWebsiteUrl(company.website)} /><Fact label="Phone" value={displayText(company.phone)} />
         <Fact label="Address" value={displayText(address)} /><Fact label="Created" value={formatCrmDate(company.created_at)} />
       </dl></section>

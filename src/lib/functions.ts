@@ -89,6 +89,13 @@ export interface EnrichResult {
   errors: string[];
 }
 
+export interface CrmCompanyEnrichmentResult {
+  ok: boolean;
+  results: Array<{ company_id: string; updated_fields: string[] }>;
+  errors: Array<{ company_id: string; error: string }>;
+  warnings?: string[];
+}
+
 export interface JobDiscoveryResult {
   ok: boolean;
   sources_checked: number;
@@ -199,6 +206,9 @@ export const functions = {
   hubspotRebuild: () => invoke<RebuildResult>('hubspot-ingest', { mode: 'rebuild' }),
 
   enrichKyc: (company_id: string) => invoke<EnrichResult>('enrich-kyc', { company_id }),
+
+  enrichCrmCompanies: (workspace_id: string, company_ids: string[]) =>
+    invoke<CrmCompanyEnrichmentResult>('enrich-crm-company', { workspace_id, company_ids }),
 
   discoverJobs: (company_id: string) =>
     invoke<JobDiscoveryResult>('discover-jobs', { company_id }),

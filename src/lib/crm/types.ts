@@ -37,6 +37,7 @@ export interface CrmCompany extends CrmAuditFields, CrmListMetadata {
   state_region: string | null;
   postal_code: string | null;
   country: string | null;
+  field_sources?: import('./companyEnrichment').CompanyFieldSources;
   contact_count?: number;
   deal_count?: number;
 }
@@ -139,7 +140,7 @@ export type CrmCompanyInput = Pick<
   | 'state_region'
   | 'postal_code'
   | 'country'
->;
+> & { field_sources?: import('./companyEnrichment').CompanyFieldSources };
 
 export type CrmContactInput = Pick<
   CrmContact,

@@ -87,3 +87,6 @@ verify_jwt = true
 
 [functions.crm-source-rows]
 verify_jwt = true
+
+[functions.enrich-crm-company]
+verify_jwt = true

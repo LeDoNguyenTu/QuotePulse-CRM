@@ -214,7 +214,7 @@ export function CrmSalesSettings() {
               <p>Understand what leaves the browser and what remains isolated to this workspace.</p>
             </div>
             <div className="crm-privacy-grid">
-              <article><strong>Excel imports</strong><p>Validated CRM rows are stored. The original workbook is not retained.</p></article>
+              <article><strong>Excel imports</strong><p>Validated CRM rows are stored in Supabase. The original workbook is archived in R2 only to preserve its layout for export.</p></article>
               <article><strong>PST extraction</strong><p>Raw PST files, message bodies, and attachment bytes stay in the browser.</p></article>
               <article><strong>Workspace boundary</strong><p>Companies, contacts, deals, campaigns, and metadata remain isolated to this workspace.</p></article>
             </div>

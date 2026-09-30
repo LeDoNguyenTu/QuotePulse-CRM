@@ -79,6 +79,8 @@ export interface CrmActivity {
   created_at: string;
   source_column?: string | null;
   source_row_number?: number | null;
+  source_import?: { id: string; database_id: string; original_filename: string } | null;
+  task?: { id: string; title: string; status: CrmTask['status']; due_at: string | null } | null;
 }
 
 export interface CrmTask {
@@ -98,6 +100,7 @@ export interface CrmTask {
   updated_by: string;
   created_at: string;
   updated_at: string;
+  activity_id?: string | null;
   company?: { id: string; name: string } | null;
   contact?: { id: string; full_name: string | null } | null;
   deal?: { id: string; name: string } | null;

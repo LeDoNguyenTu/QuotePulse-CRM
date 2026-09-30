@@ -119,7 +119,7 @@ export function crmDetailSpec(
     },
     activity: {
       table: 'crm_activities',
-      select: '*',
+      select: '*,source_import:crm_source_imports(id,database_id,original_filename)',
       workspaceId,
       foreignKey: lineageKey[kind],
       recordId,

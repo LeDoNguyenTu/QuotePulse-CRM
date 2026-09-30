@@ -33,10 +33,14 @@ function LineageRail({ lineage, total }: { lineage: CrmSourceLineage[]; total: n
 function ActivityTimeline({ activities, total }: { activities: CrmActivity[]; total: number }) {
   return <section className="crm-detail-panel crm-activity-preview">
     <div className="crm-panel-heading"><h2>Activity timeline</h2><span>{total}</span></div>
-    {activities.length ? <ol className="crm-activity-list">{activities.map((activity) => <li key={activity.id}>
-      <div><strong>{activity.kind === 'call' ? 'Call' : activity.kind === 'note' ? 'Note' : 'Task update'}</strong><time dateTime={activity.occurred_at}>{formatCrmDate(activity.occurred_at)}</time></div>
-      <p>{activity.body}</p>
-      {activity.source_column && <small>{activity.source_column}{activity.source_row_number ? ` · Source row ${activity.source_row_number}` : ''}</small>}
+    {activities.length ? <ol className="crm-activity-list">{activities.map((activity) => <li className="crm-activity-card" key={activity.id}>
+      <div className="crm-activity-card__header"><strong>{activity.kind === 'call' ? 'Call' : activity.kind === 'note' ? 'Note' : 'Task update'}</strong><time dateTime={activity.occurred_at}>{formatCrmDate(activity.occurred_at)}</time></div>
+      <p className="crm-activity-card__body">{activity.body}</p>
+      <div className="crm-activity-card__meta">
+        <span>Created by {activity.created_by}</span>
+        {activity.source_column && <span>{activity.source_import?.original_filename ?? 'Workbook'} · Row {activity.source_row_number ?? '—'} · {activity.source_column}</span>}
+        {activity.task && <span>Task: {activity.task.title} · {activity.task.status.replace('_', ' ')} · due {formatCrmDate(activity.task.due_at)}</span>}
+      </div>
     </li>)}</ol> : <p className="crm-panel-empty">No notes or calls have been recorded yet.</p>}
     <TruncationNotice shown={activities.length} total={total} />
   </section>;

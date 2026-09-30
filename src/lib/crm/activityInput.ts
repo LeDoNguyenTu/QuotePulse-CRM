@@ -1,3 +1,5 @@
+import type { ActivityDestination } from './activityExport';
+
 export interface CrmActivityInput {
   kind: 'note' | 'call';
   body: string;
@@ -8,6 +10,7 @@ export interface CrmActivityInput {
   taskReminderAt?: string;
   taskAssigneeId?: string;
   createTask?: boolean;
+  destination?: ActivityDestination;
 }
 
 export function localDateTimeValue(date = new Date()): string {
@@ -35,5 +38,6 @@ export function normalizeActivityInput(input: CrmActivityInput):
     taskTitle, taskDueAt: taskDue?.toISOString(), taskReminderAt: taskReminder?.toISOString(),
     taskAssigneeId: input.taskAssigneeId || undefined,
     createTask: Boolean(input.createTask),
+    destination: input.destination ?? null,
   } };
 }

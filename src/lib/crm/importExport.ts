@@ -1,4 +1,5 @@
 import type { CrmImportMapping } from './importPreview';
+import { combineWorkbookActivities } from './activityExport';
 
 type Entity = Record<string, unknown> | null;
 export interface CrmExportRow {
@@ -6,7 +7,7 @@ export interface CrmExportRow {
   company: Entity;
   contact: Entity;
   deal: Entity;
-  activities: Array<{ source_column: string | null; body: string; occurred_at: string | null }>;
+  activities: Array<{ id: string; source_column: string | null; body: string; occurred_at: string | null }>;
 }
 
 const FIELD_PATHS: Partial<Record<keyof CrmImportMapping, ['company' | 'contact' | 'deal', string]>> = {
@@ -23,8 +24,8 @@ const FIELD_PATHS: Partial<Record<keyof CrmImportMapping, ['company' | 'contact'
 
 function valueForRole(row: CrmExportRow, role: keyof CrmImportMapping, header: string): string | null {
   if (role === 'callLog' || role === 'remarks' || role === 'comments') {
-    const activity = [...row.activities].reverse().find((item) => item.source_column === header);
-    return activity?.body ?? null;
+    const activities = row.activities.filter((item) => item.source_column === header);
+    return activities.length ? combineWorkbookActivities(activities) : null;
   }
   if (role === 'activityOccurredAt') {
     // The import intentionally keeps unparseable source dates in the workbook only.

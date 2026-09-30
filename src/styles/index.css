@@ -414,10 +414,11 @@ body {
 .crm-activity-fields label, .crm-activity-composer > label { display: grid; gap: 0.35rem; font-size: 0.875rem; font-weight: 600; }
 .crm-activity-check { display: flex !important; grid-template-columns: none; align-items: center; gap: 0.5rem !important; font-weight: 500 !important; }
 .crm-activity-list { display: grid; gap: 0.85rem; }
-.crm-activity-list li { border-left: 2px solid #0f766e; padding-left: 0.85rem; }
-.crm-activity-list li > div { display: flex; justify-content: space-between; gap: 1rem; }
-.crm-activity-list time, .crm-activity-list small { color: #64748b; font-size: 0.75rem; }
-.crm-activity-list p { margin: 0.35rem 0; white-space: pre-wrap; color: #334155; }
+.crm-activity-card { min-width: 0; border: 1px solid #dbe4ee; border-left: 3px solid #0f766e; border-radius: 0.65rem; background: #fbfdff; padding: 0.85rem; }
+.crm-activity-card__header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.45rem 1rem; }
+.crm-activity-card__header time { color: #64748b; font-size: 0.75rem; }
+.crm-activity-card__body { margin: 0.55rem 0; overflow-wrap: anywhere; white-space: pre-wrap; color: #334155; }
+.crm-activity-card__meta { display: flex; flex-wrap: wrap; gap: 0.3rem 0.85rem; color: #64748b; font-size: 0.72rem; overflow-wrap: anywhere; }
 .crm-task-list { display: grid; gap: 0.65rem; }
 .crm-task-list article { display: grid; grid-template-columns: minmax(0, 1fr) auto 10rem; gap: 1rem; align-items: center; border-bottom: 1px solid #e2e8f0; padding: 0.75rem 0; }
 .crm-task-list article:last-child { border-bottom: 0; }

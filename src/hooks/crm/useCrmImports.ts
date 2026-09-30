@@ -108,7 +108,7 @@ export function useCrmImports(workspaceId: string) {
       queryRows('crm_companies', 'id,name,industry,website,domain,phone,address_line_1', ids('company_id')),
       queryRows('crm_contacts', 'id,first_name,last_name,full_name,email,phone,job_title', ids('contact_id')),
       queryRows('crm_deals', 'id,name,stage,amount,currency,last_call_at,follow_up_at', ids('deal_id')),
-      (supabase as any).from('crm_activities').select('source_row_number,source_column,body,occurred_at')
+      (supabase as any).from('crm_activities').select('id,source_row_number,source_column,body,occurred_at')
         .eq('workspace_id', workspaceId).eq('source_import_id', sourceImport.id).order('created_at'),
     ]);
     if (activityResult.error) throw activityResult.error;

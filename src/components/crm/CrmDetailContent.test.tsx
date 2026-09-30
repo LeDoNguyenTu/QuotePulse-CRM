@@ -37,6 +37,8 @@ describe('Sales CRM detail content', () => {
               contact_id: 'contact-1', kind: 'call', body: 'Called buyer and scheduled follow-up.',
               occurred_at: '2026-09-27T08:30:00Z', created_by: 'user-1', created_at: '2026-09-27T08:31:00Z',
               source_column: 'Call Log', source_row_number: 2,
+              source_import: { id: 'source-1', database_id: 'CRM-ABC123DEF456', original_filename: 'accounts.xlsx' },
+              task: { id: 'task-1', title: 'Send proposal', status: 'open', due_at: '2026-10-03T00:00:00Z' },
             }],
             activityCount: 1,
           }}
@@ -52,6 +54,9 @@ describe('Sales CRM detail content', () => {
     expect(html).toContain('Row 14');
     expect(html).toContain('Called buyer and scheduled follow-up.');
     expect(html).toContain('Call Log');
+    expect(html).toContain('Created by user-1');
+    expect(html).toContain('accounts.xlsx');
+    expect(html).toContain('Task: Send proposal');
   });
 
   it('does not render imported unsafe website protocols as links', () => {

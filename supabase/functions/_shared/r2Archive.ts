@@ -56,6 +56,15 @@ export function workspaceArchiveManifestKey(ownerId: string, workspaceId: string
   return `owners/${ownerId}/workspaces/${workspaceId}/archives/${archiveId}/manifest.v1${suffix}.json.gz`;
 }
 
+export function crmWorkbookTemplateKey(ownerId: string, workspaceId: string, checksum: string, filename: string): string {
+  return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${encodeURIComponent(checksum)}/${encodeURIComponent(filename)}.json.gz`;
+}
+
+export function assertCrmWorkbookPointer(key: string, ownerId: string, workspaceId: string): void {
+  const prefix = `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/`;
+  if (!key.startsWith(prefix)) throw new Error('CRM workbook pointer is outside the authenticated user scope.');
+}
+
 export function assertWorkspaceArchivePointer(key: string, ownerId: string, workspaceId: string, archiveId: string): void {
   const prefix = `owners/${ownerId}/workspaces/${workspaceId}/archives/${archiveId}/`;
   if (!key.startsWith(prefix)) throw new Error('Workspace archive pointer is outside the authenticated owner scope.');

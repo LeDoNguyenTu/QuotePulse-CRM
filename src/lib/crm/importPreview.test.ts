@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeCrmImportRows, suggestCrmImportMapping, validateCrmImportMapping, type CrmImportMapping } from './importPreview';
+import { buildCrmHeaderMatches, normalizeCrmImportRows, suggestCrmImportMapping, unconfirmedSemanticHeaders, validateCrmImportMapping, type CrmImportMapping } from './importPreview';
 
 const mapping: CrmImportMapping = {
   companyName: 'Account', contactEmail: 'Email', contactFirstName: 'First',
@@ -9,10 +9,45 @@ const mapping: CrmImportMapping = {
 };
 
 describe('Sales CRM import preview', () => {
+  it('reviews source columns in workbook order and requires confirmation for semantic matches', () => {
+    const matches = buildCrmHeaderMatches([
+      'Company Name', 'Name', 'Contact Number', 'Designation',
+      'Last Contact Date', 'Call Log', 'Remarks', 'Comment',
+    ]);
+
+    expect(matches.map(({ header, role, confidence }) => ({ header, role, confidence }))).toEqual([
+      { header: 'Company Name', role: 'companyName', confidence: 'exact' },
+      { header: 'Name', role: 'contactFullName', confidence: 'semantic' },
+      { header: 'Contact Number', role: 'contactPhone', confidence: 'semantic' },
+      { header: 'Designation', role: 'contactJobTitle', confidence: 'semantic' },
+      { header: 'Last Contact Date', role: 'activityOccurredAt', confidence: 'semantic' },
+      { header: 'Call Log', role: 'callLog', confidence: 'exact' },
+      { header: 'Remarks', role: 'remarks', confidence: 'exact' },
+      { header: 'Comment', role: 'comments', confidence: 'semantic' },
+    ]);
+    expect(matches.some((match) => match.group === 'Deal')).toBe(false);
+    expect(matches.filter((match) => match.requiresConfirmation).map((match) => match.header)).toEqual([
+      'Name', 'Contact Number', 'Designation', 'Last Contact Date', 'Comment',
+    ]);
+  });
+
+  it('keeps unknown workbook columns as source-only fields instead of inventing CRM columns', () => {
+    expect(buildCrmHeaderMatches(['Company Name', 'Customer Tier'])).toEqual([
+      expect.objectContaining({ header: 'Company Name', role: 'companyName' }),
+      expect.objectContaining({ header: 'Customer Tier', role: null, confidence: 'source-only' }),
+    ]);
+  });
+
+  it('blocks only unconfirmed semantic matches', () => {
+    const matches = buildCrmHeaderMatches(['Company Name', 'Name', 'Call Log']);
+    expect(unconfirmedSemanticHeaders(matches, new Set())).toEqual(['Name']);
+    expect(unconfirmedSemanticHeaders(matches, new Set(['Name']))).toEqual([]);
+  });
+
   it('suggests mappings for the real leads workbook activity columns', () => {
     expect(suggestCrmImportMapping(['Last Contact Date', 'Follow-up Date', 'Call Log', 'Company Name', 'Name', 'Remarks', 'Comment'])).toMatchObject({
       companyName: 'Company Name', contactFullName: 'Name', activityOccurredAt: 'Last Contact Date',
-      lastCallAt: 'Last Contact Date', followUpAt: 'Follow-up Date', callLog: 'Call Log', remarks: 'Remarks', comments: 'Comment',
+      followUpAt: 'Follow-up Date', callLog: 'Call Log', remarks: 'Remarks', comments: 'Comment',
     });
   });
 
@@ -26,7 +61,7 @@ describe('Sales CRM import preview', () => {
       companyAddress: 'Address', contactFullName: 'Name', contactEmail: 'Email Address',
       contactPhone: 'Contact Number', contactJobTitle: 'Designation', dealName: 'Deal Name',
       dealStage: 'Deal Stage', dealAmount: 'Deal Value', dealOwner: 'Owner',
-      lastCallAt: 'Last Contact Date', followUpAt: 'Follow-up Date', callLog: 'Call Log',
+      activityOccurredAt: 'Last Contact Date', followUpAt: 'Follow-up Date', callLog: 'Call Log',
       remarks: 'Remarks', comments: 'Comments',
     });
   });
@@ -86,7 +121,7 @@ describe('Sales CRM import preview', () => {
     expect(rows[1].duplicateOfRow).toBe(2);
   });
 
-  it('reports invalid amounts, dates, and empty company names without throwing', () => {
+  it('reports invalid amounts and empty company names without throwing', () => {
     const [row] = normalizeCrmImportRows([
       { Account: '', Email: 'not-an-email', Opportunity: 'Bad', Value: '-2', Currency: 'xx', 'Follow Up': 'not-a-date' },
     ], mapping, { companies: [], contacts: [] });
@@ -96,8 +131,19 @@ describe('Sales CRM import preview', () => {
       'Contact email is invalid.',
       'Deal amount cannot be negative.',
       'Currency must use a three-letter code.',
-      'Follow-up date is invalid.',
     ]));
+    expect(row.warnings).toContain('Follow-up date could not be tracked; the original workbook value will be preserved.');
+  });
+
+  it('keeps rows importable when a user-entered date cannot be parsed', () => {
+    const [row] = normalizeCrmImportRows([
+      { Account: 'Acme', 'Last Contact': 'late September-ish', 'Call Log': 'Left voicemail' },
+    ], { companyName: 'Account', activityOccurredAt: 'Last Contact', callLog: 'Call Log' }, { companies: [], contacts: [] });
+
+    expect(row.valid).toBe(true);
+    expect(row.issues).toEqual([]);
+    expect(row.warnings).toContain('Activity date could not be tracked; the original workbook value will be preserved.');
+    expect(row.activities[0]).toMatchObject({ body: 'Left voicemail', occurred_at: null });
   });
 
   it('never anchors a valid duplicate to an invalid row that will not be committed', () => {

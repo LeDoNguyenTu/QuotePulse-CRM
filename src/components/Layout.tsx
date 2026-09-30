@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useOptionalActiveWorkspace } from '../hooks/useWorkspaces';
 import { workspaceNavigation } from '../lib/workspaceNavigation';
+import { WorkspaceBrand } from './WorkspaceBrand';
 
 const legacyFallbackNavigation = [
   { to: '/', label: 'Dashboard', end: true },
@@ -32,9 +33,7 @@ export function Layout({
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-950 text-sm font-semibold text-white">
-                QP
-              </span>
+              <WorkspaceBrand kind={isSales ? 'sales_crm' : 'legacy'} compact />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-950">QuotePulse</p>
                 <p className="truncate text-xs text-slate-500">

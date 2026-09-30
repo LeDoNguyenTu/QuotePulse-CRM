@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { workspaceLandingPath, type Workspace } from '../lib/workspaces';
 import { ErrorState, Spinner } from '../components/ui';
+import { WorkspaceBrand } from '../components/WorkspaceBrand';
 
 export interface WorkspaceSelectorViewProps {
   workspaces: Workspace[];
@@ -13,12 +14,10 @@ const WORKSPACE_DETAILS = {
   legacy: {
     description: 'Historical HubSpot workflows, uploaded files, templates, and archive status.',
     action: 'Open legacy workspace',
-    marker: 'QP',
   },
   sales_crm: {
     description: 'Excel-driven sales workspace for companies, contacts, deals, tasks, and campaigns.',
     action: 'Open Sales CRM',
-    marker: 'SC',
   },
 } as const;
 
@@ -79,9 +78,7 @@ export function WorkspaceSelectorView({
                   to={workspaceLandingPath(workspace)}
                   className={`workspace-choice workspace-choice--${workspace.kind} group`}
                 >
-                  <span className="workspace-choice__marker" aria-hidden="true">
-                    {details.marker}
-                  </span>
+                  <WorkspaceBrand kind={workspace.kind} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-xl font-semibold text-slate-950">
                       {workspace.name}

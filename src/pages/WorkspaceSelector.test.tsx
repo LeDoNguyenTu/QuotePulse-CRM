@@ -32,6 +32,10 @@ describe('workspace selector', () => {
     expect(html).toContain('href="/w/sales-id/sales"');
     expect(html).toContain('Historical HubSpot workflows');
     expect(html).toContain('Excel-driven sales workspace');
+    expect(html).toContain('alt="Innocom Technologies Pte Ltd"');
+    expect(html).toContain('alt="R Systems Singapore Pte Ltd"');
+    expect(html).toContain('src="/brands/innocom-technologies.png"');
+    expect(html).toContain('src="/brands/r-systems.png"');
   });
 
   it('gives a user with no memberships a recovery action', () => {

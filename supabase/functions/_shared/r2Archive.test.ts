@@ -10,6 +10,8 @@ import {
   verifyArchivePayload,
   workspaceArchiveManifestKey,
   workspaceArchiveObjectKey,
+  crmWorkbookTemplateKey,
+  assertCrmWorkbookPointer,
 } from './r2Archive.ts';
 
 describe('R2 cold archive keys and verification', () => {
@@ -43,6 +45,15 @@ describe('R2 cold archive keys and verification', () => {
     expect(workspaceArchiveManifestKey('owner-a','workspace-b','archive-c'))
       .toBe('owners/owner-a/workspaces/workspace-b/archives/archive-c/manifest.v1.json.gz');
     expect(()=>assertWorkspaceArchivePointer('owners/other/workspaces/workspace-b/archives/archive-c/manifest.v1.json.gz','owner-a','workspace-b','archive-c')).toThrow(/outside/);
+  });
+
+  it('keeps imported workbook templates inside the user and workspace scope', () => {
+    expect(crmWorkbookTemplateKey('owner-a', 'workspace-b', 'abc123', 'Leads Database.xlsx'))
+      .toBe('owners/owner-a/workspaces/workspace-b/crm-imports/abc123/Leads%20Database.xlsx.json.gz');
+    expect(() => assertCrmWorkbookPointer(
+      'owners/other/workspaces/workspace-b/crm-imports/abc/template.json.gz',
+      'owner-a', 'workspace-b',
+    )).toThrow(/outside/);
   });
 
   it('rejects an archive payload with a different checksum', async () => {

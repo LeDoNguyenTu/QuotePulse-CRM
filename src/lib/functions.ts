@@ -232,6 +232,12 @@ export const functions = {
   workspaceArchive: (body: { action: 'archive'|'restore'|'dry_run_delete'|'status'; workspace_id: string; archive_id?: string }) =>
     invoke<{ok:boolean;archive_id:string;status:string;table?:string;rows?:number;complete?:boolean;eligible?:boolean;deleted?:boolean;message?:string}>('workspace-archive', body),
 
+  storeCrmWorkbookTemplate: (body: { workspace_id: string; filename: string; mime_type: string; checksum_sha256: string; base64: string }) =>
+    invoke<{ ok: true; r2_key: string; r2_sha256: string }>('crm-workbook-template', { action: 'store', ...body }),
+
+  getCrmWorkbookTemplate: (workspace_id: string, source_import_id: string) =>
+    invoke<{ ok: true; filename: string; mime_type: string; checksum_sha256: string; base64: string }>('crm-workbook-template', { action: 'get', workspace_id, source_import_id }),
+
 };
 
 // Excel export needs the raw bytes, not JSON, so it uses a direct fetch to the

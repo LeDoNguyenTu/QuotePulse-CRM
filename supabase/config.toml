@@ -81,3 +81,6 @@ verify_jwt = false # cron-secret protected; invokes the owner-scoped archive wor
 
 [functions.workspace-archive]
 verify_jwt = true
+
+[functions.crm-workbook-template]
+verify_jwt = true

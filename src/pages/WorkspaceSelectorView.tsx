@@ -12,10 +12,14 @@ export interface WorkspaceSelectorViewProps {
 
 const WORKSPACE_DETAILS = {
   legacy: {
+    company: 'Innocom Technologies Pte Ltd',
+    category: 'Archive and outreach',
     description: 'Historical HubSpot workflows, uploaded files, templates, and archive status.',
     action: 'Open legacy workspace',
   },
   sales_crm: {
+    company: 'R Systems Singapore Pte Ltd',
+    category: 'Sales operations',
     description: 'Excel-driven sales workspace for companies, contacts, deals, tasks, and campaigns.',
     action: 'Open Sales CRM',
   },
@@ -34,16 +38,16 @@ export function WorkspaceSelectorView({
 
   return (
     <main className="workspace-selector min-h-screen px-4 py-10 sm:px-6 sm:py-16">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-10 max-w-2xl">
-          <p className="mb-3 text-sm font-semibold text-brand-700">QuotePulse</p>
+      <div className="workspace-selector__inner mx-auto max-w-6xl">
+        <header className="workspace-selector__masthead">
+          <p className="workspace-selector__wordmark"><span aria-hidden="true" />QuotePulse</p>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
             Choose your workspace
           </h1>
-          <p className="mt-3 text-base leading-7 text-slate-600">
-            Your login stays the same. Select the workspace that matches the work you are doing now.
+          <p className="workspace-selector__intro">
+            Choose the workspace for the job at hand. Your account and sign-in stay the same.
           </p>
-        </div>
+        </header>
 
         {isLoading && (
           <div className="rounded-xl border border-slate-200 bg-white p-8">
@@ -69,7 +73,7 @@ export function WorkspaceSelectorView({
         )}
 
         {!isLoading && !error && ordered.length > 0 && (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="workspace-choice-grid">
             {ordered.map((workspace) => {
               const details = WORKSPACE_DETAILS[workspace.kind];
               return (
@@ -77,16 +81,21 @@ export function WorkspaceSelectorView({
                   key={workspace.id}
                   to={workspaceLandingPath(workspace)}
                   className={`workspace-choice workspace-choice--${workspace.kind} group`}
+                  aria-label={`${details.company} workspace: ${workspace.name}`}
                 >
-                  <WorkspaceBrand kind={workspace.kind} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-xl font-semibold text-slate-950">
+                  <span className="workspace-choice__brand">
+                    <WorkspaceBrand kind={workspace.kind} />
+                    <span className="workspace-choice__company">{details.company}</span>
+                  </span>
+                  <span className="workspace-choice__content">
+                    <span className="workspace-choice__category">{details.category}</span>
+                    <span className="workspace-choice__title">
                       {workspace.name}
                     </span>
-                    <span className="mt-2 block text-sm leading-6 text-slate-600">
+                    <span className="workspace-choice__description">
                       {details.description}
                     </span>
-                    <span className="mt-6 inline-flex text-sm font-semibold text-brand-700">
+                    <span className="workspace-choice__action">
                       {details.action}
                     </span>
                   </span>

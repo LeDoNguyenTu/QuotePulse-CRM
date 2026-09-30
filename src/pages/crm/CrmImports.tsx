@@ -15,6 +15,7 @@ import {
   IMPORT_HISTORY_PAGE_SIZE, IMPORT_PREVIEW_PAGE_SIZE, autoFitImportColumnWidths,
   importColumnWidthStorageKey, mergeImportColumnWidths, paginateImportRows, parseImportColumnWidths,
 } from '../../lib/crm/importTableLayout';
+import { emptyCrmImportDraft } from '../../lib/crm/importDraft';
 import { parseUploadedWorkbook, type ParsedWorkbook } from '../../lib/uploadedFileWorkbook';
 
 async function sha256(file: File): Promise<string> {
@@ -115,9 +116,18 @@ export function CrmImports() {
   async function commit() {
     if (!file || !sheet || mappingError || pendingConfirmations.length || !validRows.length) return;
     try {
-      setResult(await api.commit.mutateAsync({ filename: file.name, mimeType: file.type || 'application/octet-stream',
+      const imported = await api.commit.mutateAsync({ filename: file.name, mimeType: file.type || 'application/octet-stream',
         sheetName: sheet.name, checksum: await sha256(file), sourceRowCount: preview.length,
-        rows: validRows, headers: sheet.headers, mapping, templateBase64: await fileBase64(file) }));
+        rows: validRows, headers: sheet.headers, mapping, templateBase64: await fileBase64(file) });
+      setResult(imported);
+      const emptyDraft = emptyCrmImportDraft();
+      setFile(emptyDraft.file);
+      setWorkbook(emptyDraft.workbook);
+      setSheetIndex(emptyDraft.sheetIndex);
+      setMapping(emptyDraft.mapping);
+      setHeaderMatches(emptyDraft.headerMatches);
+      setConfirmedHeaders(emptyDraft.confirmedHeaders);
+      setPreviewPage(emptyDraft.previewPage);
       setLocalError(null);
     } catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); }
   }
@@ -138,7 +148,7 @@ export function CrmImports() {
   return <div className="space-y-6">
     <CrmPageHeader eyebrow="Source reconciliation" title="Imports" description="Work with the workbook's own columns, confirm uncertain matches, and retain source lineage." />
     <section className="crm-ledger-intro space-y-4">
-      <CrmFilePicker accept=".xlsx,.xlsm,.csv" actionLabel="Select workbook" description="Excel or CSV · .xlsx, .xlsm, or .csv" fileName={file?.name} title="Workbook source" onSelect={(selected) => void choose(selected)} />
+      <CrmFilePicker key={file ? `${file.name}:${file.lastModified}` : 'empty'} accept=".xlsx,.xlsm,.csv" actionLabel="Select workbook" description="Excel or CSV · .xlsx, .xlsm, or .csv" fileName={file?.name} title="Workbook source" onSelect={(selected) => void choose(selected)} />
       {sheet && <>
         {workbook!.sheets.length > 1 && <label className="block max-w-sm"><span className="label">Worksheet</span><select className="input" value={sheetIndex} onChange={(event) => { const index = Number(event.target.value); setSheetIndex(index); setPreviewPage(1); resetSheetMapping(workbook!.sheets[index]?.headers ?? []); }}>{workbook!.sheets.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</select></label>}
         <div className="crm-import-source-line"><b>{file?.name}</b><span>{sheet.name}</span><span>{sheet.rows.length.toLocaleString()} rows</span></div>

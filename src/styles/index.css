@@ -97,11 +97,15 @@ body {
   object-fit: contain;
 }
 
-/* The supplied R Systems mark includes generous transparent canvas. Scale that
-   canvas to the frame so the complete visible mark is legible without cropping. */
+/* Keep the complete R Systems mark visible. The selector gets a modest lift to
+   balance the source artwork's lower visual weight without touching the frame. */
 .workspace-brand--sales_crm img {
-  transform: scale(1.18);
+  transform: none;
   transform-origin: center;
+}
+
+.workspace-brand--sales_crm:not(.workspace-brand--compact) img {
+  transform: translateY(-0.2rem) scale(1.08);
 }
 
 .workspace-brand--legacy {
@@ -195,6 +199,32 @@ body {
 .crm-table td { border-bottom: 1px solid #e2e8f0; padding: 0.9rem 1rem; color: #334155; vertical-align: top; }
 .crm-table tbody tr:last-child td { border-bottom: 0; }
 .crm-table tbody tr:hover { background: #f8fafc; }
+.crm-import-preview-table { min-width: 100%; table-layout: fixed; }
+.crm-import-preview-table td { overflow-wrap: anywhere; }
+.crm-resizable-heading { position: relative; padding-right: 1.5rem !important; }
+.crm-column-resizer {
+  position: absolute;
+  top: 0;
+  right: -0.35rem;
+  z-index: 2;
+  width: 0.7rem;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+.crm-column-resizer::after {
+  position: absolute;
+  top: 22%;
+  right: 0.3rem;
+  width: 2px;
+  height: 56%;
+  border-radius: 999px;
+  background: #cbd5e1;
+  content: '';
+}
+.crm-column-resizer:hover::after,
+.crm-column-resizer:focus-visible::after { background: var(--workspace-blue); }
+.crm-column-resizer:focus-visible { outline: 2px solid var(--workspace-blue); outline-offset: -2px; }
 .crm-secondary { margin-top: 0.2rem; color: #64748b; font-size: 0.75rem; }
 .crm-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .crm-text-action { color: #1d4ed8; font-size: 0.8rem; font-weight: 700; }
@@ -457,6 +487,7 @@ body {
   .crm-table td { display: grid; grid-template-columns: minmax(5.5rem, 0.4fr) minmax(0, 1fr); gap: 0.75rem; border-bottom: 1px solid #e2e8f0; padding: 0.65rem 0; }
   .crm-table td::before { content: attr(data-label); color: #64748b; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
   .crm-table td:last-child { border-bottom: 0; }
+  .crm-column-resizer { display: none; }
 }
 
 @layer components {

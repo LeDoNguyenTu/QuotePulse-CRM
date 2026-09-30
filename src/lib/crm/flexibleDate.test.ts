@@ -35,6 +35,7 @@ describe('flexible CRM dates', () => {
       endIso: '2026-09-30T00:00:00.000Z',
     });
     expect(formatCrmDateForDisplay('28 Sep 2026 to 30 Sep 2026', '1900')).toBe('28 Sep 2026 – 30 Sep 2026');
+    expect(formatCrmDateForDisplay('28 Sep 2026 9:30 am to 30 Sep 2026', '1900')).toBe('28 Sep 2026, 9:30 am – 30 Sep 2026');
     expect(formatCrmDateForDisplay('2026-09-28 2026-09-28', '1900')).toBe('28 Sep 2026');
   });
 

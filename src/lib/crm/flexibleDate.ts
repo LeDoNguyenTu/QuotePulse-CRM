@@ -2,7 +2,7 @@ export type ExcelDateSystem = '1900' | '1904';
 
 export type ParsedCrmDate =
   | { kind: 'single'; startIso: string; endIso: null; hasTime: boolean }
-  | { kind: 'range'; startIso: string; endIso: string; hasTime: boolean }
+  | { kind: 'range'; startIso: string; endIso: string; hasTime: boolean; startHasTime: boolean; endHasTime: boolean }
   | { kind: 'invalid'; startIso: null; endIso: null; hasTime: false };
 
 type DateParts = {
@@ -111,7 +111,7 @@ export function parseCrmDate(value: unknown, dateSystem: ExcelDateSystem = '1900
     }
     return {
       kind: 'range', startIso: start.date.toISOString(), endIso: end.date.toISOString(),
-      hasTime: start.hasTime || end.hasTime,
+      hasTime: start.hasTime || end.hasTime, startHasTime: start.hasTime, endHasTime: end.hasTime,
     };
   }
   const parsed = parseSingle(source, dateSystem);
@@ -133,6 +133,8 @@ export function formatCrmDateForDisplay(value: unknown, dateSystem: ExcelDateSys
   const source = String(value ?? '').trim();
   const parsed = parseCrmDate(source, dateSystem);
   if (parsed.kind === 'invalid') return source;
-  const start = displayIso(parsed.startIso, parsed.hasTime);
-  return parsed.kind === 'range' ? `${start} – ${displayIso(parsed.endIso, parsed.hasTime)}` : start;
+  if (parsed.kind === 'range') {
+    return `${displayIso(parsed.startIso, parsed.startHasTime)} – ${displayIso(parsed.endIso, parsed.endHasTime)}`;
+  }
+  return displayIso(parsed.startIso, parsed.hasTime);
 }

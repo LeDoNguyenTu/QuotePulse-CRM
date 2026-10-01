@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(
-  fileURLToPath(new URL('./index.css', import.meta.url)),
+  fileURLToPath(new URL('../src/styles/index.css', import.meta.url)),
   'utf8',
 );
 

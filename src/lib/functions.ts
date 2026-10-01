@@ -254,6 +254,12 @@ export const functions = {
   getCrmSourceRows: (body: { workspace_id: string; source_import_id: string; row_numbers: number[]; headers: string[] }) =>
     invoke<{ ok: true; rows: Array<{ row_number: number; cells: Record<string, string> }> }>('crm-source-rows', body),
 
+  storeCrmMailboxChunk: (body: { workspace_id: string; mailbox_import_id: string; chunk_index: number; messages: unknown[] }) =>
+    invoke<{ ok: true; key: string; checksum: string; count: number }>('crm-mailbox-archive', { action: 'store-chunk', ...body }),
+
+  finalizeCrmMailboxArchive: (body: { workspace_id: string; mailbox_import_id: string; message_count: number; error_count: number; chunks: Array<{ key: string; checksum: string; count: number }> }) =>
+    invoke<{ ok: true; archive: { key: string; checksum: string }; contacts_created: number }>('crm-mailbox-archive', { action: 'finalize', ...body }),
+
 };
 
 // Excel export needs the raw bytes, not JSON, so it uses a direct fetch to the

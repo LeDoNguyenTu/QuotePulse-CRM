@@ -6,6 +6,18 @@ export interface PstMessageMetadata {
   recipient_emails: string[];
   message_at: string | null;
   has_attachments: boolean;
+  sender_display_name?: string | null;
+  participant_names?: Record<string, string>;
+  body_text?: string;
+  body_preview?: string;
+}
+
+export interface PstMessageArchiveV1 {
+  format: 'crm-pst-message-archive.v1';
+  workspace_id: string;
+  mailbox_import_id: string;
+  source_filename: string;
+  messages: PstMessageMetadata[];
 }
 
 export type PstWorkerEvent =

@@ -71,6 +71,10 @@ export function CrmRecycleBin() {
       </div>
       {purge && (
         <section className="crm-detail-panel p-4">
+          <p className="font-semibold text-red-700">
+            Warning: this permanently deletes the R2 recovery snapshot before
+            its 30-day expiry. It cannot be undone.
+          </p>
           <p>
             Type <strong>DELETE PERMANENTLY {purge.label}</strong> exactly.
           </p>

@@ -15,7 +15,11 @@ export function WorkspaceBrand({ kind, compact = false }: { kind: WorkspaceKind;
   const brand = BRAND_DETAILS[kind];
   return (
     <span className={`workspace-brand workspace-brand--${kind} ${compact ? 'workspace-brand--compact' : ''}`}>
-      <img className="workspace-brand__image" src={brand.src} alt={brand.alt} />
+      <img
+        className={`workspace-brand__image ${compact ? 'workspace-brand__image--compact' : ''}`}
+        src={brand.src}
+        alt={brand.alt}
+      />
     </span>
   );
 }

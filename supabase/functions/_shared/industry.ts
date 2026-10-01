@@ -119,6 +119,17 @@ export function classifyIndustry(name: string | null | undefined): string | null
   return null;
 }
 
+/** Keep an explicit value; classify only when the field is genuinely blank. */
+export function classifyMissingIndustry(
+  name: string | null | undefined,
+  current: string | null | undefined,
+): { value: string | null; source: 'classifier' | null } {
+  const supplied = String(current ?? '').trim();
+  if (supplied) return { value: supplied, source: null };
+  const classified = classifyIndustry(name);
+  return { value: classified, source: classified ? 'classifier' : null };
+}
+
 /**
  * HubSpot's industry, mapped onto our vocabulary where it fits. When it does not,
  * HubSpot's own label is kept rather than discarded — the filter list is built from

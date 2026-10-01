@@ -46,6 +46,7 @@ export interface CrmListFilters {
   companyId?: string;
   industry?: string;
   sort?: string;
+  sourceImportId?: string;
 }
 
 const SORT_ORDERS: Record<CrmResourceName, Record<string, ResourceDefinition['order']>> = {
@@ -89,6 +90,21 @@ export function crmListSpec(
     searchColumn: definition.searchColumn,
     search: filters.search.trim(),
     order: SORT_ORDERS[resource][filters.sort ?? ''] ?? definition.order,
+    rpc: `crm_list_${resource}`,
+    rpcArgs: {
+      p_workspace_id: workspaceId,
+      p_source_import_id: filters.sourceImportId?.trim() || null,
+      p_search: filters.search.trim(),
+      ...(resource === 'companies' ? {
+        p_industry: industry || null,
+      } : {
+        p_company_id: companyId || null,
+      }),
+      ...(resource === 'deals' ? { p_status: status || null } : {}),
+      p_sort: filters.sort || (resource === 'deals' ? 'recent' : 'name_asc'),
+      p_offset: range.from,
+      p_limit: range.to - range.from + 1,
+    },
     ...(exactFilters.length ? { filters: exactFilters } : {}),
   };
 }

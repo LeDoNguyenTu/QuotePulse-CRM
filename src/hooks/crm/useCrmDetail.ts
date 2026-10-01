@@ -6,6 +6,7 @@ import {
   type CrmDetailKind,
   type CrmDetailQuery,
 } from '../../lib/crm/detailQueries';
+import type { CrmTask } from '../../lib/crm/types';
 
 async function fetchAssociation(querySpec: CrmDetailQuery): Promise<{ rows: unknown[]; count: number }> {
   let query = (supabase as any)
@@ -37,21 +38,45 @@ async function fetchCrmDetail(
     .eq('workspace_id', workspaceId)
     .eq('id', recordId)
     .maybeSingle();
-  const [primary, associations, lineage, activity] = await Promise.all([
+  const [primary, associations, lineage, activity, tasks] = await Promise.all([
     primaryPromise,
     Promise.all(spec.associations.map(fetchAssociation)),
     fetchAssociation(spec.lineage),
     fetchAssociation(spec.activity),
+    fetchAssociation(spec.tasks),
   ]);
   if (primary.error) throw primary.error;
+  const taskByActivity = new Map(
+    (tasks.rows as CrmTask[]).flatMap((task) =>
+      task.activity_id ? ([[task.activity_id, task]] as const) : [],
+    ),
+  );
+  const activities: CrmDetailData['activities'] = (
+    activity.rows as CrmDetailData['activities']
+  ).map((item) => {
+    const relatedTask = taskByActivity.get(item.id);
+    return {
+      ...item,
+      task: relatedTask
+        ? {
+            id: relatedTask.id,
+            title: relatedTask.title,
+            status: relatedTask.status,
+            due_at: relatedTask.due_at,
+          }
+        : null,
+    };
+  });
   return {
     record: primary.data ?? null,
     associations: associations.map((association) => association.rows),
     associationCounts: associations.map((association) => association.count),
     lineage: lineage.rows as CrmDetailData['lineage'],
     lineageCount: lineage.count,
-    activities: activity.rows as CrmDetailData['activities'],
+    activities,
     activityCount: activity.count,
+    tasks: tasks.rows as CrmDetailData['tasks'],
+    taskCount: tasks.count,
   };
 }
 

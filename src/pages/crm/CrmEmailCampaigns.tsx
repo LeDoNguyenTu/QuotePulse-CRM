@@ -7,14 +7,16 @@ import { ErrorState, Spinner } from '../../components/ui';
 import { useTemplates } from '../../hooks/useTemplates';
 import { useCrmIndustryOptions } from '../../hooks/crm/useCrmCompanies';
 import { useSettings } from '../../hooks/useSettings';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 const statusOrder = ['queued', 'scheduled', 'sending', 'retrying', 'sent', 'deferred', 'blocked', 'failed'];
 
 export function CrmEmailCampaigns() {
   const workspace = useActiveWorkspace();
   const [search, setSearch] = useState('');
+  const audienceSearch = useDebouncedValue(search);
   const [industry, setIndustry] = useState('');
-  const api = useCrmCampaigns(workspace.id, { search, industry });
+  const api = useCrmCampaigns(workspace.id, { search: audienceSearch, industry });
   const templates = useTemplates();
   const industryOptions = useCrmIndustryOptions(workspace.id);
   const settings = useSettings();
@@ -55,7 +57,7 @@ export function CrmEmailCampaigns() {
       cooldownSeconds: cooldown,
       contactIds: selected,
       industries: industry ? [industry] : [],
-      search,
+      search: audienceSearch,
       templateId: templateId || undefined,
       consentConfirmed: consent,
       sendAllMatching,
@@ -158,6 +160,7 @@ export function CrmEmailCampaigns() {
                 </div>
               </div>
               <div className="crm-recipient-list">
+                {api.contacts.isFetching && <p className="crm-panel-note" role="status">Updating audience…</p>}
                 {visible.length ? visible.map((contact) => (
                   <label key={contact.contact_id} className="crm-recipient-row">
                     <input

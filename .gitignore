@@ -21,6 +21,7 @@ supabase/.env
 
 # tool artifacts
 .playwright-mcp/
+.worktrees/
 
 # editor / os
 .vscode/*

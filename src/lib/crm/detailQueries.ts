@@ -16,15 +16,18 @@ export interface CrmDetailSpec {
   associations: CrmDetailQuery[];
   lineage: CrmDetailQuery;
   activity: CrmDetailQuery;
+  tasks: CrmDetailQuery;
 }
 
 export interface CrmSourceLineage {
   source_row_number: number;
   source_import: {
+    id?: string;
     database_id: string;
     original_filename: string;
     sheet_name: string | null;
     created_at: string;
+    source_metadata?: Record<string, unknown>;
   } | null;
 }
 
@@ -36,6 +39,8 @@ export interface CrmDetailData<TRecord = unknown> {
   lineageCount: number;
   activities: import('./types').CrmActivity[];
   activityCount: number;
+  tasks?: import('./types').CrmTask[];
+  taskCount?: number;
 }
 
 const primarySelect: Record<CrmDetailKind, string> = {
@@ -105,7 +110,7 @@ export function crmDetailSpec(
     associations: associations[kind],
     lineage: {
       table: 'crm_source_references',
-      select: 'source_row_number,source_import:crm_source_imports(database_id,original_filename,sheet_name,created_at)',
+      select: 'source_row_number,source_import:crm_source_imports(id,database_id,original_filename,sheet_name,created_at,source_metadata)',
       workspaceId,
       foreignKey: lineageKey[kind],
       recordId,
@@ -114,12 +119,22 @@ export function crmDetailSpec(
     },
     activity: {
       table: 'crm_activities',
-      select: '*',
+      select: '*,source_import:crm_source_imports(id,database_id,original_filename)',
       workspaceId,
       foreignKey: lineageKey[kind],
       recordId,
       order: { column: 'occurred_at', ascending: false },
       secondaryOrder: { column: 'id', ascending: false },
+      limit: 100,
+    },
+    tasks: {
+      table: 'crm_tasks',
+      select: '*,company:crm_companies(id,name),contact:crm_contacts(id,full_name),deal:crm_deals(id,name)',
+      workspaceId,
+      foreignKey: lineageKey[kind],
+      recordId,
+      order: { column: 'due_at', ascending: true },
+      secondaryOrder: { column: 'id', ascending: true },
       limit: 100,
     },
   };

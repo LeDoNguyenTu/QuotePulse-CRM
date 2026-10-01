@@ -14,39 +14,16 @@ import {
 } from '../../lib/crm/resources';
 import type { CrmPage } from '../../lib/crm/types';
 
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, '\\$&');
-}
-
 async function fetchCrmPage<T>(
   resource: CrmResourceName,
   workspaceId: string,
   filters: CrmListFilters,
 ): Promise<CrmPage<T>> {
   const spec = crmListSpec(resource, workspaceId, filters);
-  let query = (supabase as any)
-    .from(spec.table)
-    .select(spec.select, { count: 'exact' })
-    .eq('workspace_id', spec.workspaceId)
-    .range(spec.from, spec.to);
-
-  if (spec.search) {
-    query = query.ilike(spec.searchColumn, `%${escapeLikePattern(spec.search)}%`);
-  }
-  const exactFilters = 'filters' in spec ? (spec.filters ?? []) : [];
-  for (const filter of exactFilters) {
-    query = query.eq(filter.column, filter.value);
-  }
-  for (const order of spec.order) {
-    query = query.order(order.column, {
-      ascending: order.ascending,
-      ...(order.nullsFirst === undefined ? {} : { nullsFirst: order.nullsFirst }),
-    });
-  }
-
-  const { data, count, error } = await query;
+  const { data, error } = await (supabase as any).rpc(spec.rpc, spec.rpcArgs);
   if (error) throw error;
-  return { rows: (data ?? []) as T[], count: count ?? 0 };
+  const result = (data ?? []) as Array<{ row_data: T; total_count: number | string }>;
+  return { rows: result.map((item) => item.row_data), count: Number(result[0]?.total_count ?? 0) };
 }
 
 export function useCrmPage<T>({

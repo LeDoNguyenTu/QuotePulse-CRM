@@ -20,8 +20,12 @@ vi.mock('../../hooks/crm/usePstExtractor', () => ({
     state: { status: 'idle', preview: [], messageCount: 0, folders: 0, errors: 0 },
     extract: vi.fn(),
     save: { isPending: false, isSuccess: false, error: null, mutate: vi.fn() },
-    saved: { data: [], error: null },
+    saved: { data: [], error: null, isFetching: true },
   }),
+}));
+
+vi.mock('../../components/crm/CrmDeleteSourceDialog', () => ({
+  CrmDeleteSourceDialog: () => null,
 }));
 
 describe('CRM file upload controls', () => {
@@ -41,5 +45,11 @@ describe('CRM file upload controls', () => {
     expect(html).toContain('Select PST file');
     expect(html).toContain('Stays on this device');
     expect(html).toContain('crm-file-picker-input');
+  });
+
+  it('shows a quiet update state without replacing saved mailbox results', () => {
+    const html = renderToStaticMarkup(<CrmPstExtractor />);
+
+    expect(html).toContain('Updating saved messages');
   });
 });

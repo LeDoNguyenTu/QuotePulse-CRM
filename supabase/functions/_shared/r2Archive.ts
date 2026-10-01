@@ -60,6 +60,20 @@ export function crmWorkbookTemplateKey(ownerId: string, workspaceId: string, che
   return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${encodeURIComponent(checksum)}/${encodeURIComponent(filename)}.json.gz`;
 }
 
+export function crmWorkbookRowIndexKey(ownerId: string, workspaceId: string, sourceImportId: string): string {
+  return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${sourceImportId}/source-row-index.v1.json.gz`;
+}
+
+export function assertWorkbookRowIndexPointer(
+  key: string,
+  ownerId: string,
+  workspaceId: string,
+  sourceImportId: string,
+): void {
+  const expected = crmWorkbookRowIndexKey(ownerId, workspaceId, sourceImportId);
+  if (key !== expected) throw new Error('Workbook row index pointer is outside the authenticated source scope.');
+}
+
 export function assertCrmWorkbookPointer(key: string, ownerId: string, workspaceId: string): void {
   const prefix = `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/`;
   if (!key.startsWith(prefix)) throw new Error('CRM workbook pointer is outside the authenticated user scope.');
@@ -119,7 +133,7 @@ async function gunzip(value: Uint8Array): Promise<string> {
   return new Response(stream).text();
 }
 
-async function signedRequest(method: 'GET' | 'PUT', key: string, body?: Uint8Array): Promise<Response> {
+async function signedRequest(method: 'GET' | 'PUT' | 'DELETE', key: string, body?: Uint8Array): Promise<Response> {
   const config = requiredConfig();
   const now = new Date();
   const day = now.toISOString().slice(0, 10).replaceAll('-', '');
@@ -165,4 +179,9 @@ export async function getArchiveJson<T>(key: string): Promise<T> {
   const response = await signedRequest('GET', key);
   if (!response.ok) throw archiveError('read', response);
   return JSON.parse(await gunzip(new Uint8Array(await response.arrayBuffer()))) as T;
+}
+
+export async function deleteArchiveObject(key: string): Promise<void> {
+  const response = await signedRequest('DELETE', key);
+  if (!response.ok && response.status !== 404) throw archiveError('delete', response);
 }

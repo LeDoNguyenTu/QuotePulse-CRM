@@ -32,6 +32,7 @@ export function workspaceNavigation(
     { to: `${base}/email-campaigns`, label: 'Email Campaigns' },
     { to: `${base}/imports`, label: 'Imports' },
     { to: `${base}/pst-extractor`, label: 'PST Extractor' },
+    { to: `${base}/recycle-bin`, label: 'Recycle bin' },
     { to: `${base}/settings`, label: 'Settings' },
   ];
 }

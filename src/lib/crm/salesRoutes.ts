@@ -7,6 +7,7 @@ export type SalesModuleResolution =
   | 'contact-detail'
   | 'deal-detail'
   | 'imports'
+  | 'recycle-bin'
   | 'placeholder'
   | 'missing';
 
@@ -30,6 +31,7 @@ export function resolveSalesModule(
   }
   if (module === 'companies' || module === 'contacts' || module === 'deals') return module;
   if (module === 'imports') return 'imports';
+  if (module === 'recycle-bin') return 'recycle-bin';
   return PLACEHOLDER_MODULES.has(module) ? 'placeholder' : 'missing';
 }
 

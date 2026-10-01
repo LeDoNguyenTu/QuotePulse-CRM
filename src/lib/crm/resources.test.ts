@@ -14,7 +14,7 @@ describe('CRM resource query contracts', () => {
   });
 
   it('creates deterministic workspace-scoped page specifications', () => {
-    expect(crmListSpec('companies', 'workspace-a', { page: 2, search: ' Acme ' })).toEqual({
+    expect(crmListSpec('companies', 'workspace-a', { page: 2, search: ' Acme ' })).toMatchObject({
       table: 'crm_companies',
       select: '*',
       workspaceId: 'workspace-a',
@@ -26,6 +26,24 @@ describe('CRM resource query contracts', () => {
         { column: 'name', ascending: true },
         { column: 'id', ascending: true },
       ],
+      rpc: 'crm_list_companies',
+      rpcArgs: expect.objectContaining({
+        p_workspace_id: 'workspace-a',
+        p_search: 'Acme',
+        p_offset: 25,
+        p_limit: 25,
+      }),
+    });
+  });
+
+  it('passes an exact source import filter to the contained list RPC', () => {
+    expect(crmListSpec('contacts', 'workspace-a', {
+      page: 1,
+      search: '',
+      sourceImportId: 'source-1',
+    }).rpcArgs).toMatchObject({
+      p_workspace_id: 'workspace-a',
+      p_source_import_id: 'source-1',
     });
   });
 

@@ -8,7 +8,7 @@ export function useCrmActivityMutation(kind: CrmDetailKind, workspaceId: string,
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: CrmActivityInput) => {
-      const { data, error } = await (supabase as any).rpc('crm_add_activity_with_task', {
+      const { data, error } = await (supabase as any).rpc('crm_add_activity_with_destination', {
         p_workspace_id: workspaceId,
         p_target_kind: kind,
         p_target_id: recordId,
@@ -21,6 +21,9 @@ export function useCrmActivityMutation(kind: CrmDetailKind, workspaceId: string,
         p_task_due_at: input.taskDueAt ?? null,
         p_task_reminder_at: input.taskReminderAt ?? null,
         p_task_assignee_id: input.taskAssigneeId ?? null,
+        p_source_import_id: input.destination?.sourceImportId ?? null,
+        p_source_row_number: input.destination?.sourceRowNumber ?? null,
+        p_source_column: input.destination?.sourceColumn ?? null,
       });
       if (error) throw error;
       return data;

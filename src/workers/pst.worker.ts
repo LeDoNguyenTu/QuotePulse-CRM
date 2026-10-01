@@ -4,6 +4,7 @@ import { MAX_PST_BYTES, type PstMessageMetadata, type PstWorkerEvent } from '../
 import { normalizeEmail, uniqueEmails } from '../lib/pst/normalize';
 import { fingerprintPst } from '../lib/pst/fingerprint';
 import { measureNextMetadata, METADATA_LIMIT_ERROR } from '../lib/pst/limits';
+import { sanitizePstBody } from '../lib/pst/sanitize';
 
 const scope = self as DedicatedWorkerGlobalScope;
 const emit = (event: PstWorkerEvent) => scope.postMessage(event);
@@ -27,9 +28,17 @@ scope.onmessage = async (event: MessageEvent<{ file: File }>) => {
     const messageMetadata = async (message: IPSTMessage, folderPath: string): Promise<PstMessageMetadata> => {
       let recipients: unknown[] = []; try { recipients = await message.getRecipients(); } catch { errors++; }
       const recipientEmails = uniqueEmails(recipients.flatMap((recipient: any) => [recipient.smtpAddress, recipient.emailAddress]));
+      const participantNames = Object.fromEntries(recipients.flatMap((recipient: any) => {
+        const email = normalizeEmail(recipient.smtpAddress) ?? normalizeEmail(recipient.emailAddress);
+        const name = String(recipient.displayName ?? '').trim();
+        return email && name ? [[email, name.slice(0, 200)]] : [];
+      }));
       const sender = normalizeEmail(safe(() => message.senderEmailAddress, '')) ?? normalizeEmail(safe(() => message.sentRepresentingEmailAddress, ''));
+      const senderName = safe(() => message.senderName, '') || safe(() => message.sentRepresentingName, '');
       const date = safe(() => message.messageDeliveryTime, null) ?? safe(() => message.clientSubmitTime, null);
-      return { source_key: String(message.primaryNodeId), folder_path: folderPath, subject: safe(() => message.subject, '').slice(0, 1000), sender_email: sender, recipient_emails: recipientEmails, message_at: date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null, has_attachments: Boolean(safe(() => message.hasAttachments, false)) };
+      const bodyText = sanitizePstBody(safe(() => message.body, '') || safe(() => message.bodyHTML, ''));
+      if (sender && senderName) participantNames[sender] = senderName.slice(0, 200);
+      return { source_key: String(message.primaryNodeId), folder_path: folderPath, subject: safe(() => message.subject, '').slice(0, 1000), sender_email: sender, sender_display_name: senderName.slice(0, 200) || null, recipient_emails: recipientEmails, participant_names: participantNames, body_text: bodyText, body_preview: bodyText.slice(0, 500), message_at: date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : null, has_attachments: Boolean(safe(() => message.hasAttachments, false)) };
     };
     const walk = async (folder: IPSTFolder, parent = ''): Promise<void> => {
       folders++; const name = safe(() => folder.displayName, '') || '(unnamed)'; const path = `${parent}/${name}`;

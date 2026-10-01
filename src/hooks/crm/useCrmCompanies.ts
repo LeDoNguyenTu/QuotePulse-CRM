@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
+import { functions } from '../../lib/functions';
 import { crmKeys } from '../../lib/crm/queryKeys';
 import type { CrmCompany, CrmCompanyInput } from '../../lib/crm/types';
 import { collectCrmOptionPages } from '../../lib/crm/options';
@@ -7,7 +8,7 @@ import { useCrmMutations, useCrmPage } from './useCrmResource';
 
 export function useCrmCompanies(
   workspaceId: string,
-  filters: { page: number; search: string; industry: string; sort: string },
+  filters: { page: number; search: string; industry: string; sort: string; sourceImportId?: string },
 ) {
   return useCrmPage<CrmCompany>({
     resource: 'companies',
@@ -62,5 +63,13 @@ export function useCrmCompanyMutations(workspaceId: string) {
     resource: 'companies',
     workspaceId,
     queryRoot: crmKeys.companyRoot(workspaceId),
+  });
+}
+
+export function useCrmCompanyEnrichment(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (companyIds: string[]) => functions.enrichCrmCompanies(workspaceId, companyIds),
+    onSuccess: async () => queryClient.invalidateQueries({ queryKey: crmKeys.companyRoot(workspaceId) }),
   });
 }

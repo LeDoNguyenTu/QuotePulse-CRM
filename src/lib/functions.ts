@@ -89,6 +89,13 @@ export interface EnrichResult {
   errors: string[];
 }
 
+export interface CrmCompanyEnrichmentResult {
+  ok: boolean;
+  results: Array<{ company_id: string; updated_fields: string[] }>;
+  errors: Array<{ company_id: string; error: string }>;
+  warnings?: string[];
+}
+
 export interface JobDiscoveryResult {
   ok: boolean;
   sources_checked: number;
@@ -200,6 +207,9 @@ export const functions = {
 
   enrichKyc: (company_id: string) => invoke<EnrichResult>('enrich-kyc', { company_id }),
 
+  enrichCrmCompanies: (workspace_id: string, company_ids: string[]) =>
+    invoke<CrmCompanyEnrichmentResult>('enrich-crm-company', { workspace_id, company_ids }),
+
   discoverJobs: (company_id: string) =>
     invoke<JobDiscoveryResult>('discover-jobs', { company_id }),
 
@@ -235,8 +245,22 @@ export const functions = {
   storeCrmWorkbookTemplate: (body: { workspace_id: string; filename: string; mime_type: string; checksum_sha256: string; base64: string }) =>
     invoke<{ ok: true; r2_key: string; r2_sha256: string }>('crm-workbook-template', { action: 'store', ...body }),
 
+  storeCrmWorkbookRowIndex: (body: { workspace_id: string; source_import_id: string; headers: string[]; source_rows: Array<{ row_number: number; cells: Record<string, string> }> }) =>
+    invoke<{ ok: true; r2_key: string; r2_sha256: string }>('crm-workbook-template', { action: 'store-index', ...body }),
+
   getCrmWorkbookTemplate: (workspace_id: string, source_import_id: string) =>
     invoke<{ ok: true; filename: string; mime_type: string; checksum_sha256: string; base64: string }>('crm-workbook-template', { action: 'get', workspace_id, source_import_id }),
+
+  getCrmSourceRows: (body: { workspace_id: string; source_import_id: string; row_numbers: number[]; headers: string[] }) =>
+    invoke<{ ok: true; rows: Array<{ row_number: number; cells: Record<string, string> }> }>('crm-source-rows', body),
+
+  storeCrmMailboxChunk: (body: { workspace_id: string; mailbox_import_id: string; chunk_index: number; messages: unknown[] }) =>
+    invoke<{ ok: true; key: string; checksum: string; count: number }>('crm-mailbox-archive', { action: 'store-chunk', ...body }),
+
+  finalizeCrmMailboxArchive: (body: { workspace_id: string; mailbox_import_id: string; message_count: number; error_count: number; chunks: Array<{ key: string; checksum: string; count: number }> }) =>
+    invoke<{ ok: true; archive: { key: string; checksum: string }; contacts_created: number }>('crm-mailbox-archive', { action: 'finalize', ...body }),
+
+  crmRecovery: <T>(body: Record<string, unknown>) => invoke<T>('crm-recovery', body),
 
 };
 

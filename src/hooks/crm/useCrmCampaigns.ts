@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import type { CrmEmailCampaign } from '../../lib/crm/types';
 import type { CrmCampaignInput } from '../../lib/crm/campaignInput';
@@ -20,6 +20,7 @@ export function useCrmCampaigns(workspaceId: string, filters: { search: string; 
   });
   const contacts = useQuery({
     queryKey: ['crm', workspaceId, 'campaign-audience', filters],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       let query = (supabase as any).from('crm_campaign_audience').select('*', { count: 'exact' }).eq('workspace_id', workspaceId);
       if (filters.industry) query = query.eq('industry', filters.industry);

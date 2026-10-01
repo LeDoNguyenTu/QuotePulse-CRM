@@ -18,6 +18,7 @@ import { CRM_COLUMN_OPTIONS } from '../../lib/crm/tableColumns';
 import { CrmSourceBadge } from '../../components/crm/CrmSourceBadge';
 import { clearSourceFilter, sourceColumnId, sourceHeaderFromColumnId, type CrmSourceFilter } from '../../lib/crm/sourceFilters';
 import { useCrmSourceRows } from '../../hooks/crm/useCrmImports';
+import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
 
 const PAGE_SIZE = 25;
 
@@ -30,6 +31,7 @@ export function CrmDeals() {
   const [sort, setSort] = useState('recent');
   const [sourceFilter, setSourceFilter] = useState<CrmSourceFilter | null>(null);
   const [editing, setEditing] = useState<CrmDeal | null | undefined>(undefined);
+  const [deleting, setDeleting] = useState<any>(null);
   const columnOptions = useMemo(() => [
     ...CRM_COLUMN_OPTIONS.crm_deals,
     ...((sourceFilter?.type === 'workbook' && sourceFilter.rowIndexAvailable) ? (sourceFilter.headers ?? []).map((header) => ({
@@ -50,11 +52,7 @@ export function CrmDeals() {
     if (editing) mutations.update.mutate({ id: editing.id, input }, { onSuccess });
     else mutations.create.mutate(input, { onSuccess });
   };
-  const remove = (row: CrmDeal) => {
-    if (window.confirm(`Delete ${row.name}?`)) {
-      mutations.remove.mutate(row.id, { onSuccess: () => setPage((current) => pageAfterDelete(current, rows.length)) });
-    }
-  };
+  const remove = (row: CrmDeal) => setDeleting({kind:'deal',id:row.id,label:row.name});
   return (
     <div className="space-y-5">
       <CrmPageHeader eyebrow="Pipeline ledger" title="Deals" description="Commercial opportunities with clear value, stage, status, and next action." action={<button type="button" className="btn-primary" onClick={() => setEditing(null)}>Add deal</button>} />
@@ -73,6 +71,7 @@ export function CrmDeals() {
       </CrmResourceState>
       <CrmPagination page={page} pageSize={PAGE_SIZE} count={query.data?.count ?? 0} onPageChange={setPage} />
       <Modal open={editing !== undefined} onClose={closeEditor} title={editing ? 'Edit deal' : 'Add deal'} wide><DealEditor initial={editing} companies={companies.data ?? []} busy={mutations.create.isPending || mutations.update.isPending} error={mutations.create.error ?? mutations.update.error} onCancel={closeEditor} onSave={save} /></Modal>
+      <CrmDeleteSourceDialog workspaceId={workspace.id} target={deleting} onClose={()=>setDeleting(null)} onDeleted={()=>setPage((current)=>pageAfterDelete(current,rows.length))}/>
     </div>
   );
 }

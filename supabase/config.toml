@@ -93,3 +93,6 @@ verify_jwt = true
 
 [functions.crm-mailbox-archive]
 verify_jwt = true
+
+[functions.crm-recovery]
+verify_jwt = true

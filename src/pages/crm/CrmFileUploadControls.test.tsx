@@ -24,6 +24,10 @@ vi.mock('../../hooks/crm/usePstExtractor', () => ({
   }),
 }));
 
+vi.mock('../../components/crm/CrmDeleteSourceDialog', () => ({
+  CrmDeleteSourceDialog: () => null,
+}));
+
 describe('CRM file upload controls', () => {
   it('presents workbook selection as a styled, descriptive action', () => {
     const html = renderToStaticMarkup(<CrmImports />);

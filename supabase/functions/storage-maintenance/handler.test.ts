@@ -49,6 +49,7 @@ function dependencies(overrides: Record<string, unknown> = {}) {
       .mockResolvedValueOnce({ deals_archived: 2, generic_attachments_archived: 1, warnings: [] }),
     completeOwnerAttempt: vi.fn().mockResolvedValue(undefined),
     recordRun: vi.fn().mockResolvedValue(undefined),
+    purgeExpiredRecovery: vi.fn().mockResolvedValue(2),
     now: () => new Date('2026-08-22T12:15:00Z'),
     databaseLimitBytes: 500_000_000,
     ...overrides,
@@ -62,7 +63,8 @@ describe('storage maintenance handler', () => {
       new Request('https://example.test/storage-maintenance', { method: 'POST' }),
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, status: 'idle', pressure: 'safe' });
+    expect(await response.json()).toMatchObject({ ok: true, status: 'idle', pressure: 'safe', recoveryPurged: 2 });
+    expect(deps.purgeExpiredRecovery).toHaveBeenCalledWith(25);
     expect(deps.listOwners).not.toHaveBeenCalled();
     expect(deps.archiveOwner).not.toHaveBeenCalled();
   });

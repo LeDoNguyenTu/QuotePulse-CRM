@@ -5,12 +5,14 @@ import { ErrorState } from '../../components/ui';
 import { usePstExtractor } from '../../hooks/crm/usePstExtractor';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
+import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
 
 export function CrmPstExtractor() {
   const workspace = useActiveWorkspace();
   const [search, setSearch] = useState('');
   const settledSearch = useDebouncedValue(search);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<any>(null);
   const api = usePstExtractor(workspace.id, settledSearch);
   const preview = api.state.preview;
 
@@ -32,8 +34,9 @@ export function CrmPstExtractor() {
         <p className="text-xs text-slate-500">Search covers filename, folder, subject, addresses, and a bounded text preview. Full sanitized message text is kept in checksum-verified R2 chunks; attachments and the PST file are never stored.</p>
         <input className="input" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search filename, folder, subject, or message text" />
         {api.saved.isFetching && <p className="crm-panel-note" role="status">Updating saved messages…</p>}
-        {api.saved.error ? <ErrorState error={api.saved.error} /> : <div className="crm-task-list">{api.saved.data?.map((message) => <article key={message.id}><div><strong>{message.subject || '(No subject)'}</strong><p>{message.mailbox_import?.file_name ?? 'Unknown PST'} · {message.folder_path}</p><p>{message.sender_display_name || message.sender_email || 'Unknown sender'} · {message.recipient_emails.join(', ')}</p>{message.body_preview && <small>{message.body_preview}</small>}</div><time>{message.message_at ? new Date(message.message_at).toLocaleString('en-SG') : 'Unknown date'}</time></article>)}</div>}
+        {api.saved.error ? <ErrorState error={api.saved.error} /> : <div className="crm-task-list">{api.saved.data?.map((message) => <article key={message.id}><div><strong>{message.subject || '(No subject)'}</strong><p>{message.mailbox_import?.file_name ?? 'Unknown PST'} · {message.folder_path}</p><p>{message.sender_display_name || message.sender_email || 'Unknown sender'} · {message.recipient_emails.join(', ')}</p>{message.body_preview && <small>{message.body_preview}</small>}</div><div><time>{message.message_at ? new Date(message.message_at).toLocaleString('en-SG') : 'Unknown date'}</time><div className="mt-2 flex gap-2"><button className="btn-secondary" onClick={()=>setDeleting({kind:'mail_message',id:message.id,label:message.subject||'(No subject)'})}>Delete message</button><button className="btn-danger" onClick={()=>setDeleting({kind:'pst',id:message.mailbox_import_id,label:message.mailbox_import?.file_name??'PST import'})}>Delete PST source</button></div></div></article>)}</div>}
       </div>
     </section>
+    <CrmDeleteSourceDialog workspaceId={workspace.id} target={deleting} onClose={()=>setDeleting(null)} />
   </div>;
 }

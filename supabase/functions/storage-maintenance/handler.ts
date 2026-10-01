@@ -32,6 +32,7 @@ export interface StorageMaintenanceDependencies {
   archiveOwner: (ownerId: string, limit: number) => Promise<ArchiveBatchResult>;
   completeOwnerAttempt: (ownerId: string, didWork: boolean) => Promise<void>;
   recordRun: (run: ArchiveRunRecord) => Promise<void>;
+  purgeExpiredRecovery?: (limit: number) => Promise<number>;
   now: () => Date;
   databaseLimitBytes: number;
 }
@@ -70,6 +71,12 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
     }
 
     const now = dependencies.now();
+    let recoveryPurged = 0;
+    try {
+      recoveryPurged = await dependencies.purgeExpiredRecovery?.(25) ?? 0;
+    } catch {
+      // The purge dependency records each failure as retryable; storage pressure work can continue.
+    }
     let databaseBytes: number;
     try {
       databaseBytes = await dependencies.databaseBytes();
@@ -84,6 +91,7 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
         pressure: policy.pressure,
         databaseBytes,
         limitBytes: dependencies.databaseLimitBytes,
+        recoveryPurged,
       });
     }
 
@@ -101,6 +109,7 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
         pressure: policy.pressure,
         databaseBytes,
         limitBytes: dependencies.databaseLimitBytes,
+        recoveryPurged,
       });
     }
 
@@ -174,6 +183,7 @@ export function createStorageMaintenanceHandler(dependencies: StorageMaintenance
       genericAttachmentsArchived,
       warnings,
       error: failures.length ? failures.join('; ') : undefined,
+      recoveryPurged,
     };
     return json(payload, failures.length ? 500 : 200);
   };

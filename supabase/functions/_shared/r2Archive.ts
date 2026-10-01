@@ -133,7 +133,7 @@ async function gunzip(value: Uint8Array): Promise<string> {
   return new Response(stream).text();
 }
 
-async function signedRequest(method: 'GET' | 'PUT', key: string, body?: Uint8Array): Promise<Response> {
+async function signedRequest(method: 'GET' | 'PUT' | 'DELETE', key: string, body?: Uint8Array): Promise<Response> {
   const config = requiredConfig();
   const now = new Date();
   const day = now.toISOString().slice(0, 10).replaceAll('-', '');
@@ -179,4 +179,9 @@ export async function getArchiveJson<T>(key: string): Promise<T> {
   const response = await signedRequest('GET', key);
   if (!response.ok) throw archiveError('read', response);
   return JSON.parse(await gunzip(new Uint8Array(await response.arrayBuffer()))) as T;
+}
+
+export async function deleteArchiveObject(key: string): Promise<void> {
+  const response = await signedRequest('DELETE', key);
+  if (!response.ok && response.status !== 404) throw archiveError('delete', response);
 }

@@ -17,6 +17,7 @@ import { CRM_COLUMN_OPTIONS } from '../../lib/crm/tableColumns';
 import { CrmSourceBadge } from '../../components/crm/CrmSourceBadge';
 import { clearSourceFilter, sourceColumnId, sourceHeaderFromColumnId, type CrmSourceFilter } from '../../lib/crm/sourceFilters';
 import { useCrmSourceRows } from '../../hooks/crm/useCrmImports';
+import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
 import { fieldSourceLabel, normalizeCompanyIds, type CompanyFieldSources } from '../../lib/crm/companyEnrichment';
 
 const PAGE_SIZE = 25;
@@ -29,6 +30,7 @@ export function CrmCompanies() {
   const [sort, setSort] = useState('name_asc');
   const [sourceFilter, setSourceFilter] = useState<CrmSourceFilter | null>(null);
   const [editing, setEditing] = useState<CrmCompany | null | undefined>(undefined);
+  const [deleting, setDeleting] = useState<any>(null);
   const columnOptions = useMemo(() => [
     ...CRM_COLUMN_OPTIONS.crm_companies,
     ...((sourceFilter?.type === 'workbook' && sourceFilter.rowIndexAvailable) ? (sourceFilter.headers ?? []).map((header) => ({
@@ -55,11 +57,7 @@ export function CrmCompanies() {
       mutations.create.mutate({ ...input, field_sources }, { onSuccess });
     }
   };
-  const remove = (row: CrmCompany) => {
-    if (window.confirm(`Delete ${row.name}? Related contacts and deals will keep their records without this company.`)) {
-      mutations.remove.mutate(row.id, { onSuccess: () => setPage((current) => pageAfterDelete(current, rows.length)) });
-    }
-  };
+  const remove = (row: CrmCompany) => setDeleting({kind:'company',id:row.id,label:row.name});
   return (
     <div className="space-y-5">
       <CrmPageHeader eyebrow="Account ledger" title="Companies" description="The durable account directory for contacts, deals, and future import lineage." action={<button type="button" className="btn-primary" onClick={() => setEditing(null)}>Add company</button>} />
@@ -81,6 +79,7 @@ export function CrmCompanies() {
       </CrmResourceState>
       <CrmPagination page={page} pageSize={PAGE_SIZE} count={query.data?.count ?? 0} onPageChange={setPage} />
       <Modal open={editing !== undefined} onClose={closeEditor} title={editing ? 'Edit company' : 'Add company'} wide><CompanyEditor initial={editing} busy={mutations.create.isPending || mutations.update.isPending} error={mutations.create.error ?? mutations.update.error} onCancel={closeEditor} onSave={save} /></Modal>
+      <CrmDeleteSourceDialog workspaceId={workspace.id} target={deleting} onClose={()=>setDeleting(null)} onDeleted={()=>setPage((current)=>pageAfterDelete(current,rows.length))}/>
     </div>
   );
 }

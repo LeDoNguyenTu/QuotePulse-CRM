@@ -13,6 +13,7 @@ vi.mock('./crm/CrmRecordDetailPage', () => ({ CrmRecordDetailPage: () => <div />
 vi.mock('./crm/CrmTasks', () => ({ CrmTasks: () => <div /> }));
 vi.mock('./crm/CrmEmailCampaigns', () => ({ CrmEmailCampaigns: () => <div /> }));
 vi.mock('./crm/CrmPstExtractor', () => ({ CrmPstExtractor: () => <div /> }));
+vi.mock('./crm/CrmRecycleBin', () => ({ CrmRecycleBin: () => <div /> }));
 
 vi.mock('../hooks/useWorkspaces', () => ({
   useActiveWorkspace: () => ({ id: 'sales-id', name: 'Sales CRM', kind: 'sales_crm', role: 'owner' }),

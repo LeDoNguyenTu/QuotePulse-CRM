@@ -16,6 +16,7 @@ import {
   importColumnWidthStorageKey, mergeImportColumnWidths, paginateImportRows, parseImportColumnWidths,
 } from '../../lib/crm/importTableLayout';
 import { emptyCrmImportDraft } from '../../lib/crm/importDraft';
+import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
 import { parseUploadedWorkbook, type ParsedWorkbook } from '../../lib/uploadedFileWorkbook';
 
 async function sha256(file: File): Promise<string> {
@@ -46,6 +47,7 @@ export function CrmImports() {
   const [savedColumnWidths, setSavedColumnWidths] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.commit.mutateAsync>> | null>(null);
+  const [deletingSource, setDeletingSource] = useState<any>(null);
   const sheet = workbook?.sheets[sheetIndex] ?? null;
   const preview = useMemo(() => sheet
     ? normalizeCrmImportRows(sheet.rows, mapping, api.indexes.data ?? { companies: [], contacts: [] })
@@ -188,6 +190,7 @@ export function CrmImports() {
     </section>
     {(localError || api.indexes.error) && <ErrorState error={localError ?? api.indexes.error} />}
     {result && <section className="border-l-4 border-emerald-600 bg-emerald-50 p-5"><p className="font-semibold">Import {result.database_id} complete</p><p className="mt-1 text-sm">{result.created_companies} companies, {result.created_contacts} contacts, {result.created_deals} deals, and {result.created_activities} activities created.</p></section>}
-    <section><h2 className="mb-3 text-lg font-semibold">Import history</h2>{api.history.isLoading ? <Spinner /> : <><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Database ID</th><th>Source</th><th>Sheet</th><th>Rows</th><th>Imported</th><th>Workbook</th></tr></thead><tbody>{visibleHistory.map((item: any) => { const exportable = item.source_metadata?.format === 'source-preserving-crm-import-v2'; return <tr key={item.id}><td className="font-semibold">{item.database_id}</td><td>{item.original_filename}</td><td>{item.sheet_name ?? '—'}</td><td>{item.row_count}</td><td>{new Date(item.created_at).toLocaleDateString('en-SG')}</td><td><button className="btn-secondary" disabled={!exportable || api.exportImport.isPending} title={exportable ? 'Export with current CRM values in the original workbook layout' : 'This older import has no preserved workbook template'} onClick={() => void exportWorkbook(item)}>{api.exportImport.isPending ? 'Preparing…' : 'Export workbook'}</button></td></tr>; })}</tbody></table></div><CrmPagination page={historyPage} pageSize={IMPORT_HISTORY_PAGE_SIZE} count={importHistory.length} onPageChange={setHistoryPage} /></>}</section>
+    <section><h2 className="mb-3 text-lg font-semibold">Import history</h2>{api.history.isLoading ? <Spinner /> : <><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Database ID</th><th>Source</th><th>Sheet</th><th>Rows</th><th>Imported</th><th>Workbook</th></tr></thead><tbody>{visibleHistory.map((item: any) => { const exportable = ['source-preserving-crm-import-v2','source-preserving-crm-import-v3'].includes(item.source_metadata?.format); return <tr key={item.id}><td className="font-semibold">{item.database_id}</td><td>{item.original_filename}</td><td>{item.sheet_name ?? '—'}</td><td>{item.row_count}</td><td>{new Date(item.created_at).toLocaleDateString('en-SG')}</td><td><div className="flex gap-2"><button className="btn-secondary" disabled={!exportable || api.exportImport.isPending} title={exportable ? 'Export with current CRM values in the original workbook layout' : 'This older import has no preserved workbook template'} onClick={() => void exportWorkbook(item)}>{api.exportImport.isPending ? 'Preparing…' : 'Export workbook'}</button><button className="btn-danger" onClick={()=>setDeletingSource({kind:'workbook',id:item.id,label:item.original_filename})}>Delete source</button></div></td></tr>; })}</tbody></table></div><CrmPagination page={historyPage} pageSize={IMPORT_HISTORY_PAGE_SIZE} count={importHistory.length} onPageChange={setHistoryPage} /></>}</section>
+    <CrmDeleteSourceDialog workspaceId={workspace.id} target={deletingSource} onClose={()=>setDeletingSource(null)} />
   </div>;
 }

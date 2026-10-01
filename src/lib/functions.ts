@@ -260,6 +260,8 @@ export const functions = {
   finalizeCrmMailboxArchive: (body: { workspace_id: string; mailbox_import_id: string; message_count: number; error_count: number; chunks: Array<{ key: string; checksum: string; count: number }> }) =>
     invoke<{ ok: true; archive: { key: string; checksum: string }; contacts_created: number }>('crm-mailbox-archive', { action: 'finalize', ...body }),
 
+  crmRecovery: <T>(body: Record<string, unknown>) => invoke<T>('crm-recovery', body),
+
 };
 
 // Excel export needs the raw bytes, not JSON, so it uses a direct fetch to the

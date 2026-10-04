@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CrmColumnPicker, useCrmColumns } from '../../components/crm/CrmColumnPicker';
 import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
+import { CrmExportDialog } from '../../components/crm/CrmExportDialog';
 import { CrmPagination } from '../../components/crm/CrmPagination';
 import { CrmFilterBar, CrmPageHeader, CrmResourceState, CrmRowActions } from '../../components/crm/CrmPageChrome';
 import { CrmSourceBadge } from '../../components/crm/CrmSourceBadge';
@@ -13,6 +14,7 @@ import { useCrmDeals, useCrmDealMutations } from '../../hooks/crm/useCrmDeals';
 import { useCrmSourceRows } from '../../hooks/crm/useCrmImports';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { pageAfterDelete } from '../../lib/crm/pagination';
+import { selectPageRows, toggleSelectedRow } from '../../lib/crm/exportSelection';
 import { canDeleteCrmRecords } from '../../lib/crm/permissions';
 import { displayText, formatCrmDate, formatCrmMoney } from '../../lib/crm/presenters';
 import { crmRecordPath } from '../../lib/crm/salesRoutes';
@@ -21,6 +23,10 @@ import { CRM_COLUMN_OPTIONS } from '../../lib/crm/tableColumns';
 import type { CrmDeal, CrmDealInput } from '../../lib/crm/types';
 
 const PAGE_SIZE = 25;
+const DEAL_EXPORT_COLUMNS = new Set([
+  'name', 'company', 'stage', 'status', 'amount', 'follow_up_at', 'call_outcome',
+  'appointment_status', 'currency', 'owner_user_id', 'last_call_at', 'created_at', 'updated_at',
+]);
 
 export function CrmDeals() {
   const workspace = useActiveWorkspace();
@@ -32,6 +38,7 @@ export function CrmDeals() {
   const [sourceFilter, setSourceFilter] = useState<CrmSourceFilter | null>(null);
   const [editing, setEditing] = useState<CrmDeal | null | undefined>(undefined);
   const [deleting, setDeleting] = useState<any>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const columnOptions = useMemo(() => [
     ...CRM_COLUMN_OPTIONS.crm_deals,
     ...((sourceFilter?.type === 'workbook' && sourceFilter.rowIndexAvailable)
@@ -39,6 +46,7 @@ export function CrmDeals() {
       : []),
   ], [sourceFilter]);
   const visibleColumns = useCrmColumns('crm_deals', columnOptions, sourceFilter?.id);
+  const exportOptions = CRM_COLUMN_OPTIONS.crm_deals.filter((option) => DEAL_EXPORT_COLUMNS.has(option.id));
   const shows = (column: string) => visibleColumns.includes(column);
   const query = useCrmDeals(workspace.id, { page, search, status, companyId, sort, sourceImportId: sourceFilter?.id });
   const rows = query.data?.rows ?? [];
@@ -56,7 +64,7 @@ export function CrmDeals() {
 
   return (
     <div className="space-y-5">
-      <CrmPageHeader eyebrow="Pipeline ledger" title="Deals" description="Commercial opportunities with independent deal stage, call outcome, appointment status, and next action." action={<button type="button" className="btn-primary" onClick={() => setEditing(null)}>Add deal</button>} />
+      <CrmPageHeader eyebrow="Pipeline ledger" title="Deals" description="Commercial opportunities with independent deal stage, call outcome, appointment status, and next action." action={<div className="flex flex-wrap gap-2"><CrmExportDialog workspaceId={workspace.id} entity="deals" options={exportOptions} defaultColumns={visibleColumns} selectedIds={selectedIds} filters={{ search, status, companyId, sourceImportId: sourceFilter?.id }} /><button type="button" className="btn-primary" onClick={() => setEditing(null)}>Add deal</button></div>} />
       <CrmFilterBar search={search} placeholder="Search deals" onSearchChange={(value) => { setSearch(value); setPage(1); }}>
         <CrmColumnPicker table="crm_deals" options={columnOptions} sourceId={sourceFilter?.id} />
         <label><span className="sr-only">Status</span><select className="input min-w-36" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All statuses</option><option value="open">Open</option><option value="on_hold">On hold</option><option value="won">Won</option><option value="lost">Lost</option></select></label>
@@ -69,15 +77,17 @@ export function CrmDeals() {
         <div className="crm-table-wrap">
           <table className="crm-table">
             <thead><tr>
+              <th><input type="checkbox" aria-label="Select all deals on this page" checked={rows.length > 0 && rows.every((row) => selectedIds.has(row.id))} onChange={() => setSelectedIds((current) => selectPageRows(current, rows.map((row) => row.id)))} /></th>
               {shows('name') && <th>Deal</th>}{shows('company') && <th>Company</th>}{shows('stage') && <th>Deal stage</th>}{shows('status') && <th>Status</th>}{shows('amount') && <th>Value</th>}{shows('follow_up_at') && <th>Follow up</th>}{shows('call_outcome') && <th>Call outcome</th>}{shows('appointment_status') && <th>Appointment status</th>}{shows('currency') && <th>Currency</th>}{shows('owner_user_id') && <th>Owner ID</th>}{shows('last_call_at') && <th>Last call</th>}{shows('created_at') && <th>Created</th>}{shows('updated_at') && <th>Updated</th>}{shows('source') && <th>Source</th>}{shows('task_count') && <th>Tasks</th>}{sourceHeaders.map((header) => <th key={header}>{header}</th>)}<th><span className="sr-only">Actions</span></th>
             </tr></thead>
             <tbody>{rows.map((row) => <tr key={row.id}>
+              <td data-label="Select"><input type="checkbox" aria-label={`Select ${row.name}`} checked={selectedIds.has(row.id)} onChange={() => setSelectedIds((current) => toggleSelectedRow(current, row.id))} /></td>
               {shows('name') && <td data-label="Deal"><Link className="crm-record-link font-semibold" to={crmRecordPath(workspace.id, 'deal', row.id)}>{row.name}</Link></td>}{shows('company') && <td data-label="Company">{displayText(row.company?.name)}</td>}{shows('stage') && <td data-label="Deal stage">{row.stage}</td>}{shows('status') && <td data-label="Status"><span className={`crm-status crm-status--${row.status}`}>{row.status.replace('_', ' ')}</span></td>}{shows('amount') && <td data-label="Value" className="tabular-nums">{formatCrmMoney(row.amount, row.currency)}</td>}{shows('follow_up_at') && <td data-label="Follow up" className="tabular-nums">{formatCrmDate(row.follow_up_at)}</td>}{shows('call_outcome') && <td data-label="Call outcome">{displayText(row.call_outcome)}</td>}{shows('appointment_status') && <td data-label="Appointment status">{displayText(row.appointment_status)}</td>}{shows('currency') && <td data-label="Currency">{row.currency}</td>}{shows('owner_user_id') && <td data-label="Owner ID">{displayText(row.owner_user_id)}</td>}{shows('last_call_at') && <td data-label="Last call" className="tabular-nums">{formatCrmDate(row.last_call_at)}</td>}{shows('created_at') && <td data-label="Created">{formatCrmDate(row.created_at)}</td>}{shows('updated_at') && <td data-label="Updated">{formatCrmDate(row.updated_at)}</td>}{shows('source') && <td data-label="Source"><CrmSourceBadge source={row.primary_source} count={row.source_count} onSelect={(source) => { setSourceFilter(source); setPage(1); }} /></td>}{shows('task_count') && <td data-label="Tasks">{row.task_count ?? '—'}</td>}{sourceHeaders.map((header) => <td data-label={header} key={header}>{displayText(sourceRows.data?.get(row.source_row_number ?? -1)?.[header])}</td>)}<td data-label="Actions"><CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} /></td>
             </tr>)}</tbody>
           </table>
         </div>
       </CrmResourceState>
-      <CrmPagination page={page} pageSize={PAGE_SIZE} count={query.data?.count ?? 0} onPageChange={setPage} />
+      <CrmPagination page={page} pageSize={PAGE_SIZE} count={query.data?.count ?? 0} onPageChange={(next) => { setPage(next); setSelectedIds(new Set()); }} />
       <Modal open={editing !== undefined} onClose={closeEditor} title={editing ? 'Edit deal' : 'Add deal'} wide><DealEditor initial={editing} companies={companies.data ?? []} busy={mutations.create.isPending || mutations.update.isPending} error={mutations.create.error ?? mutations.update.error} onCancel={closeEditor} onSave={save} /></Modal>
       <CrmDeleteSourceDialog workspaceId={workspace.id} target={deleting} onClose={() => setDeleting(null)} onDeleted={() => setPage((current) => pageAfterDelete(current, rows.length))} />
     </div>

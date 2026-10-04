@@ -9,6 +9,7 @@ import {
 } from '../../components/crm/ContactLifecycleControls';
 import { CrmColumnPicker, useCrmColumns } from '../../components/crm/CrmColumnPicker';
 import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
+import { CrmExportDialog } from '../../components/crm/CrmExportDialog';
 import { CrmPagination } from '../../components/crm/CrmPagination';
 import {
   CrmFilterBar,
@@ -27,6 +28,7 @@ import {
 import { useCrmSourceRows } from '../../hooks/crm/useCrmImports';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { outdatedContactIds } from '../../lib/crm/contactLifecycle';
+import { selectPageRows, toggleSelectedRow } from '../../lib/crm/exportSelection';
 import { pageAfterDelete } from '../../lib/crm/pagination';
 import { canDeleteCrmRecords } from '../../lib/crm/permissions';
 import { displayText, formatCrmDate } from '../../lib/crm/presenters';
@@ -41,6 +43,10 @@ import { CRM_COLUMN_OPTIONS } from '../../lib/crm/tableColumns';
 import type { CrmContact, CrmContactInput } from '../../lib/crm/types';
 
 const PAGE_SIZE = 25;
+const CONTACT_EXPORT_COLUMNS = new Set([
+  'full_name', 'company', 'job_title', 'email', 'phone', 'record_state', 'is_hidden',
+  'duplicate_review', 'first_name', 'last_name', 'created_at', 'updated_at',
+]);
 
 export function CrmContacts() {
   const workspace = useActiveWorkspace();
@@ -66,6 +72,7 @@ export function CrmContacts() {
       : []),
   ], [sourceFilter]);
   const visibleColumns = useCrmColumns('crm_contacts', columnOptions, sourceFilter?.id);
+  const exportOptions = CRM_COLUMN_OPTIONS.crm_contacts.filter((option) => CONTACT_EXPORT_COLUMNS.has(option.id));
   const shows = (column: string) => visibleColumns.includes(column);
   const query = useCrmContacts(workspace.id, {
     page, search, companyId, contactState, contactVisibility, duplicateReview, sort,
@@ -114,19 +121,8 @@ export function CrmContacts() {
   const updateLifecycle = (row: CrmContact, changes: ContactLifecycleChange) => {
     lifecycle.update.mutate({ id: row.id, changes });
   };
-  const toggleSelected = (id: string) => setSelectedIds((current) => {
-    const next = new Set(current);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    return next;
-  });
-  const togglePage = () => setSelectedIds((current) => {
-    const pageIds = rows.map((row) => row.id);
-    const allSelected = pageIds.length > 0 && pageIds.every((id) => current.has(id));
-    const next = new Set(current);
-    pageIds.forEach((id) => allSelected ? next.delete(id) : next.add(id));
-    return next;
-  });
+  const toggleSelected = (id: string) => setSelectedIds((current) => toggleSelectedRow(current, id));
+  const togglePage = () => setSelectedIds((current) => selectPageRows(current, rows.map((row) => row.id)));
   const hideOutdated = () => {
     if (hideCount < 1) return;
     const scope = selectedIds.size > 0 ? 'selected' : 'filtered';
@@ -153,6 +149,7 @@ export function CrmContacts() {
         description="Customer identities, roles, verification state, and working relationships to company accounts."
         action={(
           <div className="flex flex-wrap gap-2">
+            <CrmExportDialog workspaceId={workspace.id} entity="contacts" options={exportOptions} defaultColumns={visibleColumns} selectedIds={selectedIds} filters={{ search, companyId, contactState, contactVisibility, duplicateReview, sourceImportId: sourceFilter?.id }} />
             <button
               type="button"
               className="btn-secondary"

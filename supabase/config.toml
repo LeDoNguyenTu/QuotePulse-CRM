@@ -61,6 +61,9 @@ verify_jwt = false
 [functions.export-xlsx]
 verify_jwt = true
 
+[functions.export-crm-records]
+verify_jwt = true
+
 [functions.uploaded-file-merge]
 verify_jwt = true
 

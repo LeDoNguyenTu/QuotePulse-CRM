@@ -224,6 +224,7 @@ export interface EmailSend {
   to_email: string;
   subject: string | null;
   body_rendered: string | null;
+  body_html_rendered: string | null;
   status: SendStatus;
   provider_message_id: string | null;
   provider_url: string | null;

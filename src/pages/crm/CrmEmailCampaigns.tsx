@@ -23,6 +23,7 @@ export function CrmEmailCampaigns() {
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [bodyHtml, setBodyHtml] = useState<string | null>(null);
   const [provider, setProvider] = useState<'microsoft_graph' | 'brevo'>(settings.data?.email_provider ?? 'microsoft_graph');
   const [cooldown, setCooldown] = useState(60);
   const [selected, setSelected] = useState<string[]>([]);
@@ -126,6 +127,9 @@ export function CrmEmailCampaigns() {
                       if (template) {
                         setSubject(template.subject);
                         setBody(template.body);
+                        setBodyHtml(template.body_format === 'html' ? template.body_html : null);
+                      } else {
+                        setBodyHtml(null);
                       }
                     }}
                   >
@@ -149,6 +153,7 @@ export function CrmEmailCampaigns() {
                 />
                 <small>Personalization fields are filled when each queued message is prepared.</small>
               </label>
+              {bodyHtml && <div className="crm-field"><span>HTML preview</span><iframe title="Campaign HTML preview" sandbox="" className="h-96 w-full rounded-md border border-slate-200 bg-white" srcDoc={bodyHtml} /></div>}
             </section>
 
             <section className="crm-form-section" aria-labelledby="campaign-recipients-heading">

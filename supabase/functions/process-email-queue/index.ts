@@ -28,6 +28,12 @@ function renderTemplate(text: string, vars: Record<string, string | null>) {
   return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) => vars[key] || `{{${key}}}`);
 }
 
+function appendHtmlUnsubscribe(html: string, unsubscribeUrl: string | null) {
+  if (!unsubscribeUrl) return html;
+  const safeUrl = unsubscribeUrl.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  return `${html}<p style="font-size:12px;color:#64748b">To stop receiving these messages, <a href="${safeUrl}">unsubscribe</a>.</p>`;
+}
+
 Deno.serve(async (request) => {
   const preflight = handleOptions(request);
   if (preflight) return preflight;
@@ -61,16 +67,20 @@ Deno.serve(async (request) => {
       const vars = await resolveVars(admin, ownerId, row.company_id, row.to_email, row.recipient_snapshot);
       const subject = renderTemplate(row.subject ?? '', vars);
       const bodyText = renderTemplate(row.body_rendered ?? '', vars);
+      const unsubscribeUrl = bodyText.match(/https?:\/\/[^\s<>"']+\/unsubscribe\?token=[a-f0-9]+/i)?.[0] ?? null;
+      const bodyHtml = row.body_html_rendered
+        ? appendHtmlUnsubscribe(renderTemplate(row.body_html_rendered, vars), unsubscribeUrl)
+        : null;
       const provider = (row.provider ?? settings.email_provider ?? 'microsoft_graph') as EmailProvider;
       if (await isSuppressed(admin, ownerId, row.to_email)) {
         await finish(admin, row, { status: 'blocked', error_message: 'Recipient unsubscribed or is suppressed.' }); result.blocked++; continue;
       }
       const providerResult = await sendWithProvider(provider, settings, tokenByOwner, ownerId, {
-        toEmail: row.to_email, subject, bodyText, senderEmail: settings.brevo_sender_email,
+        toEmail: row.to_email, subject, bodyText, bodyHtml, senderEmail: settings.brevo_sender_email,
         senderName: settings.brevo_sender_name,
       });
       if (providerResult.ok) {
-        await finish(admin, row, { status: 'sent', subject, body_rendered: bodyText, sent_at: new Date().toISOString(),
+        await finish(admin, row, { status: 'sent', subject, body_rendered: bodyText, body_html_rendered: bodyHtml, sent_at: new Date().toISOString(),
           provider_message_id: providerResult.providerMessageId, error_message: null, last_error_code: null, error_details: null });
         sentByOwner.set(ownerId, sentCount + 1); result.sent++; continue;
       }

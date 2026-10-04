@@ -3,18 +3,39 @@ import { supabase } from '../../lib/supabase';
 import { functions } from '../../lib/functions';
 import { crmKeys } from '../../lib/crm/queryKeys';
 import type { CrmCompany, CrmCompanyInput } from '../../lib/crm/types';
-import { collectCrmOptionPages } from '../../lib/crm/options';
+import { collectCrmOptionPages, mergeCustomerStatusOptions } from '../../lib/crm/options';
 import { useCrmMutations, useCrmPage } from './useCrmResource';
 
 export function useCrmCompanies(
   workspaceId: string,
-  filters: { page: number; search: string; industry: string; sort: string; sourceImportId?: string },
+  filters: { page: number; search: string; industry: string; customerStatus?: string; sort: string; sourceImportId?: string },
 ) {
   return useCrmPage<CrmCompany>({
     resource: 'companies',
     workspaceId,
     filters,
     queryKey: crmKeys.companies(workspaceId, filters),
+  });
+}
+
+export function useCrmCustomerStatusOptions(workspaceId: string) {
+  return useQuery<string[]>({
+    queryKey: [...crmKeys.companyRoot(workspaceId), 'customer-status-options'],
+    queryFn: async () => {
+      const data = await collectCrmOptionPages<{ customer_status: string }>(async (from, to) => {
+        const { data: page, error } = await (supabase as any)
+          .from('crm_companies')
+          .select('customer_status')
+          .eq('workspace_id', workspaceId)
+          .not('customer_status', 'is', null)
+          .order('customer_status', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to);
+        if (error) throw error;
+        return page ?? [];
+      });
+      return mergeCustomerStatusOptions(data.map((row) => row.customer_status));
+    },
   });
 }
 

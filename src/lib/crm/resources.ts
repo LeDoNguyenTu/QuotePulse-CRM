@@ -50,6 +50,7 @@ export interface CrmListFilters {
   contactState?: string;
   contactVisibility?: string;
   duplicateReview?: string;
+  customerStatus?: string;
 }
 
 const SORT_ORDERS: Record<CrmResourceName, Record<string, ResourceDefinition['order']>> = {
@@ -83,10 +84,12 @@ export function crmListSpec(
   const contactState = filters.contactState?.trim();
   const contactVisibility = filters.contactVisibility?.trim() || 'visible';
   const duplicateReview = filters.duplicateReview?.trim();
+  const customerStatus = filters.customerStatus?.trim();
   const exactFilters = [
     ...(resource === 'deals' && status ? [{ column: 'status', value: status }] : []),
     ...(resource !== 'companies' && companyId ? [{ column: 'company_id', value: companyId }] : []),
     ...(resource === 'companies' && industry ? [{ column: 'industry', value: industry }] : []),
+    ...(resource === 'companies' && customerStatus ? [{ column: 'customer_status', value: customerStatus }] : []),
   ];
   return {
     table: definition.table,
@@ -103,6 +106,7 @@ export function crmListSpec(
       p_search: filters.search.trim(),
       ...(resource === 'companies' ? {
         p_industry: industry || null,
+        p_customer_status: customerStatus || null,
       } : {
         p_company_id: companyId || null,
       }),

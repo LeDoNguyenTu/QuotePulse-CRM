@@ -8,6 +8,7 @@ export const CRM_COLUMN_OPTIONS = {
   crm_companies: [
     { id: 'name', label: 'Company', group: 'main' },
     { id: 'industry', label: 'Industry', group: 'main' },
+    { id: 'customer_status', label: 'Customer status', group: 'main' },
     { id: 'location', label: 'Location', group: 'main' },
     { id: 'phone', label: 'Phone', group: 'main' },
     { id: 'website', label: 'Website', group: 'main' },
@@ -24,6 +25,10 @@ export const CRM_COLUMN_OPTIONS = {
     { id: 'contact_count', label: 'Contacts', group: 'source' },
     { id: 'deal_count', label: 'Deals', group: 'source' },
     { id: 'task_count', label: 'Tasks', group: 'source' },
+    { id: 'last_contact_at', label: 'Last contact date', group: 'main' },
+    { id: 'follow_up_at', label: 'Follow-up date', group: 'main' },
+    { id: 'last_call_outcome', label: 'Last call outcome', group: 'main' },
+    { id: 'latest_activity', label: 'Latest activity', group: 'main' },
   ],
   crm_contacts: [
     { id: 'full_name', label: 'Contact', group: 'main' },

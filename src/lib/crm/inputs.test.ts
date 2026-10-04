@@ -36,6 +36,7 @@ describe('CRM input normalization', () => {
         state_region: null,
         postal_code: '123456',
         country: 'SG',
+        customer_status: null,
       },
     });
   });
@@ -87,6 +88,11 @@ describe('CRM input normalization', () => {
     });
   });
 
+  it('accepts a trimmed standard or custom customer status', () => {
+    expect(normalizeCompanyInput({ name: 'Acme', customer_status: ' Former Maintenance Customer ' }))
+      .toMatchObject({ ok: true, value: { customer_status: 'Former Maintenance Customer' } });
+  });
+
   it('preserves valid contact lifecycle edits without allowing invalid states', () => {
     expect(normalizeContactInput({
       full_name: ' Ada ',
@@ -118,6 +124,8 @@ describe('CRM input normalization', () => {
       owner_user_id: '',
       last_call_at: '',
       follow_up_at: '',
+      call_outcome: ' Interested ',
+      appointment_status: ' Tentative ',
     })).toEqual({
       ok: true,
       value: {
@@ -130,6 +138,8 @@ describe('CRM input normalization', () => {
         owner_user_id: null,
         last_call_at: null,
         follow_up_at: null,
+        call_outcome: 'Interested',
+        appointment_status: 'Tentative',
       },
     });
   });

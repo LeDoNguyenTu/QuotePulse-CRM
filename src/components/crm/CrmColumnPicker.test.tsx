@@ -45,4 +45,11 @@ describe('CRM column picker', () => {
     const ids = CRM_COLUMN_OPTIONS.crm_deals.map((item) => item.id);
     expect(ids).toEqual(expect.arrayContaining(['stage', 'call_outcome', 'appointment_status']));
   });
+
+  it('offers customer status and derived recent activity columns for companies', () => {
+    const ids = CRM_COLUMN_OPTIONS.crm_companies.map((option) => option.id);
+    expect(ids).toEqual(expect.arrayContaining([
+      'customer_status', 'last_contact_at', 'follow_up_at', 'last_call_outcome', 'latest_activity',
+    ]));
+  });
 });

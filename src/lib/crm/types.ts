@@ -42,6 +42,11 @@ export interface CrmCompany extends CrmAuditFields, CrmListMetadata {
   field_sources?: import('./companyEnrichment').CompanyFieldSources;
   contact_count?: number;
   deal_count?: number;
+  last_contact_at?: string | null;
+  follow_up_at?: string | null;
+  last_call_outcome?: string | null;
+  latest_activity_at?: string | null;
+  latest_activity_preview?: string | null;
 }
 
 export interface CrmContact extends CrmAuditFields, CrmListMetadata {

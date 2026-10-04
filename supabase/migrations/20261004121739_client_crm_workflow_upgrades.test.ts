@@ -104,4 +104,10 @@ describe('client CRM workflow upgrade migration', () => {
     expect(sql).toMatch(/update public\.crm_contacts c[\s\S]*set is_hidden = true[\s\S]*c\.workspace_id = p_workspace_id[\s\S]*c\.record_state = 'outdated'[\s\S]*not c\.is_hidden/i);
     expect(sql).toMatch(/workspace_members[\s\S]*auth\.uid\(\)/i);
   });
+
+  it('projects derived company activity summaries and customer status filtering', () => {
+    expect(sql).toMatch(/create or replace function public\.crm_list_companies[\s\S]*p_customer_status text/i);
+    expect(sql).toMatch(/'last_contact_at'[\s\S]*'follow_up_at'[\s\S]*'last_call_outcome'[\s\S]*'latest_activity_at'[\s\S]*'latest_activity_preview'/i);
+    expect(sql).toMatch(/crm_activities[\s\S]*occurred_at[\s\S]*crm_tasks[\s\S]*due_at[\s\S]*crm_deals[\s\S]*follow_up_at/i);
+  });
 });

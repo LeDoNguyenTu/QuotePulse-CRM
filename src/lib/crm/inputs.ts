@@ -59,6 +59,7 @@ export function normalizeCompanyInput(
       state_region: optionalText(input.state_region),
       postal_code: optionalText(input.postal_code),
       country: optionalText(input.country),
+      customer_status: optionalText(input.customer_status),
     },
   };
 }
@@ -134,6 +135,8 @@ export function normalizeDealInput(
       owner_user_id: optionalText(input.owner_user_id),
       last_call_at: optionalText(input.last_call_at),
       follow_up_at: optionalText(input.follow_up_at),
+      call_outcome: optionalText(input.call_outcome),
+      appointment_status: optionalText(input.appointment_status),
     },
   };
 }

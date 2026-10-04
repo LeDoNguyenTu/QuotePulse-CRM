@@ -91,6 +91,19 @@ describe('CRM resource query contracts', () => {
     });
   });
 
+  it('passes the customer status filter separately from industry', () => {
+    expect(crmListSpec('companies', 'workspace-a', {
+      page: 1,
+      search: '',
+      industry: 'Engineering',
+      customerStatus: 'Maintenance Customer',
+    }).rpcArgs).toMatchObject({
+      p_workspace_id: 'workspace-a',
+      p_industry: 'Engineering',
+      p_customer_status: 'Maintenance Customer',
+    });
+  });
+
   it('passes contact lifecycle and visibility filters to the workspace-scoped RPC', () => {
     expect(crmListSpec('contacts', 'workspace-a', {
       page: 1,

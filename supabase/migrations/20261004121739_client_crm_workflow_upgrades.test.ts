@@ -110,4 +110,11 @@ describe('client CRM workflow upgrade migration', () => {
     expect(sql).toMatch(/'last_contact_at'[\s\S]*'follow_up_at'[\s\S]*'last_call_outcome'[\s\S]*'latest_activity_at'[\s\S]*'latest_activity_preview'/i);
     expect(sql).toMatch(/crm_activities[\s\S]*occurred_at[\s\S]*crm_tasks[\s\S]*due_at[\s\S]*crm_deals[\s\S]*follow_up_at/i);
   });
+
+  it('updates only editable activity fields while preserving creation audit identity', () => {
+    expect(sql).toMatch(/create or replace function public\.crm_update_activity/i);
+    expect(sql).toMatch(/update public\.crm_activities[\s\S]*body = btrim\(p_body\)[\s\S]*occurred_at = p_occurred_at[\s\S]*call_outcome[\s\S]*updated_by = auth\.uid\(\)/i);
+    expect(sql).not.toMatch(/crm_update_activity[\s\S]*created_by\s*=/i);
+    expect(sql).not.toMatch(/crm_update_activity[\s\S]*created_at\s*=/i);
+  });
 });

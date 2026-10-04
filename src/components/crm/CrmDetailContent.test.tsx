@@ -35,7 +35,7 @@ describe('Sales CRM detail content', () => {
             activities: [{
               id: 'activity-1', workspace_id: 'workspace-1', company_id: 'company-1', deal_id: null,
               contact_id: 'contact-1', kind: 'call', body: 'Called buyer and scheduled follow-up.',
-              occurred_at: '2026-09-27T08:30:00Z', call_outcome: null,
+              occurred_at: '2026-09-27T08:30:00Z', call_outcome: 'Qualified',
               created_by: 'user-1', updated_by: 'user-1', created_at: '2026-09-27T08:31:00Z', updated_at: '2026-09-27T08:31:00Z',
               source_column: 'Call Log', source_row_number: 2,
               source_import: { id: 'source-1', database_id: 'CRM-ABC123DEF456', original_filename: 'accounts.xlsx' },
@@ -43,6 +43,7 @@ describe('Sales CRM detail content', () => {
             }],
             activityCount: 1,
           }}
+          onEditActivity={async () => undefined}
         />
       </MemoryRouter>,
     );
@@ -56,6 +57,9 @@ describe('Sales CRM detail content', () => {
     expect(html).toContain('Called buyer and scheduled follow-up.');
     expect(html).toContain('Call Log');
     expect(html).toContain('Created by user-1');
+    expect(html).toContain('Qualified');
+    expect(html).toContain('Edit');
+    expect(html).toContain('Updated by user-1');
     expect(html).toContain('accounts.xlsx');
     expect(html).toContain('Task: Send proposal');
   });

@@ -942,3 +942,107 @@ $$;
 
 revoke all on function public.crm_list_companies(uuid, uuid, text, text, text, text, integer, integer) from public, anon;
 grant execute on function public.crm_list_companies(uuid, uuid, text, text, text, text, integer, integer) to authenticated;
+
+create or replace function public.crm_add_activity_with_destination(
+  p_workspace_id uuid,
+  p_target_kind text,
+  p_target_id uuid,
+  p_kind text,
+  p_body text,
+  p_occurred_at timestamptz,
+  p_update_last_call boolean default false,
+  p_create_task boolean default false,
+  p_task_title text default null,
+  p_task_due_at timestamptz default null,
+  p_task_reminder_at timestamptz default null,
+  p_task_assignee_id uuid default null,
+  p_source_import_id uuid default null,
+  p_source_row_number integer default null,
+  p_source_column text default null,
+  p_call_outcome text default null
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_result jsonb;
+  v_activity_id uuid;
+  v_activity public.crm_activities%rowtype;
+begin
+  v_result := public.crm_add_activity_with_destination(
+    p_workspace_id, p_target_kind, p_target_id, p_kind, p_body, p_occurred_at,
+    p_update_last_call, p_create_task, p_task_title, p_task_due_at,
+    p_task_reminder_at, p_task_assignee_id, p_source_import_id,
+    p_source_row_number, p_source_column
+  );
+  v_activity_id := (v_result->'activity'->>'id')::uuid;
+
+  update public.crm_activities
+  set call_outcome = case when p_kind = 'call' then nullif(btrim(p_call_outcome), '') else null end,
+      updated_by = auth.uid()
+  where workspace_id = p_workspace_id and id = v_activity_id
+  returning * into v_activity;
+
+  if p_update_last_call and p_target_kind = 'deal' and p_kind = 'call' then
+    update public.crm_deals
+    set call_outcome = nullif(btrim(p_call_outcome), ''), updated_by = auth.uid()
+    where workspace_id = p_workspace_id and id = p_target_id;
+  end if;
+  return jsonb_set(v_result, '{activity}', to_jsonb(v_activity));
+end;
+$$;
+
+revoke all on function public.crm_add_activity_with_destination(uuid, text, uuid, text, text, timestamptz, boolean, boolean, text, timestamptz, timestamptz, uuid, uuid, integer, text, text) from public, anon;
+grant execute on function public.crm_add_activity_with_destination(uuid, text, uuid, text, text, timestamptz, boolean, boolean, text, timestamptz, timestamptz, uuid, uuid, integer, text, text) to authenticated;
+
+create or replace function public.crm_update_activity(
+  p_workspace_id uuid,
+  p_activity_id uuid,
+  p_body text,
+  p_occurred_at timestamptz,
+  p_call_outcome text default null,
+  p_update_deal boolean default false
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_activity public.crm_activities%rowtype;
+begin
+  if auth.uid() is null then raise exception 'authentication required' using errcode = '28000'; end if;
+  if not exists (select 1 from public.workspace_members wm where wm.workspace_id = p_workspace_id and wm.user_id = auth.uid()) then
+    raise exception 'workspace membership required' using errcode = '42501';
+  end if;
+  if nullif(btrim(p_body), '') is null or length(btrim(p_body)) > 20000 then
+    raise exception 'invalid activity text' using errcode = '22023';
+  end if;
+  if p_occurred_at is null then raise exception 'activity date is required' using errcode = '22023'; end if;
+
+  update public.crm_activities
+  set body = btrim(p_body),
+      occurred_at = p_occurred_at,
+      call_outcome = case when kind = 'call' then nullif(btrim(p_call_outcome), '') else null end,
+      updated_by = auth.uid()
+  where workspace_id = p_workspace_id
+    and id = p_activity_id
+    and kind in ('note', 'call')
+  returning * into v_activity;
+  if v_activity.id is null then raise exception 'editable activity not found' using errcode = 'P0002'; end if;
+
+  if p_update_deal and v_activity.kind = 'call' and v_activity.deal_id is not null then
+    update public.crm_deals
+    set last_call_at = v_activity.occurred_at,
+        call_outcome = v_activity.call_outcome,
+        updated_by = auth.uid()
+    where workspace_id = p_workspace_id and id = v_activity.deal_id;
+  end if;
+  return to_jsonb(v_activity);
+end;
+$$;
+
+revoke all on function public.crm_update_activity(uuid, uuid, text, timestamptz, text, boolean) from public, anon;
+grant execute on function public.crm_update_activity(uuid, uuid, text, timestamptz, text, boolean) to authenticated;

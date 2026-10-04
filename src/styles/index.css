@@ -444,6 +444,8 @@ body {
 .crm-activity-preview { border-left: 4px solid #94a3b8; }
 .crm-activity-composer { border: 1px solid #cbd5e1; border-left: 4px solid #0f766e; background: #fff; padding: 1rem; display: grid; gap: 0.85rem; }
 .crm-activity-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.crm-activity-editor { display: grid; gap: 0.75rem; border-radius: 0.7rem; background: #f8fafc; padding: 0.85rem; }
+.crm-activity-editor > label { display: grid; gap: 0.35rem; font-size: 0.875rem; font-weight: 600; }
 .crm-activity-fields label, .crm-activity-composer > label { display: grid; gap: 0.35rem; font-size: 0.875rem; font-weight: 600; }
 .crm-activity-check { display: flex !important; grid-template-columns: none; align-items: center; gap: 0.5rem !important; font-weight: 500 !important; }
 .crm-activity-list { display: grid; gap: 0.85rem; }

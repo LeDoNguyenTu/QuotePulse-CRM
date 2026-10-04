@@ -33,7 +33,7 @@ describe('client CRM workflow upgrade migration', () => {
     expect(sql).toMatch(/crm_source_imports[\s\S]*workbook_identity text/i);
     expect(sql).toMatch(/create table public\.crm_source_revisions/i);
     expect(sql).toMatch(/stable_row_fingerprint text/i);
-    expect(sql).toMatch(/unique index crm_source_references_stable_row_entity_uidx[\s\S]*workspace_id,\s*source_import_id,\s*stable_row_fingerprint[\s\S]*case/i);
+    expect(sql).toMatch(/unique index crm_source_references_stable_row_entity_uidx[\s\S]*workspace_id,\s*source_revision_id,\s*stable_row_fingerprint[\s\S]*case/i);
   });
 
   it('changes only the default for new short database IDs and keeps legacy IDs valid', () => {
@@ -65,5 +65,30 @@ describe('client CRM workflow upgrade migration', () => {
     expect(sql).toMatch(/grant select, insert, delete on table public\.crm_source_revisions to authenticated/i);
     expect(sql).not.toMatch(/create policy crm_source_revisions_update/i);
     expect(sql).toMatch(/grant all on table public\.crm_source_revisions to service_role/i);
+  });
+
+  it('reconciles repeated workbook revisions instead of creating a new database', () => {
+    expect(sql).toMatch(/crm_commit_import_with_activities[\s\S]*p_workbook_identity text/i);
+    expect(sql).toMatch(/from public\.crm_source_imports[\s\S]*workbook_identity = p_workbook_identity/i);
+    expect(sql).toMatch(/insert into public\.crm_source_revisions/i);
+    expect(sql).toMatch(/source_revision_id uuid/i);
+    expect(sql).toMatch(/stable_row_fingerprint/i);
+    expect(sql).toMatch(/'updated_rows'/i);
+    expect(sql).toMatch(/'unchanged_rows'/i);
+    expect(sql).toMatch(/'duplicate_review_rows'/i);
+  });
+
+  it('flags older name-and-phone duplicates without automatically hiding them', () => {
+    expect(sql).toMatch(/record_state = case[\s\S]*when record_state = 'verified' then record_state[\s\S]*else 'outdated'/i);
+    expect(sql).toMatch(/duplicate_review_of = v_contact_id/i);
+    expect(sql).not.toMatch(/set[\s\S]{0,120}is_hidden = true/i);
+  });
+
+  it('updates source-linked records and reconciles activities by stable row identity', () => {
+    expect(sql).toMatch(/update public\.crm_companies/i);
+    expect(sql).toMatch(/update public\.crm_contacts/i);
+    expect(sql).toMatch(/update public\.crm_deals/i);
+    expect(sql).toMatch(/update public\.crm_activities[\s\S]*stable_row_fingerprint/i);
+    expect(sql).not.toMatch(/delete from public\.crm_(companies|contacts|deals)/i);
   });
 });

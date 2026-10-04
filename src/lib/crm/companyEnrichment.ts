@@ -3,7 +3,7 @@ import { classifyMissingIndustry as classifySharedIndustry } from '../../../supa
 export type CompanyFieldSource = 'user' | 'workbook' | 'classifier' | 'enrichment' | 'legacy';
 export type CompanyFieldSources = Partial<Record<
   'name' | 'industry' | 'website' | 'domain' | 'phone' | 'address_line_1'
-  | 'address_line_2' | 'city' | 'state_region' | 'postal_code' | 'country',
+  | 'address_line_2' | 'city' | 'state_region' | 'postal_code' | 'country' | 'customer_status',
   CompanyFieldSource
 >>;
 

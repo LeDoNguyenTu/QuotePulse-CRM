@@ -87,6 +87,22 @@ describe('CRM input normalization', () => {
     });
   });
 
+  it('preserves valid contact lifecycle edits without allowing invalid states', () => {
+    expect(normalizeContactInput({
+      full_name: ' Ada ',
+      record_state: 'verified',
+      is_hidden: true,
+      duplicate_review_of: '',
+    })).toMatchObject({
+      ok: true,
+      value: { record_state: 'verified', is_hidden: true, duplicate_review_of: null },
+    });
+    expect(normalizeContactInput({ full_name: 'Ada', record_state: 'invalid' as never })).toEqual({
+      ok: false,
+      error: 'Choose a valid contact state.',
+    });
+  });
+
   it('validates amount and normalizes deal currency', () => {
     expect(normalizeDealInput({ name: ' Renewal ', stage: ' Proposal ', amount: '-1' })).toEqual({
       ok: false,

@@ -91,6 +91,22 @@ describe('CRM resource query contracts', () => {
     });
   });
 
+  it('passes contact lifecycle and visibility filters to the workspace-scoped RPC', () => {
+    expect(crmListSpec('contacts', 'workspace-a', {
+      page: 1,
+      search: ' procurement ',
+      contactState: 'outdated',
+      contactVisibility: 'hidden',
+      duplicateReview: 'required',
+    }).rpcArgs).toMatchObject({
+      p_workspace_id: 'workspace-a',
+      p_search: 'procurement',
+      p_record_state: 'outdated',
+      p_visibility: 'hidden',
+      p_duplicate_review: true,
+    });
+  });
+
   it('combines deal company/status filters with an allow-listed value sort', () => {
     expect(crmListSpec('deals', 'workspace-a', {
       page: 1,

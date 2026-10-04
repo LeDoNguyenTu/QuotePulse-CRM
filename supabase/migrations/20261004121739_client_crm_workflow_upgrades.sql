@@ -669,3 +669,156 @@ $$;
 
 revoke all on function public.crm_commit_import_with_activities(uuid, text, text, text, integer, text, jsonb) from public, anon;
 grant execute on function public.crm_commit_import_with_activities(uuid, text, text, text, integer, text, jsonb) to authenticated;
+
+drop function if exists public.crm_list_contacts(uuid, uuid, text, uuid, text, integer, integer);
+
+create or replace function public.crm_list_contacts(
+  p_workspace_id uuid,
+  p_source_import_id uuid default null,
+  p_search text default '',
+  p_company_id uuid default null,
+  p_record_state text default null,
+  p_visibility text default 'visible',
+  p_duplicate_review boolean default null,
+  p_sort text default 'name_asc',
+  p_offset integer default 0,
+  p_limit integer default 25
+)
+returns table (row_data jsonb, total_count bigint)
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then raise exception 'authentication required' using errcode = '28000'; end if;
+  if not exists (select 1 from public.workspace_members wm where wm.workspace_id = p_workspace_id and wm.user_id = auth.uid()) then
+    raise exception 'workspace membership required' using errcode = '42501';
+  end if;
+  if p_offset < 0 or p_limit not between 1 and 100 then raise exception 'invalid page range' using errcode = '22023'; end if;
+  if p_record_state is not null and p_record_state not in ('unverified', 'verified', 'outdated') then
+    raise exception 'invalid contact state' using errcode = '22023';
+  end if;
+  if p_visibility not in ('visible', 'hidden', 'all') then
+    raise exception 'invalid contact visibility' using errcode = '22023';
+  end if;
+
+  return query
+  with filtered as (
+    select c.*
+    from public.crm_contacts c
+    left join public.crm_companies company
+      on company.workspace_id = c.workspace_id and company.id = c.company_id
+    where c.workspace_id = p_workspace_id
+      and (
+        coalesce(btrim(p_search), '') = ''
+        or position(lower(btrim(p_search)) in lower(concat_ws(' ', c.job_title, company.name, c.phone, c.email, c.full_name))) > 0
+      )
+      and (p_company_id is null or c.company_id = p_company_id)
+      and (p_record_state is null or c.record_state = p_record_state)
+      and (
+        p_visibility = 'all'
+        or (p_visibility = 'hidden' and c.is_hidden)
+        or (p_visibility = 'visible' and not c.is_hidden)
+      )
+      and (
+        p_duplicate_review is null
+        or (p_duplicate_review = true and c.duplicate_review_of is not null)
+        or (p_duplicate_review = false and c.duplicate_review_of is null)
+      )
+      and (p_source_import_id is null or exists (
+        select 1 from public.crm_source_references rf
+        where rf.workspace_id = p_workspace_id and rf.source_import_id = p_source_import_id and rf.contact_id = c.id
+      ))
+  ), paged as (
+    select f.*, count(*) over () as full_count
+    from filtered f
+    order by
+      case when p_sort = 'name_desc' then lower(coalesce(f.full_name, f.email, '')) end desc,
+      case when p_sort = 'recent' then f.created_at end desc,
+      case when p_sort not in ('name_desc', 'recent') then lower(coalesce(f.full_name, f.email, '')) end asc,
+      f.id asc
+    offset p_offset limit p_limit
+  )
+  select to_jsonb(p) - 'full_count' || jsonb_build_object(
+      'company', case when company.id is null then null else jsonb_build_object('id', company.id, 'name', company.name, 'industry', company.industry) end,
+      'primary_source', src.primary_source,
+      'source_count', coalesce(src.source_count, 0),
+      'source_row_number', src.source_row_number,
+      'deal_count', (select count(*) from public.crm_deal_contacts dc where dc.workspace_id = p_workspace_id and dc.contact_id = p.id),
+      'task_count', (select count(*) from public.crm_tasks ct where ct.workspace_id = p_workspace_id and ct.contact_id = p.id)
+    ), p.full_count
+  from paged p
+  left join public.crm_companies company on company.workspace_id = p.workspace_id and company.id = p.company_id
+  left join lateral (
+    select count(distinct r.source_import_id)::integer as source_count,
+      min(r.source_row_number) filter (where r.source_import_id = p_source_import_id) as source_row_number,
+      (select jsonb_build_object(
+          'id', si.id, 'database_id', si.database_id, 'filename', si.original_filename,
+          'source_type', coalesce(si.source_metadata->>'source_type', 'workbook'),
+          'headers', coalesce(si.source_metadata->'headers', '[]'::jsonb),
+          'row_index_available', si.source_metadata ? 'row_index_r2_key'
+        )
+       from public.crm_source_references rr join public.crm_source_imports si
+         on si.workspace_id = rr.workspace_id and si.id = rr.source_import_id
+       where rr.workspace_id = p_workspace_id and rr.contact_id = p.id
+       order by (rr.source_import_id = p_source_import_id) desc, rr.created_at desc, rr.id desc limit 1) as primary_source
+    from public.crm_source_references r where r.workspace_id = p_workspace_id and r.contact_id = p.id
+  ) src on true;
+end;
+$$;
+
+revoke all on function public.crm_list_contacts(uuid, uuid, text, uuid, text, text, boolean, text, integer, integer) from public, anon;
+grant execute on function public.crm_list_contacts(uuid, uuid, text, uuid, text, text, boolean, text, integer, integer) to authenticated;
+
+create or replace function public.crm_hide_outdated_contacts(
+  p_workspace_id uuid,
+  p_contact_ids uuid[] default null,
+  p_search text default '',
+  p_company_id uuid default null,
+  p_source_import_id uuid default null,
+  p_duplicate_review boolean default null
+)
+returns integer
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_affected integer := 0;
+begin
+  if auth.uid() is null then raise exception 'authentication required' using errcode = '28000'; end if;
+  if not exists (select 1 from public.workspace_members wm where wm.workspace_id = p_workspace_id and wm.user_id = auth.uid()) then
+    raise exception 'workspace membership required' using errcode = '42501';
+  end if;
+
+  update public.crm_contacts c
+  set is_hidden = true, updated_by = auth.uid()
+  where c.workspace_id = p_workspace_id
+    and c.record_state = 'outdated'
+    and not c.is_hidden
+    and (p_contact_ids is null or c.id = any(p_contact_ids))
+    and (p_company_id is null or c.company_id = p_company_id)
+    and (
+      coalesce(btrim(p_search), '') = ''
+      or position(lower(btrim(p_search)) in lower(concat_ws(
+        ' ', c.job_title,
+        (select company.name from public.crm_companies company where company.workspace_id = c.workspace_id and company.id = c.company_id),
+        c.phone, c.email, c.full_name
+      ))) > 0
+    )
+    and (
+      p_duplicate_review is null
+      or (p_duplicate_review = true and c.duplicate_review_of is not null)
+      or (p_duplicate_review = false and c.duplicate_review_of is null)
+    )
+    and (p_source_import_id is null or exists (
+      select 1 from public.crm_source_references rf
+      where rf.workspace_id = p_workspace_id and rf.source_import_id = p_source_import_id and rf.contact_id = c.id
+    ));
+  get diagnostics v_affected = row_count;
+  return v_affected;
+end;
+$$;
+
+revoke all on function public.crm_hide_outdated_contacts(uuid, uuid[], text, uuid, uuid, boolean) from public, anon;
+grant execute on function public.crm_hide_outdated_contacts(uuid, uuid[], text, uuid, uuid, boolean) to authenticated;

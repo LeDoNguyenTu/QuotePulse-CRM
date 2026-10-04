@@ -25,7 +25,7 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<TablePreferenceKey, string[]> = {
   ],
   contacts: ['full_name', 'email', 'phone', 'role_title', 'is_primary_contact', 'source'],
   crm_companies: ['name', 'industry', 'location', 'phone', 'website', 'source'],
-  crm_contacts: ['full_name', 'company', 'job_title', 'email', 'phone', 'source'],
+  crm_contacts: ['full_name', 'company', 'job_title', 'email', 'phone', 'record_state', 'source'],
   crm_deals: ['name', 'company', 'stage', 'status', 'amount', 'follow_up_at', 'source'],
 };
 

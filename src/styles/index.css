@@ -348,6 +348,15 @@ body {
 .crm-status--on_hold { background: #fef3c7; color: #92400e; }
 .crm-status--won { background: #d1fae5; color: #065f46; }
 .crm-status--lost { background: #fee2e2; color: #991b1b; }
+.contact-state-badges { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 8rem; }
+.contact-state-badge { border-radius: 999px; background: #f1f5f9; padding: 0.18rem 0.48rem; color: #475569; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.025em; text-transform: uppercase; }
+.contact-state-badge--verified { background: #d1fae5; color: #065f46; }
+.contact-state-badge--outdated { background: #fef3c7; color: #92400e; }
+.contact-state-badge--review-required { background: #fee2e2; color: #991b1b; }
+.contact-state-badge--hidden { background: #e2e8f0; color: #334155; }
+.contact-lifecycle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.45rem; }
+.contact-lifecycle-actions button { color: #2458c7; font-size: 0.75rem; font-weight: 700; text-decoration: underline; text-underline-offset: 0.15rem; }
+.contact-lifecycle-actions button:disabled { cursor: wait; opacity: 0.5; }
 .crm-record-link { color: #0f4c81; text-decoration: none; text-underline-offset: 0.18rem; }
 .crm-record-link:hover { text-decoration: underline; }
 .crm-record-link:focus-visible { border-radius: 0.2rem; outline: 3px solid rgba(37, 99, 235, 0.3); outline-offset: 2px; }

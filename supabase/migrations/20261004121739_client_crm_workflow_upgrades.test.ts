@@ -81,7 +81,7 @@ describe('client CRM workflow upgrade migration', () => {
   it('flags older name-and-phone duplicates without automatically hiding them', () => {
     expect(sql).toMatch(/record_state = case[\s\S]*when record_state = 'verified' then record_state[\s\S]*else 'outdated'/i);
     expect(sql).toMatch(/duplicate_review_of = v_contact_id/i);
-    expect(sql).not.toMatch(/set[\s\S]{0,120}is_hidden = true/i);
+    expect(sql).not.toMatch(/duplicate_review_of = v_contact_id[\s\S]{0,180}is_hidden = true/i);
   });
 
   it('updates source-linked records and reconciles activities by stable row identity', () => {
@@ -90,5 +90,18 @@ describe('client CRM workflow upgrade migration', () => {
     expect(sql).toMatch(/update public\.crm_deals/i);
     expect(sql).toMatch(/update public\.crm_activities[\s\S]*stable_row_fingerprint/i);
     expect(sql).not.toMatch(/delete from public\.crm_(companies|contacts|deals)/i);
+  });
+
+  it('lists contacts by role and lifecycle while hiding hidden records by default', () => {
+    expect(sql).toMatch(/create or replace function public\.crm_list_contacts[\s\S]*p_record_state text[\s\S]*p_visibility text default 'visible'[\s\S]*p_duplicate_review boolean/i);
+    expect(sql).toMatch(/concat_ws\([^;]*c\.job_title[^;]*company\.name[^;]*c\.phone[^;]*c\.email[^;]*c\.full_name/i);
+    expect(sql).toMatch(/p_visibility = 'visible'[\s\S]*not c\.is_hidden/i);
+    expect(sql).toMatch(/p_duplicate_review = true[\s\S]*c\.duplicate_review_of is not null/i);
+  });
+
+  it('bulk hides only outdated visible contacts in the active workspace', () => {
+    expect(sql).toMatch(/create or replace function public\.crm_hide_outdated_contacts/i);
+    expect(sql).toMatch(/update public\.crm_contacts c[\s\S]*set is_hidden = true[\s\S]*c\.workspace_id = p_workspace_id[\s\S]*c\.record_state = 'outdated'[\s\S]*not c\.is_hidden/i);
+    expect(sql).toMatch(/workspace_members[\s\S]*auth\.uid\(\)/i);
   });
 });

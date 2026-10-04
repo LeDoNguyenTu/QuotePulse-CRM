@@ -193,12 +193,24 @@ export interface KycProfile {
   updated_at: string;
 }
 
+export interface EmailTemplateAsset {
+  original_name: string;
+  storage_path: string;
+  public_url: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+}
+
 export interface EmailTemplate {
   id: string;
   name: string;
   industry: string | null;
   subject: string;
   body: string;
+  body_format: 'plain' | 'html';
+  body_html: string | null;
+  asset_manifest: EmailTemplateAsset[];
   from_email: string | null;
   created_at: string;
   updated_at: string;

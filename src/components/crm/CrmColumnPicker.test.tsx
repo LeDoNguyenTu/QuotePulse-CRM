@@ -26,6 +26,9 @@ describe('CRM column picker', () => {
       'source',
       'deal_count',
       'task_count',
+      'record_state',
+      'is_hidden',
+      'duplicate_review',
     ]));
 
     const html = renderToStaticMarkup(
@@ -35,5 +38,11 @@ describe('CRM column picker', () => {
     expect(html).toContain('Additional columns');
     expect(html).toContain('Source &amp; relationships');
     expect(html).toContain('Search columns');
+    expect(html).toContain('column-selector__panel');
+  });
+
+  it('offers call outcome and appointment status separately from deal stage', () => {
+    const ids = CRM_COLUMN_OPTIONS.crm_deals.map((item) => item.id);
+    expect(ids).toEqual(expect.arrayContaining(['stage', 'call_outcome', 'appointment_status']));
   });
 });

@@ -33,10 +33,11 @@ describe('workspace selector', () => {
     expect(html).toContain('href="/w/sales-id/sales"');
     expect(html).toContain('Historical HubSpot workflows');
     expect(html).toContain('Excel-driven sales workspace');
-    expect(html).toContain('alt="Innocom Technologies Pte Ltd"');
-    expect(html).toContain('alt="R Systems Singapore Pte Ltd"');
-    expect(html).toContain('src="/brands/innocom-technologies.png"');
-    expect(html).toContain('src="/brands/r-systems.png"');
+    expect(html).toContain('aria-label="Archive database"');
+    expect(html).toContain('aria-label="Sales database"');
+    expect(html).not.toContain('/brands/');
+    expect(html).not.toContain('Innocom Technologies');
+    expect(html).not.toContain('R Systems Singapore');
   });
 
   it('gives a user with no memberships a recovery action', () => {
@@ -52,18 +53,19 @@ describe('workspace selector', () => {
     expect(html.match(/<h1/g)).toHaveLength(1);
     expect(html).toContain('<main');
     expect(html).toContain('Choose the workspace for the job at hand');
-    expect(html).toContain('Innocom Technologies Pte Ltd workspace');
-    expect(html).toContain('R Systems Singapore Pte Ltd workspace');
+    expect(html).toContain('QuotePulse Legacy workspace');
+    expect(html).toContain('Sales CRM workspace');
     expect(html.match(/workspace-choice__brand/g)).toHaveLength(2);
     expect(html.match(/workspace-choice__content/g)).toHaveLength(2);
-    expect(html.match(/workspace-brand__image/g)).toHaveLength(2);
+    expect(html.match(/workspace-brand__icon/g)).toHaveLength(2);
     expect(html).not.toContain('legacy-id</');
     expect(html).not.toContain('sales-id</');
   });
 
-  it('marks compact brand artwork for contained header sizing', () => {
+  it('marks the compact database icon for contained header sizing', () => {
     const html = renderToStaticMarkup(<WorkspaceBrand kind="sales_crm" compact />);
 
-    expect(html).toContain('workspace-brand__image--compact');
+    expect(html).toContain('workspace-brand__icon--compact');
+    expect(html).not.toContain('<img');
   });
 });

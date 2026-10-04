@@ -122,6 +122,23 @@ export interface CrmTask {
   deal?: { id: string; name: string } | null;
 }
 
+export interface CrmNotification {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  task_id: string | null;
+  kind: 'task_reminder';
+  status: 'unread' | 'read' | 'dismissed';
+  title: string;
+  body: string | null;
+  due_at: string | null;
+  reminder_at: string | null;
+  read_at: string | null;
+  created_by: string;
+  created_at: string;
+  task?: Pick<CrmTask, 'id' | 'company_id' | 'contact_id' | 'deal_id'> | null;
+}
+
 export interface CrmEmailCampaign extends CrmAuditFields {
   name: string;
   template_id: string | null;

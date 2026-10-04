@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
-import type { CrmTask } from '../../lib/crm/types';
+import type { CrmNotification, CrmTask } from '../../lib/crm/types';
 import { useAuth } from '../useAuth';
 import { collectCrmOptionPages } from '../../lib/crm/options';
 
-export function useCrmTasks(workspaceId: string) {
+export function useCrmTasks(workspaceId: string, options: { includeTasks?: boolean } = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const tasks = useQuery({
@@ -18,17 +18,21 @@ export function useCrmTasks(workspaceId: string) {
         return data ?? [];
       });
     },
+    enabled: options.includeTasks !== false,
   });
   const notifications = useQuery({
     queryKey: ['crm', workspaceId, 'notifications'],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await (supabase as any).from('crm_notifications').select('*')
+      const { data, error } = await (supabase as any).from('crm_notifications')
+        .select('*,task:crm_tasks(id,company_id,contact_id,deal_id)')
         .eq('workspace_id', workspaceId).eq('user_id', user.id).eq('status', 'unread')
         .order('created_at', { ascending: false }).limit(100);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as CrmNotification[];
     },
+    enabled: Boolean(user && workspaceId),
+    refetchInterval: 60_000,
   });
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: CrmTask['status'] }) => {
@@ -53,5 +57,15 @@ export function useCrmTasks(workspaceId: string) {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'notifications'] }),
   });
-  return { tasks, notifications, updateStatus, markNotificationRead };
+  const dismissNotification = useMutation({
+    mutationFn: async (id: string) => {
+      if (!user) throw new Error('You must be signed in to dismiss a reminder.');
+      const { error } = await (supabase as any).from('crm_notifications').update({
+        status: 'dismissed', read_at: new Date().toISOString(),
+      }).eq('workspace_id', workspaceId).eq('user_id', user.id).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'notifications'] }),
+  });
+  return { tasks, notifications, updateStatus, markNotificationRead, dismissNotification };
 }

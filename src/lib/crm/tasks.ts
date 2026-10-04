@@ -11,3 +11,17 @@ export function groupCrmTasks<T extends { due_at: string | null; status: string 
   }
   return groups;
 }
+
+export function selectPopupReminder<T extends { id: string; created_at: string }>(
+  reminders: T[],
+  seenIds: ReadonlySet<string>,
+  snoozedUntil: Record<string, number>,
+  now = Date.now(),
+): T | null {
+  return reminders.find((reminder) => {
+    const snooze = snoozedUntil[reminder.id];
+    if (snooze && snooze > now) return false;
+    if (snooze && snooze <= now) return true;
+    return !seenIds.has(reminder.id);
+  }) ?? null;
+}

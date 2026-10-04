@@ -17,4 +17,13 @@ describe('preparePasswordChange', () => {
       error: 'New passwords do not match.',
     });
   });
+
+  it('rejects a weak or unchanged replacement password before contacting auth', () => {
+    expect(preparePasswordChange('current-password', 'short', 'short')).toEqual({
+      error: 'Use at least 8 characters for the new password.',
+    });
+    expect(preparePasswordChange('same-password', 'same-password', 'same-password')).toEqual({
+      error: 'Choose a new password that is different from the current password.',
+    });
+  });
 });

@@ -16,6 +16,7 @@ import {
   importColumnWidthStorageKey, mergeImportColumnWidths, paginateImportRows, parseImportColumnWidths,
 } from '../../lib/crm/importTableLayout';
 import { buildCrmWorkbookIdentity, emptyCrmImportDraft } from '../../lib/crm/importDraft';
+import { buildCustomerStatusReviewIndex } from '../../lib/crm/customerStatusImport';
 import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
 import { parseUploadedWorkbook, type ParsedWorkbook } from '../../lib/uploadedFileWorkbook';
 
@@ -49,9 +50,16 @@ export function CrmImports() {
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.commit.mutateAsync>> | null>(null);
   const [deletingSource, setDeletingSource] = useState<any>(null);
   const sheet = workbook?.sheets[sheetIndex] ?? null;
+  const customerStatusReview = useMemo(() => file && workbook
+    ? buildCustomerStatusReviewIndex(file.name, workbook)
+    : new Map<string, string>(), [file, workbook]);
   const preview = useMemo(() => sheet
-    ? normalizeCrmImportRows(sheet.rows, mapping, api.indexes.data ?? { companies: [], contacts: [] }, { sheetName: sheet.name })
-    : [], [api.indexes.data, mapping, sheet]);
+    ? normalizeCrmImportRows(sheet.rows, mapping, api.indexes.data ?? { companies: [], contacts: [] }, {
+      filename: file?.name,
+      sheetName: sheet.name,
+      customerStatusReview,
+    })
+    : [], [api.indexes.data, customerStatusReview, file?.name, mapping, sheet]);
   const automaticColumnWidths = useMemo(() => sheet
     ? autoFitImportColumnWidths(sheet.headers, sheet.rows)
     : {}, [sheet]);
@@ -76,9 +84,10 @@ export function CrmImports() {
     }
   }, [workspace.id]);
 
-  function resetSheetMapping(headers: string[]) {
-    setMapping(suggestCrmImportMapping(headers));
-    setHeaderMatches(buildCrmHeaderMatches(headers));
+  function resetSheetMapping(headers: string[], filename = file?.name ?? '', sheetName = '') {
+    const context = { filename, sheetName };
+    setMapping(suggestCrmImportMapping(headers, context));
+    setHeaderMatches(buildCrmHeaderMatches(headers, context));
     setConfirmedHeaders(new Set());
   }
 
@@ -88,7 +97,7 @@ export function CrmImports() {
       const parsed = await parseUploadedWorkbook(input);
       setFile(input); setWorkbook(parsed); setSheetIndex(0);
       setPreviewPage(1);
-      resetSheetMapping(parsed.sheets[0]?.headers ?? []);
+      resetSheetMapping(parsed.sheets[0]?.headers ?? [], input.name, parsed.sheets[0]?.name ?? '');
       setResult(null); setLocalError(null);
     } catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); }
   }
@@ -161,7 +170,7 @@ export function CrmImports() {
     <section className="crm-ledger-intro space-y-4">
       <CrmFilePicker key={file ? `${file.name}:${file.lastModified}` : 'empty'} accept=".xlsx,.xlsm,.csv" actionLabel="Select workbook" description="Excel or CSV · .xlsx, .xlsm, or .csv" fileName={file?.name} title="Workbook source" onSelect={(selected) => void choose(selected)} />
       {sheet && <>
-        {workbook!.sheets.length > 1 && <label className="block max-w-sm"><span className="label">Worksheet</span><select className="input" value={sheetIndex} onChange={(event) => { const index = Number(event.target.value); setSheetIndex(index); setPreviewPage(1); resetSheetMapping(workbook!.sheets[index]?.headers ?? []); }}>{workbook!.sheets.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</select></label>}
+        {workbook!.sheets.length > 1 && <label className="block max-w-sm"><span className="label">Worksheet</span><select className="input" value={sheetIndex} onChange={(event) => { const index = Number(event.target.value); const nextSheet = workbook!.sheets[index]; setSheetIndex(index); setPreviewPage(1); resetSheetMapping(nextSheet?.headers ?? [], file?.name ?? '', nextSheet?.name ?? ''); }}>{workbook!.sheets.map((item, index) => <option key={item.name} value={index}>{item.name}</option>)}</select></label>}
         <div className="crm-import-source-line"><b>{file?.name}</b><span>{sheet.name}</span><span>{sheet.rows.length.toLocaleString()} rows</span></div>
         <section className="crm-mapping-summary" aria-labelledby="mapping-summary-title">
           <div><p className="crm-eyebrow">Workbook columns</p><h2 id="mapping-summary-title">Review how each Excel column connects</h2><p>Only columns found in this worksheet are shown. Source-only columns stay in the workbook and return unchanged on export.</p></div>
@@ -189,8 +198,8 @@ export function CrmImports() {
       </>}
     </section>
     {(localError || api.indexes.error) && <ErrorState error={localError ?? api.indexes.error} />}
-    {result && <section className="border-l-4 border-emerald-600 bg-emerald-50 p-5"><p className="font-semibold">Database {result.database_id} revision {result.revision_number} complete</p><p className="mt-1 text-sm">{result.created_rows} rows created, {result.updated_rows} updated, {result.unchanged_rows} unchanged, and {result.duplicate_review_rows} flagged for duplicate review. {result.created_activities} new activities were added.</p></section>}
-    <section><h2 className="mb-3 text-lg font-semibold">Import history</h2>{api.history.isLoading ? <Spinner /> : <><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Database ID</th><th>Source</th><th>Sheet</th><th>Rows</th><th>Imported</th><th>Workbook</th></tr></thead><tbody>{visibleHistory.map((item: any) => { const exportable = ['source-preserving-crm-import-v2','source-preserving-crm-import-v3'].includes(item.source_metadata?.format); return <tr key={item.id}><td className="font-semibold">{item.database_id}</td><td>{item.original_filename}</td><td>{item.sheet_name ?? '—'}</td><td>{item.row_count}</td><td>{new Date(item.created_at).toLocaleDateString('en-SG')}</td><td><div className="flex gap-2"><button className="btn-secondary" disabled={!exportable || api.exportImport.isPending} title={exportable ? 'Export with current CRM values in the original workbook layout' : 'This older import has no preserved workbook template'} onClick={() => void exportWorkbook(item)}>{api.exportImport.isPending ? 'Preparing…' : 'Export workbook'}</button><button className="btn-danger" onClick={()=>setDeletingSource({kind:'workbook',id:item.id,label:item.original_filename})}>Delete source</button></div></td></tr>; })}</tbody></table></div><CrmPagination page={historyPage} pageSize={IMPORT_HISTORY_PAGE_SIZE} count={importHistory.length} onPageChange={setHistoryPage} /></>}</section>
+    {result && <section className="border-l-4 border-emerald-600 bg-emerald-50 p-5"><p className="font-semibold">Database {result.database_id} revision {result.revision_number} complete</p><p className="mt-1 text-sm">{result.created_rows} rows created, {result.updated_rows} updated, {result.unchanged_rows} unchanged, {result.duplicate_review_rows} flagged for contact duplicate review, and {result.status_review_rows} flagged for customer-status review. {result.created_activities} new activities were added.</p></section>}
+    <section><h2 className="mb-3 text-lg font-semibold">Import history</h2>{api.history.isLoading ? <Spinner /> : <><div className="crm-table-wrap"><table className="crm-table"><thead><tr><th>Database ID</th><th>Source</th><th>Sheet</th><th>Rows</th><th>Revision</th><th>Imported</th><th>Workbook</th></tr></thead><tbody>{visibleHistory.map((item: any) => { const exportable = ['source-preserving-crm-import-v2','source-preserving-crm-import-v3','source-preserving-crm-import-v4','source-preserving-crm-import-v5'].includes(item.source_metadata?.format); return <tr key={item.id}><td className="font-semibold">{item.database_id}</td><td>{item.original_filename}</td><td>{item.sheet_name ?? '—'}</td><td>{item.row_count}</td><td>{item.latest_revision ?? 1}</td><td>{new Date(item.created_at).toLocaleDateString('en-SG')}</td><td><div className="flex gap-2"><button className="btn-secondary" disabled={!exportable || api.exportImport.isPending} title={exportable ? 'Export with current CRM values in the original workbook layout' : 'This older import has no preserved workbook template'} onClick={() => void exportWorkbook(item)}>{api.exportImport.isPending ? 'Preparing…' : 'Export workbook'}</button><button className="btn-danger" onClick={()=>setDeletingSource({kind:'workbook',id:item.id,label:item.original_filename})}>Delete source</button></div></td></tr>; })}</tbody></table></div><CrmPagination page={historyPage} pageSize={IMPORT_HISTORY_PAGE_SIZE} count={importHistory.length} onPageChange={setHistoryPage} /></>}</section>
     <CrmDeleteSourceDialog workspaceId={workspace.id} target={deletingSource} onClose={()=>setDeletingSource(null)} />
   </div>;
 }

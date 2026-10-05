@@ -343,9 +343,11 @@ body {
 .crm-column-resizer:focus-visible { outline: 2px solid var(--workspace-blue); outline-offset: -2px; }
 .crm-secondary { margin-top: 0.2rem; color: #64748b; font-size: 0.75rem; }
 .crm-pagination { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.crm-text-action { color: #1d4ed8; font-size: 0.8rem; font-weight: 700; }
-.crm-text-action:hover { text-decoration: underline; }
-.crm-text-action--danger { color: #b91c1c; }
+.crm-text-action { min-height: 2rem; border: 1px solid #bfdbfe; border-radius: 0.45rem; background: #eff6ff; padding: 0.3rem 0.6rem; color: #1d4ed8; font-size: 0.75rem; font-weight: 700; line-height: 1; }
+.crm-text-action:hover { border-color: #93c5fd; background: #dbeafe; }
+.crm-text-action:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.22); outline-offset: 2px; }
+.crm-text-action--danger { border-color: #fecaca; background: #fff1f2; color: #b91c1c; }
+.crm-text-action--danger:hover { border-color: #fca5a5; background: #fee2e2; }
 .crm-status { margin-top: 0.35rem; display: inline-block; border-radius: 999px; padding: 0.15rem 0.5rem; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
 .crm-status--open { background: #dbeafe; color: #1e40af; }
 .crm-status--on_hold { background: #fef3c7; color: #92400e; }
@@ -358,7 +360,9 @@ body {
 .contact-state-badge--review-required { background: #fee2e2; color: #991b1b; }
 .contact-state-badge--hidden { background: #e2e8f0; color: #334155; }
 .contact-lifecycle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.45rem; }
-.contact-lifecycle-actions button { color: #2458c7; font-size: 0.75rem; font-weight: 700; text-decoration: underline; text-underline-offset: 0.15rem; }
+.contact-lifecycle-actions button { min-height: 2rem; border: 1px solid #bfdbfe; border-radius: 0.45rem; background: #eff6ff; padding: 0.3rem 0.6rem; color: #2458c7; font-size: 0.72rem; font-weight: 700; line-height: 1; }
+.contact-lifecycle-actions button:hover { border-color: #93c5fd; background: #dbeafe; }
+.contact-lifecycle-actions button:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.22); outline-offset: 2px; }
 .contact-lifecycle-actions button:disabled { cursor: wait; opacity: 0.5; }
 .crm-record-link { color: #0f4c81; text-decoration: none; text-underline-offset: 0.18rem; }
 .crm-record-link:hover { text-decoration: underline; }
@@ -664,3 +668,5 @@ body {
   }
 }
 .crm-field-source { display: block; margin-top: 0.2rem; color: #64748b; font-size: 0.72rem; font-weight: 600; }
+.company-status-cell { display: grid; justify-items: start; gap: 0.15rem; }
+.company-status-review { display: inline-flex; margin-top: 0.2rem; border-radius: 999px; background: #fee2e2; padding: 0.18rem 0.48rem; color: #991b1b; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.025em; text-transform: uppercase; }

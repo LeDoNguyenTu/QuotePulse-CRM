@@ -10,8 +10,9 @@ export const MAX_REQUESTED_ROWS = 100;
 export const MAX_REQUESTED_HEADERS = 100;
 
 interface WorkbookRowIndex {
-  format: 'source-row-index.v1';
+  format: 'source-row-index.v1' | 'source-row-index.v2';
   source_import_id: string;
+  source_revision_id?: string;
   workspace_id: string;
   headers: string[];
   rows: Array<{ row_number: number; cells: Record<string, string> }>;
@@ -58,11 +59,14 @@ Deno.serve(async (req) => {
     const metadata = (sourceImport.source_metadata ?? {}) as Record<string, unknown>;
     const key = String(metadata.row_index_r2_key ?? '');
     const checksum = String(metadata.row_index_r2_sha256 ?? '');
+    const latestRevisionId = String(metadata.latest_revision_id ?? '');
     if (!key || !/^[a-f0-9]{64}$/.test(checksum)) return errorResponse('This import has no verified row index.', 404);
-    assertWorkbookRowIndexPointer(key, String(sourceImport.imported_by), workspaceId, sourceImportId);
+    assertWorkbookRowIndexPointer(key, String(sourceImport.imported_by), workspaceId, sourceImportId, latestRevisionId || undefined);
     const payload = await getArchiveJson<WorkbookRowIndex>(key);
     await verifyArchivePayload(JSON.stringify(payload), checksum);
-    if (payload.format !== 'source-row-index.v1' || payload.workspace_id !== workspaceId || payload.source_import_id !== sourceImportId) {
+    if (!['source-row-index.v1', 'source-row-index.v2'].includes(payload.format)
+      || payload.workspace_id !== workspaceId || payload.source_import_id !== sourceImportId
+      || (payload.format === 'source-row-index.v2' && payload.source_revision_id !== latestRevisionId)) {
       throw new Error('Stored workbook row index identity is invalid.');
     }
     const allowedHeaders = new Set(payload.headers);

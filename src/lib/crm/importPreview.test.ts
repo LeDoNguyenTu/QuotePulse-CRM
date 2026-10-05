@@ -105,6 +105,52 @@ describe('Sales CRM import preview', () => {
     });
   });
 
+  it('recognizes the Name column as the company name in support-customer tabs', () => {
+    const context = { filename: 'Support customers.xlsx', sheetName: 'Active customers' };
+    expect(suggestCrmImportMapping(['Name', 'Customer Status', 'AMC Status'], context)).toMatchObject({
+      companyName: 'Name',
+      companyCustomerStatus: 'Customer Status',
+    });
+    expect(buildCrmHeaderMatches(['Name'], context)[0]).toMatchObject({
+      role: 'companyName',
+      requiresConfirmation: false,
+    });
+    expect(suggestCrmImportMapping(['Name'])).toMatchObject({ contactFullName: 'Name' });
+  });
+
+  it('does not auto-assign an ambiguous sheet status and carries a persistent review flag', () => {
+    const review = new Map([['sharedandco', 'Name appears in both Active and Inactive customer worksheets.']]);
+    const [row] = normalizeCrmImportRows([{ Name: 'Shared & Co.' }], {
+      companyName: 'Name',
+    }, { companies: [], contacts: [] }, {
+      filename: 'Support customers.xlsx',
+      sheetName: 'Active customers',
+      customerStatusReview: review,
+    });
+
+    expect(row.company).toMatchObject({
+      customer_status: null,
+      customer_status_review_required: true,
+      customer_status_review_reason: expect.stringMatching(/active and inactive/i),
+    });
+  });
+
+  it('auto-assigns a support active customer when no conflict exists', () => {
+    const [row] = normalizeCrmImportRows([{ Name: 'Alpha Pte Ltd' }], {
+      companyName: 'Name',
+    }, { companies: [], contacts: [] }, {
+      filename: 'Support customers.xlsx',
+      sheetName: 'Active customers',
+      customerStatusReview: new Map(),
+    });
+
+    expect(row.company).toMatchObject({
+      customer_status: 'Maintenance Customer',
+      customer_status_review_required: false,
+      customer_status_review_reason: null,
+    });
+  });
+
   it('builds a stable row fingerprint from business identity instead of row position', () => {
     const [first] = normalizeCrmImportRows([{
       __sourceRowNumber: 2, Company: 'Acme Pte Ltd', Name: 'Ada Lovelace', Phone: '+65 6123 4567', Notes: 'First note',
@@ -115,6 +161,21 @@ describe('Sales CRM import preview', () => {
 
     expect(first.stableRowFingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(movedAndEdited.stableRowFingerprint).toBe(first.stableRowFingerprint);
+  });
+
+  it('keeps company-only support rows stable when a re-upload moves or reformats the name', () => {
+    const [first] = normalizeCrmImportRows([{
+      __sourceRowNumber: 12, Name: 'Example Pte. Ltd.', Maintenance: 'Active',
+    }], { companyName: 'Name' }, { companies: [], contacts: [] }, {
+      filename: 'Support customers.xlsx', sheetName: 'Active customers',
+    });
+    const [moved] = normalizeCrmImportRows([{
+      __sourceRowNumber: 88, Name: ' EXAMPLE PTE LTD ', Maintenance: 'Renewed',
+    }], { companyName: 'Name' }, { companies: [], contacts: [] }, {
+      filename: 'Support customers.xlsx', sheetName: 'Active customers',
+    });
+
+    expect(moved.stableRowFingerprint).toBe(first.stableRowFingerprint);
   });
 
   it('normalizes lifecycle and pipeline fields without coupling stage to outcomes', () => {

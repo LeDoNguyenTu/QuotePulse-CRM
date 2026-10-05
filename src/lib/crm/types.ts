@@ -29,6 +29,8 @@ export interface CrmListMetadata {
 export interface CrmCompany extends CrmAuditFields, CrmListMetadata {
   name: string;
   customer_status: string | null;
+  customer_status_review_required: boolean;
+  customer_status_review_reason: string | null;
   industry: string | null;
   website: string | null;
   domain: string | null;
@@ -174,6 +176,8 @@ export type CrmCompanyInput = Pick<
   | 'country'
 > & {
   customer_status?: string | null;
+  customer_status_review_required?: boolean;
+  customer_status_review_reason?: string | null;
   field_sources?: import('./companyEnrichment').CompanyFieldSources;
 };
 

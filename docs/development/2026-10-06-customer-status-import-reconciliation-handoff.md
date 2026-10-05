@@ -48,6 +48,12 @@ No customer names or workbook contents were copied into the repository.
 
 The migration and Edge Function changes are committed source only until this branch is merged and the Supabase workflow succeeds. Local SQL runtime lint could not be executed because no local Supabase Postgres/Docker runtime is available on this machine. Pending-to-ready finalization and cross-member concurrency therefore still require a live Supabase/R2 smoke test. Do not describe the database migration or Edge Functions as deployed until the post-merge workflow is green.
 
+### Post-merge release repair
+
+PR #30 merged as `317d228b1f2515dc11ef8b5dcad301d227a6a2f1`. Its first Supabase deployment run (`37384769173`) stopped before applying the customer-status migration because that migration was numbered `20261005182914`, while production already contained PR #29 migration `20261006013000`. Supabase correctly rejected the out-of-order file.
+
+The release repair renumbers the still-unapplied customer-status migration to `20261006030000`. A live `supabase migration list` confirmed `20261006013000` is the current remote head and `20261006030000` is pending; `supabase db push --dry-run` selected only `20261006030000_customer_status_import_reconciliation.sql`. The workflow remains the authority for applying it and all checks below remain required after the repair is merged.
+
 ## Post-merge checks
 
 1. Confirm the GitHub Supabase workflow succeeds for the exact merge SHA.

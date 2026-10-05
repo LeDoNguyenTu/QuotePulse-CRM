@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const sql = readFileSync(new URL('./20261005182914_customer_status_import_reconciliation.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('./20261006030000_customer_status_import_reconciliation.sql', import.meta.url), 'utf8');
 
 describe('customer status import reconciliation migration', () => {
   it('persists review state without changing user-authored customer status', () => {

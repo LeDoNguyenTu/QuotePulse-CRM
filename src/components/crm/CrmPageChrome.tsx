@@ -37,7 +37,7 @@ export function CrmFilterBar({
 }) {
   return (
     <div className="crm-filter-bar">
-      <label className="min-w-0 flex-1">
+      <label className="crm-filter-bar__search min-w-0">
         <span className="sr-only">Search</span>
         <input
           className="input"

@@ -278,6 +278,7 @@ body {
 
 .crm-filter-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
   border: 1px solid #cbd5e1;
@@ -285,6 +286,8 @@ body {
   background: white;
   padding: 0.75rem;
 }
+
+.crm-filter-bar__search { flex: 1 1 16rem; }
 
 .column-selector { position: relative; flex: 0 0 auto; }
 .column-selector__trigger { min-width: 6.25rem; text-align: center; }

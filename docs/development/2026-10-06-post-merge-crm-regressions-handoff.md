@@ -8,6 +8,7 @@ Updated: 2026-10-06 (Asia/Singapore)
 - Vercel reported a successful deployment for that exact merge SHA.
 - The exact-SHA GitHub Actions run [37335514987](https://github.com/LeDoNguyenTu/QuotePulse-CRM/actions/runs/37335514987) failed in the Supabase deployment workflow.
 - Repair branch: `fix/post-merge-crm-regressions`, based on `ae30f98`.
+- Repair pull request: [#29 — fix: repair post-merge CRM regressions](https://github.com/LeDoNguyenTu/QuotePulse-CRM/pull/29). It is intentionally left open with `REVIEW_REQUIRED`; the first Vercel preview check succeeded.
 
 ## Confirmed problems and repairs
 

@@ -22,8 +22,16 @@ describe('CRM workbook template function', () => {
   it('stores a bounded row index beneath the exact source import', () => {
     expect(source).toContain("action === 'store-index'");
     expect(source).toContain('crmWorkbookRowIndexKey');
-    expect(source).toContain('source-row-index.v1');
+    expect(source).toContain('source-row-index.v2');
     expect(source).toContain('MAX_ROW_INDEX_BYTES');
     expect(source).toMatch(/eq\('imported_by', userId\)/);
+    expect(source).toContain('source_revision_id');
+    expect(source).toContain('crm_source_revision_artifacts');
+    expect(source).toMatch(/crm_source_revisions[\s\S]*source_import_id/);
+    expect(source).not.toContain(".upsert({");
+    expect(source).toMatch(/finalization_status[^\n]*ready/);
+    expect(source).toMatch(/latest_revision[^\n]*revision_number/);
+    expect(source).toMatch(/artifact\.created_by[\s\S]*assertCrmWorkbookPointer|assertCrmWorkbookPointer\(key, String\(artifact\.created_by\)/);
+    expect(source).not.toMatch(/crm_source_imports'[\s\S]{0,300}eq\('imported_by', userId\)\.maybeSingle/);
   });
 });

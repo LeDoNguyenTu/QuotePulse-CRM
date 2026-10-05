@@ -5,6 +5,8 @@ import type { CrmActivity, CrmCompany, CrmContact, CrmDeal } from './types';
 describe('CRM workflow type contract', () => {
   it('exposes lifecycle, outcome, activity audit, and rich template fields', () => {
     const companyStatus: CrmCompany['customer_status'] = 'Maintenance Customer';
+    const companyStatusReview: CrmCompany['customer_status_review_required'] = true;
+    const companyStatusReviewReason: CrmCompany['customer_status_review_reason'] = 'Conflicting worksheets';
     const contactState: CrmContact['record_state'] = 'outdated';
     const contactHidden: CrmContact['is_hidden'] = false;
     const duplicateReview: CrmContact['duplicate_review_of'] = 'newer-contact-id';
@@ -17,6 +19,8 @@ describe('CRM workflow type contract', () => {
 
     expect({
       companyStatus,
+      companyStatusReview,
+      companyStatusReviewReason,
       contactState,
       contactHidden,
       duplicateReview,
@@ -28,6 +32,8 @@ describe('CRM workflow type contract', () => {
       templateHtml,
     }).toEqual({
       companyStatus: 'Maintenance Customer',
+      companyStatusReview: true,
+      companyStatusReviewReason: 'Conflicting worksheets',
       contactState: 'outdated',
       contactHidden: false,
       duplicateReview: 'newer-contact-id',

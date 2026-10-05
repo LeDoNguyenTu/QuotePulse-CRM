@@ -60,8 +60,8 @@ export function crmWorkbookTemplateKey(ownerId: string, workspaceId: string, che
   return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${encodeURIComponent(checksum)}/${encodeURIComponent(filename)}.json.gz`;
 }
 
-export function crmWorkbookRowIndexKey(ownerId: string, workspaceId: string, sourceImportId: string): string {
-  return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${sourceImportId}/source-row-index.v1.json.gz`;
+export function crmWorkbookRowIndexKey(ownerId: string, workspaceId: string, sourceImportId: string, sourceRevisionId: string): string {
+  return `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${sourceImportId}/revisions/${sourceRevisionId}/source-row-index.v2.json.gz`;
 }
 
 export function assertWorkbookRowIndexPointer(
@@ -69,9 +69,15 @@ export function assertWorkbookRowIndexPointer(
   ownerId: string,
   workspaceId: string,
   sourceImportId: string,
+  sourceRevisionId?: string,
 ): void {
-  const expected = crmWorkbookRowIndexKey(ownerId, workspaceId, sourceImportId);
-  if (key !== expected) throw new Error('Workbook row index pointer is outside the authenticated source scope.');
+  const legacy = `owners/${ownerId}/workspaces/${workspaceId}/crm-imports/${sourceImportId}/source-row-index.v1.json.gz`;
+  const expected = sourceRevisionId
+    ? crmWorkbookRowIndexKey(ownerId, workspaceId, sourceImportId, sourceRevisionId)
+    : legacy;
+  if (key !== expected && key !== legacy) {
+    throw new Error('Workbook row index pointer is outside the authenticated source scope.');
+  }
 }
 
 export function assertCrmWorkbookPointer(key: string, ownerId: string, workspaceId: string): void {

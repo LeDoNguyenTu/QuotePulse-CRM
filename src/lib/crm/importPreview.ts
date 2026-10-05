@@ -3,6 +3,12 @@ import { formatCrmDateForDisplay, parseCrmDate } from './flexibleDate';
 import { classifyMissingIndustry, type CompanyFieldSources } from './companyEnrichment';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { inferCustomerStatusFromSource, normalizeImportedCompanyName } from './customerStatusImport';
+
+export interface CrmImportSourceContext {
+  filename?: string;
+  sheetName?: string;
+}
 
 export type CrmImportMapping = Partial<Record<
   | 'companyName' | 'companyIndustry' | 'companyWebsite' | 'companyDomain'
@@ -103,10 +109,20 @@ const AMBIGUOUS_HEADER_ROLE: Record<string, keyof CrmImportMapping> = {
   'last contact date': 'activityOccurredAt',
 };
 
-export function buildCrmHeaderMatches(headers: string[]): CrmHeaderMatch[] {
+export function buildCrmHeaderMatches(headers: string[], context: CrmImportSourceContext = {}): CrmHeaderMatch[] {
   const claimed = new Set<keyof CrmImportMapping>();
   return headers.map((header) => {
     const normalized = header.trim().toLowerCase();
+    const supportName = normalized === 'name'
+      && /support\s+customers?/i.test(context.filename ?? '')
+      && /^(active|inactive)\s+customers?$/i.test(context.sheetName ?? '');
+    if (supportName) {
+      claimed.add('companyName');
+      return {
+        header, role: 'companyName' as const, label: 'Company name', group: 'Company' as const,
+        confidence: 'semantic' as const, requiresConfirmation: false,
+      };
+    }
     const preferred = AMBIGUOUS_HEADER_ROLE[normalized];
     const candidates = CRM_IMPORT_ROLES.filter((role) =>
       !claimed.has(role.key) && HEADER_ALIASES[role.key]?.includes(normalized),
@@ -135,8 +151,8 @@ export function unconfirmedSemanticHeaders(matches: CrmHeaderMatch[], confirmedH
     .map((match) => match.header);
 }
 
-export function suggestCrmImportMapping(headers: string[]): CrmImportMapping {
-  return Object.fromEntries(buildCrmHeaderMatches(headers).flatMap((match) =>
+export function suggestCrmImportMapping(headers: string[], context: CrmImportSourceContext = {}): CrmImportMapping {
+  return Object.fromEntries(buildCrmHeaderMatches(headers, context).flatMap((match) =>
     match.role ? [[match.role, match.header]] : [],
   )) as CrmImportMapping;
 }
@@ -150,7 +166,7 @@ export interface CrmImportPreviewRow {
   duplicateOfRow: number | null;
   existingCompanyId: string | null;
   existingContactId: string | null;
-  company: { name: string; industry: string | null; website: string | null; domain: string | null; phone: string | null; address_line_1: string | null; customer_status: string | null; field_sources: CompanyFieldSources };
+  company: { name: string; industry: string | null; website: string | null; domain: string | null; phone: string | null; address_line_1: string | null; customer_status: string | null; customer_status_review_required: boolean; customer_status_review_reason: string | null; field_sources: CompanyFieldSources };
   contact: { first_name: string | null; last_name: string | null; full_name: string | null; email: string | null; phone: string | null; job_title: string | null; record_state: 'unverified' | 'outdated' } | null;
   deal: { name: string; stage: string; amount: number | null; currency: string; owner_label: string | null; last_call_at: string | null; follow_up_at: string | null; call_outcome: string | null; appointment_status: string | null } | null;
   activities: Array<{ kind: 'note' | 'call'; body: string; occurred_at: string | null; source_column: string; call_outcome: string | null }>;
@@ -192,7 +208,7 @@ export function normalizeCrmImportRows(
   rows: Record<string, unknown>[],
   mapping: CrmImportMapping,
   existing: { companies: Array<{ id: string; name: string }>; contacts: Array<{ id: string; email: string | null }> },
-  options: { sheetName?: string } = {},
+  options: CrmImportSourceContext & { customerStatusReview?: ReadonlyMap<string, string> } = {},
 ): CrmImportPreviewRow[] {
   const companyIds = new Map(existing.companies.map((company) => [key(company.name), company.id]));
   const contactIds = new Map(existing.contacts.filter((contact) => contact.email).map((contact) => [contact.email!.trim().toLowerCase(), contact.id]));
@@ -266,16 +282,12 @@ export function normalizeCrmImportRows(
           ? `${key(companyName)}|contact:${key(fullName)}|phone:${digits(contactPhone)}`
           : dealName
             ? `${key(companyName)}|deal:${key(dealName)}`
-            : `${key(companyName)}|row:${sourceRowNumber}`;
+            : `${key(companyName)}|company-only`;
     const explicitCustomerStatus = optional(mapped(source, mapping, 'companyCustomerStatus'));
-    const normalizedSheet = key(options.sheetName ?? '');
-    const inferredCustomerStatus = /inactive/.test(normalizedSheet)
-      ? 'Former Customer'
-      : /amc|maintenance/.test(normalizedSheet)
-        ? 'Maintenance Customer'
-        : /active/.test(normalizedSheet)
-          ? 'Current Customer'
-          : null;
+    const statusReviewReason = options.customerStatusReview?.get(normalizeImportedCompanyName(companyName)) ?? null;
+    const inferredCustomerStatus = statusReviewReason
+      ? null
+      : inferCustomerStatusFromSource(options.filename ?? '', options.sheetName ?? '');
     const resignedValue = key(mapped(source, mapping, 'contactResigned'));
     const contactRecordState = ['yes', 'y', 'true', '1', 'resigned'].includes(resignedValue) ? 'outdated' as const : 'unverified' as const;
     const rowIsValid = issues.length === 0;
@@ -302,6 +314,8 @@ export function normalizeCrmImportRows(
         phone: optional(mapped(source, mapping, 'companyPhone')),
         address_line_1: optional(mapped(source, mapping, 'companyAddress')),
         customer_status: explicitCustomerStatus ?? inferredCustomerStatus,
+        customer_status_review_required: Boolean(statusReviewReason),
+        customer_status_review_reason: statusReviewReason,
         field_sources: {
           name: 'workbook',
           ...(classifiedIndustry.value ? { industry: workbookIndustry ? 'workbook' : 'classifier' } : {}),

@@ -19,6 +19,7 @@ export interface CrmImportResult {
   updated_rows: number;
   unchanged_rows: number;
   duplicate_review_rows: number;
+  status_review_rows: number;
   matched_rows: number;
   warning_count: number;
 }
@@ -73,30 +74,32 @@ export function useCrmImports(workspaceId: string) {
       workspace_id: workspaceId, filename: input.filename, mime_type: input.mimeType,
       checksum_sha256: input.checksum, base64: input.templateBase64,
     });
-    const { data, error } = await (supabase as any).rpc('crm_commit_import_with_activities', {
+    const { data, error } = await (supabase as any).rpc('crm_commit_import_with_customer_status_review', {
       p_workspace_id: workspaceId, p_original_filename: input.filename,
       p_sheet_name: input.sheetName, p_checksum_sha256: input.checksum,
       p_source_row_count: input.sourceRowCount, p_workbook_identity: input.workbookIdentity,
-      p_rows: input.rows,
+      p_rows: input.rows, p_template_r2_key: template.r2_key,
+      p_template_r2_sha256: template.r2_sha256, p_headers: input.headers,
+      p_mapping: input.mapping,
     });
     if (error) throw error;
     const result = data as CrmImportResult;
-    const rowIndex = await functions.storeCrmWorkbookRowIndex({
-      workspace_id: workspaceId,
-      source_import_id: result.source_import_id,
-      headers: input.headers,
-      source_rows: input.sourceRows,
-    });
-    const { error: metadataError } = await (supabase as any).from('crm_source_imports').update({
-      source_metadata: {
-        format: 'source-preserving-crm-import-v4', source_type: 'workbook', headers: input.headers, mapping: input.mapping,
-        latest_revision_id: result.source_revision_id, latest_revision: result.revision_number,
-        template_r2_key: template.r2_key, template_r2_sha256: template.r2_sha256,
-        template_checksum_sha256: input.checksum,
-        row_index_r2_key: rowIndex.r2_key, row_index_r2_sha256: rowIndex.r2_sha256,
-      },
-    }).eq('id', result.source_import_id).eq('workspace_id', workspaceId);
-    if (metadataError) throw metadataError;
+    try {
+      await functions.storeCrmWorkbookRowIndex({
+        workspace_id: workspaceId,
+        source_import_id: result.source_import_id,
+        source_revision_id: result.source_revision_id,
+        workbook_checksum_sha256: input.checksum,
+        template_r2_key: template.r2_key,
+        template_r2_sha256: template.r2_sha256,
+        headers: input.headers,
+        mapping: input.mapping,
+        source_rows: input.sourceRows,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`CRM revision ${result.revision_number} was committed and its original workbook was preserved, but the source-row index is still pending. Reupload the same workbook to create a fully finalized revision. ${detail}`);
+    }
     return result;
   }, onSuccess: async () => {
     await Promise.all([
@@ -105,17 +108,18 @@ export function useCrmImports(workspaceId: string) {
     ]);
   }});
   const exportImport = useMutation({ mutationFn: async (sourceImport: any) => {
-    const metadata = (sourceImport.source_metadata ?? {}) as Record<string, unknown>;
-    const headers = Array.isArray(metadata.headers) ? metadata.headers.map(String) : [];
-    const mapping = (metadata.mapping ?? {}) as CrmImportMapping;
-    if (!headers.length || !['source-preserving-crm-import-v2', 'source-preserving-crm-import-v3', 'source-preserving-crm-import-v4'].includes(String(metadata.format))) {
-      throw new Error('This older import does not have a preserved workbook template.');
-    }
-    const template = await functions.getCrmWorkbookTemplate(workspaceId, sourceImport.id);
     const { data: latestRevision, error: revisionError } = await (supabase as any).from('crm_source_revisions')
       .select('id').eq('workspace_id', workspaceId).eq('source_import_id', sourceImport.id)
       .order('revision_number', { ascending: false }).limit(1).maybeSingle();
     if (revisionError) throw revisionError;
+    const template = await functions.getCrmWorkbookTemplate(workspaceId, sourceImport.id, latestRevision?.id);
+    const sourceMetadata = (sourceImport.source_metadata ?? {}) as Record<string, unknown>;
+    const metadata = (template.metadata ?? sourceMetadata) as Record<string, unknown>;
+    const headers = Array.isArray(metadata.headers) ? metadata.headers.map(String) : [];
+    const mapping = (metadata.mapping ?? {}) as CrmImportMapping;
+    if (!headers.length || !['source-preserving-crm-import-v2', 'source-preserving-crm-import-v3', 'source-preserving-crm-import-v4', 'source-preserving-crm-import-v5'].includes(String(metadata.format))) {
+      throw new Error('This import revision does not have a finalized preserved workbook artifact.');
+    }
     let refsQuery = (supabase as any).from('crm_source_references')
       .select('source_row_number,company_id,contact_id,deal_id')
       .eq('workspace_id', workspaceId).eq('source_import_id', sourceImport.id);

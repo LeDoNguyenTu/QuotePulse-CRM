@@ -108,15 +108,16 @@ describe("R2 cold archive keys and verification", () => {
   });
 
   it("keeps workbook row indexes inside the exact source import scope", () => {
-    expect(crmWorkbookRowIndexKey("owner-a", "workspace-b", "source-c")).toBe(
-      "owners/owner-a/workspaces/workspace-b/crm-imports/source-c/source-row-index.v1.json.gz",
+    expect(crmWorkbookRowIndexKey("owner-a", "workspace-b", "source-c", "revision-d")).toBe(
+      "owners/owner-a/workspaces/workspace-b/crm-imports/source-c/revisions/revision-d/source-row-index.v2.json.gz",
     );
     expect(() =>
       assertWorkbookRowIndexPointer(
-        "owners/other/workspaces/workspace-b/crm-imports/source-c/source-row-index.v1.json.gz",
+        "owners/other/workspaces/workspace-b/crm-imports/source-c/revisions/revision-d/source-row-index.v2.json.gz",
         "owner-a",
         "workspace-b",
         "source-c",
+        "revision-d",
       ),
     ).toThrow(/outside/);
   });

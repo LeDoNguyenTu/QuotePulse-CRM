@@ -9,6 +9,8 @@ describe('CRM source row reader', () => {
     expect(source).toContain('workspace_members');
     expect(source).toContain('assertWorkbookRowIndexPointer');
     expect(source).toContain('verifyArchivePayload');
+    expect(source).toContain('latest_revision_id');
+    expect(source).toContain('source-row-index.v2');
   });
 
   it('bounds row and header requests before reading source cells', () => {

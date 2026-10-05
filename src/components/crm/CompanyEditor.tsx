@@ -32,6 +32,7 @@ export function CompanyEditor({
     country: initial?.country ?? '',
     customer_status: initial?.customer_status ?? '',
   });
+  const [statusReviewed, setStatusReviewed] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const set = (field: string, value: string) => setForm((current) => ({ ...current, [field]: value }));
   const submit = (event: FormEvent) => {
@@ -39,7 +40,16 @@ export function CompanyEditor({
     const result = normalizeCompanyInput(form);
     if (!result.ok) return setValidationError(result.error);
     setValidationError(null);
-    onSave(result.value);
+    const statusChanged = Boolean(initial) && result.value.customer_status !== initial?.customer_status;
+    const manualStatusDecision = statusReviewed || statusChanged || (!initial && Boolean(result.value.customer_status));
+    onSave({
+      ...result.value,
+      ...(manualStatusDecision ? {
+        customer_status_review_required: false,
+        customer_status_review_reason: null,
+        field_sources: { ...(initial?.field_sources ?? {}), customer_status: 'user' as const },
+      } : {}),
+    });
   };
 
   return (
@@ -50,6 +60,7 @@ export function CompanyEditor({
       <EditorField label="Company name" wide><input autoFocus required className="input" value={form.name} onChange={(e) => set('name', e.target.value)} /></EditorField>
       <EditorField label="Industry"><input className="input" value={form.industry} onChange={(e) => set('industry', e.target.value)} /></EditorField>
       <EditorField label="Customer status"><input list="crm-customer-statuses" className="input" value={form.customer_status} onChange={(e) => set('customer_status', e.target.value)} placeholder="Choose or type a custom status" /><datalist id="crm-customer-statuses">{CRM_CUSTOMER_STATUSES.map((status) => <option key={status} value={status} />)}</datalist></EditorField>
+      {initial?.customer_status_review_required && <label className="sm:col-span-2 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900"><input type="checkbox" className="mt-0.5" checked={statusReviewed} onChange={(event) => setStatusReviewed(event.target.checked)} /><span><b>Customer status reviewed</b><br />Keep the selected status as a user decision and clear this import review flag.</span></label>}
       <EditorField label="Phone"><input className="input" value={form.phone} onChange={(e) => set('phone', e.target.value)} /></EditorField>
       <EditorField label="Website"><input className="input" type="url" value={form.website} onChange={(e) => set('website', e.target.value)} /></EditorField>
       <EditorField label="Domain"><input className="input" placeholder="example.com" value={form.domain} onChange={(e) => set('domain', e.target.value)} /></EditorField>

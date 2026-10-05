@@ -9,3 +9,17 @@ export async function collectCrmOptionPages<T>(
     if (page.length < pageSize) return rows;
   }
 }
+
+export const CRM_CUSTOMER_STATUSES = [
+  'Current Customer',
+  'Prospect',
+  'Former Customer',
+  'Maintenance Customer',
+] as const;
+
+export function mergeCustomerStatusOptions(values: Array<string | null | undefined>) {
+  return [...new Set([
+    ...CRM_CUSTOMER_STATUSES,
+    ...values.map((value) => value?.trim() ?? '').filter(Boolean),
+  ])];
+}

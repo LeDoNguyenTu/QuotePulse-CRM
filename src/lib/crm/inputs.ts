@@ -59,6 +59,7 @@ export function normalizeCompanyInput(
       state_region: optionalText(input.state_region),
       postal_code: optionalText(input.postal_code),
       country: optionalText(input.country),
+      customer_status: optionalText(input.customer_status),
     },
   };
 }
@@ -75,18 +76,27 @@ export function normalizeContactInput(
   if (!firstName && !lastName && !fullName && !email) {
     return { ok: false, error: 'Add a contact name or email address.' };
   }
+  const recordState = input.record_state;
+  if (recordState != null && !['unverified', 'verified', 'outdated'].includes(String(recordState))) {
+    return { ok: false, error: 'Choose a valid contact state.' };
+  }
+
+  const value: CrmContactInput = {
+    company_id: optionalText(input.company_id),
+    first_name: firstName,
+    last_name: lastName,
+    full_name: fullName,
+    email,
+    phone: optionalText(input.phone),
+    job_title: optionalText(input.job_title),
+  };
+  if ('record_state' in input) value.record_state = recordState as CrmContactInput['record_state'];
+  if ('is_hidden' in input && typeof input.is_hidden === 'boolean') value.is_hidden = input.is_hidden;
+  if ('duplicate_review_of' in input) value.duplicate_review_of = optionalText(input.duplicate_review_of);
 
   return {
     ok: true,
-    value: {
-      company_id: optionalText(input.company_id),
-      first_name: firstName,
-      last_name: lastName,
-      full_name: fullName,
-      email,
-      phone: optionalText(input.phone),
-      job_title: optionalText(input.job_title),
-    },
+    value,
   };
 }
 
@@ -125,6 +135,8 @@ export function normalizeDealInput(
       owner_user_id: optionalText(input.owner_user_id),
       last_call_at: optionalText(input.last_call_at),
       follow_up_at: optionalText(input.follow_up_at),
+      call_outcome: optionalText(input.call_outcome),
+      appointment_status: optionalText(input.appointment_status),
     },
   };
 }

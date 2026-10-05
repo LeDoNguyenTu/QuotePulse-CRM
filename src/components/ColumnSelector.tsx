@@ -32,10 +32,10 @@ export function ColumnSelector({ options, visible, onChange, onRestore }: {
     }} />
     <span>{option.label}{option.group === 'hidden' && <span className="ml-1 text-xs text-slate-500">(null)</span>}</span>
   </label>;
-  return <details className="relative">
-    <summary className="btn-secondary cursor-pointer list-none">Columns</summary>
-    <div className="absolute right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-3 shadow-lg">
-      <button className="mb-2 text-xs text-brand-700 underline" onClick={(e) => { e.preventDefault(); onRestore(); }}>
+  return <details className="column-selector">
+    <summary className="column-selector__trigger btn-secondary cursor-pointer list-none">Columns</summary>
+    <div className="column-selector__panel">
+      <button type="button" className="mb-2 text-xs text-brand-700 underline" onClick={(e) => { e.preventDefault(); onRestore(); }}>
         Restore defaults
       </button>
       <label className="mb-2 block">

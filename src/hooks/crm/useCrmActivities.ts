@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../useAuth';
-import type { CrmActivityInput } from '../../lib/crm/activityInput';
+import type { CrmActivityEditInput, CrmActivityInput } from '../../lib/crm/activityInput';
 import type { CrmDetailKind } from '../../lib/crm/detailQueries';
 
 export function useCrmActivityMutation(kind: CrmDetailKind, workspaceId: string, recordId: string) {
@@ -24,6 +24,7 @@ export function useCrmActivityMutation(kind: CrmDetailKind, workspaceId: string,
         p_source_import_id: input.destination?.sourceImportId ?? null,
         p_source_row_number: input.destination?.sourceRowNumber ?? null,
         p_source_column: input.destination?.sourceColumn ?? null,
+        p_call_outcome: input.callOutcome ?? null,
       });
       if (error) throw error;
       return data;
@@ -31,6 +32,29 @@ export function useCrmActivityMutation(kind: CrmDetailKind, workspaceId: string,
     onSuccess: () => Promise.all([
       queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'detail', kind, recordId] }),
       queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'tasks'] }),
+    ]),
+  });
+}
+
+export function useCrmActivityUpdateMutation(kind: CrmDetailKind, workspaceId: string, recordId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ activityId, input }: { activityId: string; input: CrmActivityEditInput }) => {
+      const { data, error } = await (supabase as any).rpc('crm_update_activity', {
+        p_workspace_id: workspaceId,
+        p_activity_id: activityId,
+        p_body: input.body,
+        p_occurred_at: input.occurredAt,
+        p_call_outcome: input.callOutcome ?? null,
+        p_update_deal: input.updateDeal,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'detail', kind, recordId] }),
+      queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'companies'] }),
+      queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'deals'] }),
     ]),
   });
 }

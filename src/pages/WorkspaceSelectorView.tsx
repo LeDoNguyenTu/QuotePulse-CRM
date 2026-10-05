@@ -12,13 +12,11 @@ export interface WorkspaceSelectorViewProps {
 
 const WORKSPACE_DETAILS = {
   legacy: {
-    company: 'Innocom Technologies Pte Ltd',
     category: 'Archive and outreach',
     description: 'Historical HubSpot workflows, uploaded files, templates, and archive status.',
     action: 'Open legacy workspace',
   },
   sales_crm: {
-    company: 'R Systems Singapore Pte Ltd',
     category: 'Sales operations',
     description: 'Excel-driven sales workspace for companies, contacts, deals, tasks, and campaigns.',
     action: 'Open Sales CRM',
@@ -81,11 +79,10 @@ export function WorkspaceSelectorView({
                   key={workspace.id}
                   to={workspaceLandingPath(workspace)}
                   className={`workspace-choice workspace-choice--${workspace.kind} group`}
-                  aria-label={`${details.company} workspace: ${workspace.name}`}
+                  aria-label={`${workspace.name} workspace`}
                 >
                   <span className="workspace-choice__brand">
                     <WorkspaceBrand kind={workspace.kind} />
-                    <span className="workspace-choice__company">{details.company}</span>
                   </span>
                   <span className="workspace-choice__content">
                     <span className="workspace-choice__category">{details.category}</span>

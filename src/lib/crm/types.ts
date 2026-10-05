@@ -1,4 +1,5 @@
 export type CrmDealStatus = 'open' | 'won' | 'lost' | 'on_hold';
+export type CrmContactRecordState = 'unverified' | 'verified' | 'outdated';
 
 export interface CrmAuditFields {
   id: string;
@@ -27,6 +28,7 @@ export interface CrmListMetadata {
 
 export interface CrmCompany extends CrmAuditFields, CrmListMetadata {
   name: string;
+  customer_status: string | null;
   industry: string | null;
   website: string | null;
   domain: string | null;
@@ -40,6 +42,11 @@ export interface CrmCompany extends CrmAuditFields, CrmListMetadata {
   field_sources?: import('./companyEnrichment').CompanyFieldSources;
   contact_count?: number;
   deal_count?: number;
+  last_contact_at?: string | null;
+  follow_up_at?: string | null;
+  last_call_outcome?: string | null;
+  latest_activity_at?: string | null;
+  latest_activity_preview?: string | null;
 }
 
 export interface CrmContact extends CrmAuditFields, CrmListMetadata {
@@ -50,6 +57,9 @@ export interface CrmContact extends CrmAuditFields, CrmListMetadata {
   email: string | null;
   phone: string | null;
   job_title: string | null;
+  record_state: CrmContactRecordState;
+  is_hidden: boolean;
+  duplicate_review_of: string | null;
   deal_count?: number;
   company?: Pick<CrmCompany, 'id' | 'name' | 'industry'> | null;
 }
@@ -64,6 +74,8 @@ export interface CrmDeal extends CrmAuditFields, CrmListMetadata {
   status: CrmDealStatus;
   last_call_at: string | null;
   follow_up_at: string | null;
+  call_outcome: string | null;
+  appointment_status: string | null;
   company?: Pick<CrmCompany, 'id' | 'name'> | null;
 }
 
@@ -76,8 +88,11 @@ export interface CrmActivity {
   kind: 'note' | 'call' | 'task_event';
   body: string;
   occurred_at: string;
+  call_outcome: string | null;
   created_by: string;
+  updated_by: string;
   created_at: string;
+  updated_at: string;
   source_column?: string | null;
   source_row_number?: number | null;
   source_import?: { id: string; database_id: string; original_filename: string } | null;
@@ -105,6 +120,23 @@ export interface CrmTask {
   company?: { id: string; name: string } | null;
   contact?: { id: string; full_name: string | null } | null;
   deal?: { id: string; name: string } | null;
+}
+
+export interface CrmNotification {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  task_id: string | null;
+  kind: 'task_reminder';
+  status: 'unread' | 'read' | 'dismissed';
+  title: string;
+  body: string | null;
+  due_at: string | null;
+  reminder_at: string | null;
+  read_at: string | null;
+  created_by: string;
+  created_at: string;
+  task?: Pick<CrmTask, 'id' | 'company_id' | 'contact_id' | 'deal_id'> | null;
 }
 
 export interface CrmEmailCampaign extends CrmAuditFields {
@@ -140,12 +172,15 @@ export type CrmCompanyInput = Pick<
   | 'state_region'
   | 'postal_code'
   | 'country'
-> & { field_sources?: import('./companyEnrichment').CompanyFieldSources };
+> & {
+  customer_status?: string | null;
+  field_sources?: import('./companyEnrichment').CompanyFieldSources;
+};
 
 export type CrmContactInput = Pick<
   CrmContact,
   'company_id' | 'first_name' | 'last_name' | 'full_name' | 'email' | 'phone' | 'job_title'
->;
+> & Partial<Pick<CrmContact, 'record_state' | 'is_hidden' | 'duplicate_review_of'>>;
 
 export type CrmDealInput = Pick<
   CrmDeal,
@@ -158,7 +193,7 @@ export type CrmDealInput = Pick<
   | 'status'
   | 'last_call_at'
   | 'follow_up_at'
->;
+> & Partial<Pick<CrmDeal, 'call_outcome' | 'appointment_status'>>;
 
 export interface CrmPage<T> {
   rows: T[];

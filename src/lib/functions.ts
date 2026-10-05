@@ -2,6 +2,7 @@
 // function's JSON body (or throws with a useful message). The user's auth token
 // is attached automatically by supabase-js.
 import { supabase } from './supabase';
+import type { CrmExportRequest } from './crm/exportSelection';
 import type { ExportScope } from './exportScope';
 
 async function invoke<T>(name: string, body?: unknown): Promise<T> {
@@ -286,4 +287,23 @@ export async function exportXlsx(scope: ExportScope): Promise<Blob> {
     throw new Error(`export-xlsx failed: ${await res.text()}`);
   }
   return res.blob();
+}
+
+export async function exportCrmRecords(request: CrmExportRequest): Promise<Blob> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-crm-records`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`CRM export failed: ${await response.text()}`);
+  return response.blob();
 }

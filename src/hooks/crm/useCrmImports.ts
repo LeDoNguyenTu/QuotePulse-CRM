@@ -5,7 +5,23 @@ import type { CrmImportMapping, CrmImportPreviewRow } from '../../lib/crm/import
 import { buildWorkbookRowUpdates, type CrmExportRow } from '../../lib/crm/importExport';
 import { rewriteWorkbookRows } from '../../lib/crm/workbookRoundTrip';
 
-export interface CrmImportResult { source_import_id: string; database_id: string; row_count: number; created_companies: number; created_contacts: number; created_deals: number; created_activities: number; matched_rows: number }
+export interface CrmImportResult {
+  source_import_id: string;
+  source_revision_id: string;
+  revision_number: number;
+  database_id: string;
+  row_count: number;
+  created_companies: number;
+  created_contacts: number;
+  created_deals: number;
+  created_activities: number;
+  created_rows: number;
+  updated_rows: number;
+  unchanged_rows: number;
+  duplicate_review_rows: number;
+  matched_rows: number;
+  warning_count: number;
+}
 
 export interface CrmSourceRowIndexEntry { row_number: number; cells: Record<string, string> }
 
@@ -52,7 +68,7 @@ export function useCrmImports(workspaceId: string) {
     if (companies.error) throw companies.error; if (contacts.error) throw contacts.error;
     return { companies: companies.data ?? [], contacts: contacts.data ?? [] };
   }});
-  const commit = useMutation({ mutationFn: async (input: { filename: string; mimeType: string; sheetName: string; checksum: string; sourceRowCount: number; rows: CrmImportPreviewRow[]; sourceRows: CrmSourceRowIndexEntry[]; headers: string[]; mapping: CrmImportMapping; templateBase64: string }) => {
+  const commit = useMutation({ mutationFn: async (input: { filename: string; mimeType: string; sheetName: string; checksum: string; workbookIdentity: string; sourceRowCount: number; rows: CrmImportPreviewRow[]; sourceRows: CrmSourceRowIndexEntry[]; headers: string[]; mapping: CrmImportMapping; templateBase64: string }) => {
     const template = await functions.storeCrmWorkbookTemplate({
       workspace_id: workspaceId, filename: input.filename, mime_type: input.mimeType,
       checksum_sha256: input.checksum, base64: input.templateBase64,
@@ -60,7 +76,8 @@ export function useCrmImports(workspaceId: string) {
     const { data, error } = await (supabase as any).rpc('crm_commit_import_with_activities', {
       p_workspace_id: workspaceId, p_original_filename: input.filename,
       p_sheet_name: input.sheetName, p_checksum_sha256: input.checksum,
-      p_source_row_count: input.sourceRowCount, p_rows: input.rows,
+      p_source_row_count: input.sourceRowCount, p_workbook_identity: input.workbookIdentity,
+      p_rows: input.rows,
     });
     if (error) throw error;
     const result = data as CrmImportResult;
@@ -72,7 +89,8 @@ export function useCrmImports(workspaceId: string) {
     });
     const { error: metadataError } = await (supabase as any).from('crm_source_imports').update({
       source_metadata: {
-        format: 'source-preserving-crm-import-v3', source_type: 'workbook', headers: input.headers, mapping: input.mapping,
+        format: 'source-preserving-crm-import-v4', source_type: 'workbook', headers: input.headers, mapping: input.mapping,
+        latest_revision_id: result.source_revision_id, latest_revision: result.revision_number,
         template_r2_key: template.r2_key, template_r2_sha256: template.r2_sha256,
         template_checksum_sha256: input.checksum,
         row_index_r2_key: rowIndex.r2_key, row_index_r2_sha256: rowIndex.r2_sha256,
@@ -90,13 +108,19 @@ export function useCrmImports(workspaceId: string) {
     const metadata = (sourceImport.source_metadata ?? {}) as Record<string, unknown>;
     const headers = Array.isArray(metadata.headers) ? metadata.headers.map(String) : [];
     const mapping = (metadata.mapping ?? {}) as CrmImportMapping;
-    if (!headers.length || !['source-preserving-crm-import-v2', 'source-preserving-crm-import-v3'].includes(String(metadata.format))) {
+    if (!headers.length || !['source-preserving-crm-import-v2', 'source-preserving-crm-import-v3', 'source-preserving-crm-import-v4'].includes(String(metadata.format))) {
       throw new Error('This older import does not have a preserved workbook template.');
     }
     const template = await functions.getCrmWorkbookTemplate(workspaceId, sourceImport.id);
-    const { data: refs, error: refsError } = await (supabase as any).from('crm_source_references')
+    const { data: latestRevision, error: revisionError } = await (supabase as any).from('crm_source_revisions')
+      .select('id').eq('workspace_id', workspaceId).eq('source_import_id', sourceImport.id)
+      .order('revision_number', { ascending: false }).limit(1).maybeSingle();
+    if (revisionError) throw revisionError;
+    let refsQuery = (supabase as any).from('crm_source_references')
       .select('source_row_number,company_id,contact_id,deal_id')
       .eq('workspace_id', workspaceId).eq('source_import_id', sourceImport.id);
+    if (latestRevision?.id) refsQuery = refsQuery.eq('source_revision_id', latestRevision.id);
+    const { data: refs, error: refsError } = await refsQuery;
     if (refsError) throw refsError;
     const ids = (key: string): string[] => [...new Set<string>((refs ?? []).map((row: any) => row[key]).filter(Boolean).map(String))];
     const queryRows = async (table: string, selected: string, values: string[]) => {
@@ -108,8 +132,12 @@ export function useCrmImports(workspaceId: string) {
       queryRows('crm_companies', 'id,name,industry,website,domain,phone,address_line_1', ids('company_id')),
       queryRows('crm_contacts', 'id,first_name,last_name,full_name,email,phone,job_title', ids('contact_id')),
       queryRows('crm_deals', 'id,name,stage,amount,currency,last_call_at,follow_up_at', ids('deal_id')),
-      (supabase as any).from('crm_activities').select('id,source_row_number,source_column,body,occurred_at')
-        .eq('workspace_id', workspaceId).eq('source_import_id', sourceImport.id).order('created_at'),
+      (() => {
+        let query = (supabase as any).from('crm_activities').select('id,source_row_number,source_column,body,occurred_at')
+          .eq('workspace_id', workspaceId).eq('source_import_id', sourceImport.id);
+        if (latestRevision?.id) query = query.eq('source_revision_id', latestRevision.id);
+        return query.order('created_at');
+      })(),
     ]);
     if (activityResult.error) throw activityResult.error;
     const byId = (rows: any[]) => new Map(rows.map((row) => [row.id, row]));

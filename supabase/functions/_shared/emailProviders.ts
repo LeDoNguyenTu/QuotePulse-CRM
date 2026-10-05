@@ -4,6 +4,7 @@ export interface ProviderEmail {
   toEmail: string;
   subject: string;
   bodyText: string;
+  bodyHtml?: string | null;
   senderEmail?: string | null;
   senderName?: string | null;
   unsubscribeUrl?: string | null;
@@ -40,17 +41,22 @@ function failure(response: Response, body: string): ProviderResult {
 
 function mimeMessage(input: ProviderEmail) {
   const safe = (value: string) => value.replace(/[\r\n]+/g, ' ').trim();
-  const headers = [
-    `To: ${safe(input.toEmail)}`,
-    `Subject: ${safe(input.subject)}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: 8bit',
-  ];
-  if (input.unsubscribeUrl) {
-    headers.push(`List-Unsubscribe: <${safe(input.unsubscribeUrl)}>`, 'List-Unsubscribe-Post: List-Unsubscribe=One-Click');
+  const headers = [`To: ${safe(input.toEmail)}`, `Subject: ${safe(input.subject)}`, 'MIME-Version: 1.0'];
+  if (input.unsubscribeUrl) headers.push(`List-Unsubscribe: <${safe(input.unsubscribeUrl)}>`, 'List-Unsubscribe-Post: List-Unsubscribe=One-Click');
+  let content: string;
+  if (input.bodyHtml) {
+    const boundary = `quotepulse-${crypto.randomUUID()}`;
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    content = [
+      `--${boundary}`, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: 8bit', '', input.bodyText,
+      `--${boundary}`, 'Content-Type: text/html; charset=UTF-8', 'Content-Transfer-Encoding: 8bit', '', input.bodyHtml,
+      `--${boundary}--`, '',
+    ].join('\r\n');
+  } else {
+    headers.push('Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: 8bit');
+    content = input.bodyText;
   }
-  return btoa(unescape(encodeURIComponent(`${headers.join('\r\n')}\r\n\r\n${input.bodyText}`)));
+  return btoa(unescape(encodeURIComponent(`${headers.join('\r\n')}\r\n\r\n${content}`)));
 }
 
 export async function sendMicrosoftGraph(accessToken: string, input: ProviderEmail): Promise<ProviderResult> {
@@ -84,6 +90,7 @@ export async function sendBrevo(apiKey: string, input: ProviderEmail): Promise<P
           ...(input.senderName?.trim() ? { name: input.senderName.trim() } : {}),
         },
         to: [{ email: input.toEmail }], subject: input.subject, textContent: input.bodyText,
+        ...(input.bodyHtml ? { htmlContent: input.bodyHtml } : {}),
       }),
     });
     const body = await response.text();

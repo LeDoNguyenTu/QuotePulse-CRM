@@ -147,7 +147,7 @@ export function Settings() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setPasswordChangeMessage('Password changed successfully.');
+      setPasswordChangeMessage('Password changed. Your new password will be required the next time you sign in.');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -226,7 +226,7 @@ export function Settings() {
         >
           {isChangingPassword ? 'Changing password…' : 'Change password'}
         </button>
-        {passwordChangeMessage && <p className="text-sm text-emerald-700">{passwordChangeMessage}</p>}
+        {passwordChangeMessage && <p className="text-sm text-emerald-700" role="status">{passwordChangeMessage}</p>}
       </section>
 
       <section className="card space-y-3 p-5">

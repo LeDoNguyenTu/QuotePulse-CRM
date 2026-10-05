@@ -1,3 +1,4 @@
+import { createContext, useContext, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { CrmActivity, CrmCompany, CrmContact, CrmDeal, CrmTask } from '../../lib/crm/types';
 import type { CrmDetailData, CrmDetailKind, CrmSourceLineage } from '../../lib/crm/detailQueries';
@@ -5,9 +6,15 @@ import { crmRecordPath } from '../../lib/crm/salesRoutes';
 import { displayText, formatCrmDate, formatCrmMoney } from '../../lib/crm/presenters';
 import { normalizeWebsiteUrl } from '../../lib/crm/inputs';
 import { fieldSourceLabel } from '../../lib/crm/companyEnrichment';
+import { CrmActivityEditor } from './CrmActivityComposer';
+import type { CrmActivityEditInput } from '../../lib/crm/activityInput';
 
 type DealContactRow = { role: string | null; contact: CrmContact | null };
 type ContactDealRow = { role: string | null; deal: CrmDeal | null };
+const ActivityEditContext = createContext<{
+  pending: boolean;
+  onEdit?: (activityId: string, input: CrmActivityEditInput) => Promise<unknown>;
+}>({ pending: false });
 
 function Fact({ label, value, href }: { label: string; value: string; href?: string | null }) {
   return <div className="crm-detail-fact"><dt>{label}</dt><dd>{href ? <a href={href} target="_blank" rel="noreferrer">{value}</a> : value}</dd></div>;
@@ -32,15 +39,22 @@ function LineageRail({ lineage, total }: { lineage: CrmSourceLineage[]; total: n
 }
 
 function ActivityTimeline({ activities, total }: { activities: CrmActivity[]; total: number }) {
+  const edit = useContext(ActivityEditContext);
+  const [editingId, setEditingId] = useState<string | null>(null);
   return <section className="crm-detail-panel crm-activity-preview">
     <div className="crm-panel-heading"><h2>Activity timeline</h2><span>{total}</span></div>
     {activities.length ? <ol className="crm-activity-list">{activities.map((activity) => <li className="crm-activity-card" key={activity.id}>
       <div className="crm-activity-card__header"><strong>{activity.kind === 'call' ? 'Call' : activity.kind === 'note' ? 'Note' : 'Task update'}</strong><time dateTime={activity.occurred_at}>{formatCrmDate(activity.occurred_at)}</time></div>
-      <p className="crm-activity-card__body">{activity.body}</p>
+      {editingId === activity.id && edit.onEdit
+        ? <CrmActivityEditor activity={activity} pending={edit.pending} onCancel={() => setEditingId(null)} onSave={async (input) => { await edit.onEdit?.(activity.id, input); setEditingId(null); }} />
+        : <p className="crm-activity-card__body">{activity.body}</p>}
       <div className="crm-activity-card__meta">
         <span>Created by {activity.created_by}</span>
+        <span>Updated by {activity.updated_by} · {formatCrmDate(activity.updated_at)}</span>
+        {activity.call_outcome && <span>Outcome: {activity.call_outcome}</span>}
         {activity.source_column && <span>{activity.source_import?.original_filename ?? 'Workbook'} · Row {activity.source_row_number ?? '—'} · {activity.source_column}</span>}
         {activity.task && <span>Task: {activity.task.title} · {activity.task.status.replace('_', ' ')} · due {formatCrmDate(activity.task.due_at)}</span>}
+        {edit.onEdit && activity.kind !== 'task_event' && editingId !== activity.id && <button type="button" className="crm-text-action" onClick={() => setEditingId(activity.id)}>Edit</button>}
       </div>
     </li>)}</ol> : <p className="crm-panel-empty">No notes or calls have been recorded yet.</p>}
     <TruncationNotice shown={activities.length} total={total} />
@@ -114,9 +128,13 @@ function DealDetail({ workspaceId, data }: { workspaceId: string; data: CrmDetai
   </>;
 }
 
-export function CrmDetailContent({ kind, workspaceId, data }: { kind: CrmDetailKind; workspaceId: string; data: CrmDetailData }) {
-  if (!data.record) return <section className="crm-state"><h1 className="text-xl font-semibold">Record unavailable</h1><p className="mt-2 text-sm text-slate-600">It may have been removed or belongs to another workspace.</p></section>;
-  if (kind === 'company') return <CompanyDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmCompany>} />;
-  if (kind === 'contact') return <ContactDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmContact>} />;
-  return <DealDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmDeal>} />;
+export function CrmDetailContent({ kind, workspaceId, data, activityPending = false, onEditActivity }: { kind: CrmDetailKind; workspaceId: string; data: CrmDetailData; activityPending?: boolean; onEditActivity?: (activityId: string, input: CrmActivityEditInput) => Promise<unknown> }) {
+  const content = !data.record
+    ? <section className="crm-state"><h1 className="text-xl font-semibold">Record unavailable</h1><p className="mt-2 text-sm text-slate-600">It may have been removed or belongs to another workspace.</p></section>
+    : kind === 'company'
+      ? <CompanyDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmCompany>} />
+      : kind === 'contact'
+        ? <ContactDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmContact>} />
+        : <DealDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmDeal>} />;
+  return <ActivityEditContext.Provider value={{ pending: activityPending, onEdit: onEditActivity }}>{content}</ActivityEditContext.Provider>;
 }

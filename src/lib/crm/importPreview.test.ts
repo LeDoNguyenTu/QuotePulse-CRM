@@ -87,6 +87,54 @@ describe('Sales CRM import preview', () => {
     });
   });
 
+  it('maps NAV, telemarketing, and support-customer workflow columns independently', () => {
+    expect(suggestCrmImportMapping([
+      'Customer Code', 'Company', 'Designation', 'Resigned', 'Customer Status',
+      'Last Call Outcome', 'Appointment Status', 'Deal Stage', 'Follow-up Date', 'Call Log',
+    ])).toMatchObject({
+      sourceRecordCode: 'Customer Code',
+      companyName: 'Company',
+      contactJobTitle: 'Designation',
+      contactResigned: 'Resigned',
+      companyCustomerStatus: 'Customer Status',
+      callOutcome: 'Last Call Outcome',
+      appointmentStatus: 'Appointment Status',
+      dealStage: 'Deal Stage',
+      followUpAt: 'Follow-up Date',
+      callLog: 'Call Log',
+    });
+  });
+
+  it('builds a stable row fingerprint from business identity instead of row position', () => {
+    const [first] = normalizeCrmImportRows([{
+      __sourceRowNumber: 2, Company: 'Acme Pte Ltd', Name: 'Ada Lovelace', Phone: '+65 6123 4567', Notes: 'First note',
+    }], { companyName: 'Company', contactFullName: 'Name', contactPhone: 'Phone', remarks: 'Notes' }, { companies: [], contacts: [] });
+    const [movedAndEdited] = normalizeCrmImportRows([{
+      __sourceRowNumber: 99, Company: ' ACME PTE. LTD ', Name: 'ADA LOVELACE', Phone: '65-6123-4567', Notes: 'Updated note',
+    }], { companyName: 'Company', contactFullName: 'Name', contactPhone: 'Phone', remarks: 'Notes' }, { companies: [], contacts: [] });
+
+    expect(first.stableRowFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(movedAndEdited.stableRowFingerprint).toBe(first.stableRowFingerprint);
+  });
+
+  it('normalizes lifecycle and pipeline fields without coupling stage to outcomes', () => {
+    const [row] = normalizeCrmImportRows([{
+      Company: 'Acme', Status: '', Resigned: 'Yes', Outcome: 'Qualified Opportunity',
+      Appointment: 'Tentative', Stage: 'Proposal', Deal: 'Renewal', Log: 'Booked a meeting',
+    }], {
+      companyName: 'Company', companyCustomerStatus: 'Status', contactFullName: 'Company',
+      contactResigned: 'Resigned', dealName: 'Deal', dealStage: 'Stage', callOutcome: 'Outcome',
+      appointmentStatus: 'Appointment', callLog: 'Log',
+    }, { companies: [], contacts: [] }, { sheetName: 'Active Customers' });
+
+    expect(row.company.customer_status).toBe('Current Customer');
+    expect(row.contact?.record_state).toBe('outdated');
+    expect(row.deal).toMatchObject({
+      stage: 'Proposal', call_outcome: 'Qualified Opportunity', appointment_status: 'Tentative',
+    });
+    expect(row.activities[0]).toMatchObject({ call_outcome: 'Qualified Opportunity' });
+  });
+
   it('preserves physical worksheet rows and the Excel 1904 date system', () => {
     const source: Record<string, unknown> = { Account: 'Acme', When: '1', Notes: 'Called' };
     Object.defineProperties(source, {

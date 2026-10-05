@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useOptionalActiveWorkspace } from '../hooks/useWorkspaces';
 import { workspaceNavigation } from '../lib/workspaceNavigation';
 import { WorkspaceBrand } from './WorkspaceBrand';
+import { CrmReminderCenter } from './crm/CrmReminderCenter';
 
 const legacyFallbackNavigation = [
   { to: '/', label: 'Dashboard', end: true },
@@ -47,6 +48,7 @@ export function Layout({
               )}
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
+              {isSales && workspace && <CrmReminderCenter workspaceId={workspace.id} />}
               <span className="hidden max-w-52 truncate lg:inline">{user?.email}</span>
               <button className="btn-secondary" onClick={() => signOut()}>
                 Sign out

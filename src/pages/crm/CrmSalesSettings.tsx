@@ -195,7 +195,7 @@ export function CrmSalesSettings() {
               <div className="crm-settings-control space-y-3">
                 <input aria-label="Current password" className="input" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" />
                 <div className="crm-inline-control"><input aria-label="New password" className="input" type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="New password" /><input aria-label="Confirm password" className="input" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" /></div>
-                <button type="button" className="btn-secondary self-start" disabled={!currentPassword || !newPassword || !confirmPassword || busyAction === 'password'} onClick={() => void run('password', async () => { await changePassword(currentPassword, newPassword, confirmPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }, 'Password changed.')}>Change password</button>
+                <button type="button" className="btn-secondary self-start" disabled={!currentPassword || !newPassword || !confirmPassword || busyAction === 'password'} onClick={() => void run('password', async () => { await changePassword(currentPassword, newPassword, confirmPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }, 'Password changed. Your new password will be required the next time you sign in.')}>Change password</button>
               </div>
             </div>
 

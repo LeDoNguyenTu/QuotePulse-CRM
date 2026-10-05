@@ -28,4 +28,12 @@ describe('password change reauthentication', () => {
     }, 'owner@example.test', 'wrong', 'new-secret')).rejects.toBe(error);
     expect(updateUser).not.toHaveBeenCalled();
   });
+
+  it('surfaces an update failure after a successful reauthentication', async () => {
+    const error = new Error('Session is no longer valid');
+    await expect(updatePasswordWithReauthentication({
+      signInWithPassword: vi.fn().mockResolvedValue({ error: null }),
+      updateUser: vi.fn().mockResolvedValue({ error }),
+    }, 'owner@example.test', 'current-secret', 'new-secret')).rejects.toBe(error);
+  });
 });

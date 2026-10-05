@@ -52,6 +52,10 @@ describe('table preferences', () => {
     expect(resolveVisibleColumns('crm_deals', deals)).toEqual(['name', 'stage', 'amount', 'follow_up_at']);
   });
 
+  it('shows contact lifecycle state in the compact default contact view', () => {
+    expect(DEFAULT_VISIBLE_COLUMNS.crm_contacts).toContain('record_state');
+  });
+
   it('reads legacy Sales CRM choices as a workspace fallback', () => {
     const legacy: TableColumnPreferences = { crm_contacts: ['full_name', 'email'] };
 

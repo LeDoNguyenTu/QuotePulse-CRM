@@ -9,4 +9,11 @@ describe('campaign queue worker isolation', () => {
     expect(source).toMatch(/isSuppressed\(admin, ownerId, row\.to_email\)/);
     expect(source).toMatch(/\.eq\('owner_id', userId\)\.eq\('email_normalized'/);
   });
+
+  it('renders an immutable HTML template snapshot with an unsubscribe link for both providers', () => {
+    expect(source).toMatch(/row\.body_html_rendered/);
+    expect(source).toMatch(/appendHtmlUnsubscribe/);
+    expect(source).toMatch(/bodyHtml/);
+    expect(source).toMatch(/body_html_rendered: bodyHtml/);
+  });
 });

@@ -47,6 +47,10 @@ export interface CrmListFilters {
   industry?: string;
   sort?: string;
   sourceImportId?: string;
+  contactState?: string;
+  contactVisibility?: string;
+  duplicateReview?: string;
+  customerStatus?: string;
 }
 
 const SORT_ORDERS: Record<CrmResourceName, Record<string, ResourceDefinition['order']>> = {
@@ -77,10 +81,15 @@ export function crmListSpec(
   const status = filters.status?.trim();
   const companyId = filters.companyId?.trim();
   const industry = filters.industry?.trim();
+  const contactState = filters.contactState?.trim();
+  const contactVisibility = filters.contactVisibility?.trim() || 'visible';
+  const duplicateReview = filters.duplicateReview?.trim();
+  const customerStatus = filters.customerStatus?.trim();
   const exactFilters = [
     ...(resource === 'deals' && status ? [{ column: 'status', value: status }] : []),
     ...(resource !== 'companies' && companyId ? [{ column: 'company_id', value: companyId }] : []),
     ...(resource === 'companies' && industry ? [{ column: 'industry', value: industry }] : []),
+    ...(resource === 'companies' && customerStatus ? [{ column: 'customer_status', value: customerStatus }] : []),
   ];
   return {
     table: definition.table,
@@ -97,10 +106,20 @@ export function crmListSpec(
       p_search: filters.search.trim(),
       ...(resource === 'companies' ? {
         p_industry: industry || null,
+        p_customer_status: customerStatus || null,
       } : {
         p_company_id: companyId || null,
       }),
       ...(resource === 'deals' ? { p_status: status || null } : {}),
+      ...(resource === 'contacts' ? {
+        p_record_state: contactState || null,
+        p_visibility: contactVisibility,
+        p_duplicate_review: duplicateReview === 'required'
+          ? true
+          : duplicateReview === 'clear'
+            ? false
+            : null,
+      } : {}),
       p_sort: filters.sort || (resource === 'deals' ? 'recent' : 'name_asc'),
       p_offset: range.from,
       p_limit: range.to - range.from + 1,

@@ -1,12 +1,17 @@
 import { normalizeDomain, normalizeWebsiteUrl } from './inputs';
 import { formatCrmDateForDisplay, parseCrmDate } from './flexibleDate';
 import { classifyMissingIndustry, type CompanyFieldSources } from './companyEnrichment';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 export type CrmImportMapping = Partial<Record<
   | 'companyName' | 'companyIndustry' | 'companyWebsite' | 'companyDomain'
-  | 'companyPhone' | 'companyAddress' | 'contactFirstName' | 'contactLastName'
+  | 'companyPhone' | 'companyAddress' | 'companyCustomerStatus' | 'sourceRecordCode'
+  | 'contactFirstName' | 'contactLastName'
   | 'contactFullName' | 'contactEmail' | 'contactPhone' | 'contactJobTitle'
+  | 'contactResigned'
   | 'dealName' | 'dealStage' | 'dealAmount' | 'dealCurrency' | 'dealOwner'
+  | 'callOutcome' | 'appointmentStatus'
   | 'lastCallAt' | 'followUpAt' | 'activityOccurredAt' | 'callLog' | 'remarks' | 'comments',
   string | null
 >>;
@@ -18,17 +23,22 @@ export const CRM_IMPORT_ROLES: Array<{ key: keyof CrmImportMapping; label: strin
   { key: 'companyDomain', label: 'Domain', group: 'Company' },
   { key: 'companyPhone', label: 'Phone', group: 'Company' },
   { key: 'companyAddress', label: 'Address', group: 'Company' },
+  { key: 'companyCustomerStatus', label: 'Customer status', group: 'Company' },
+  { key: 'sourceRecordCode', label: 'Customer code', group: 'Company' },
   { key: 'contactFirstName', label: 'First name', group: 'Contact' },
   { key: 'contactLastName', label: 'Last name', group: 'Contact' },
   { key: 'contactFullName', label: 'Full name', group: 'Contact' },
   { key: 'contactEmail', label: 'Email', group: 'Contact' },
   { key: 'contactPhone', label: 'Phone', group: 'Contact' },
   { key: 'contactJobTitle', label: 'Job title', group: 'Contact' },
+  { key: 'contactResigned', label: 'Resigned', group: 'Contact' },
   { key: 'dealName', label: 'Deal name', group: 'Deal' },
   { key: 'dealStage', label: 'Stage', group: 'Deal' },
   { key: 'dealAmount', label: 'Amount', group: 'Deal' },
   { key: 'dealCurrency', label: 'Currency', group: 'Deal' },
   { key: 'dealOwner', label: 'Owner', group: 'Deal' },
+  { key: 'callOutcome', label: 'Call outcome', group: 'Deal' },
+  { key: 'appointmentStatus', label: 'Appointment status', group: 'Deal' },
   { key: 'lastCallAt', label: 'Last call', group: 'Deal' },
   { key: 'followUpAt', label: 'Follow up', group: 'Deal' },
   { key: 'activityOccurredAt', label: 'Activity date', group: 'Activity' },
@@ -55,17 +65,22 @@ const HEADER_ALIASES: Partial<Record<keyof CrmImportMapping, string[]>> = {
   companyDomain: ['domain', 'company domain'],
   companyPhone: ['company phone', 'office phone', 'main phone'],
   companyAddress: ['address', 'company address', 'office address'],
+  companyCustomerStatus: ['customer status', 'customer type', 'account status'],
+  sourceRecordCode: ['customer code', 'account code', 'customer id', 'account id'],
   contactFirstName: ['first name', 'contact first name'],
   contactLastName: ['last name', 'contact last name'],
   contactFullName: ['name', 'contact name', 'full name'],
   contactEmail: ['email address', 'email'],
   contactPhone: ['contact number', 'phone'],
   contactJobTitle: ['designation', 'job title'],
+  contactResigned: ['resigned', 'contact resigned', 'former contact'],
   dealName: ['deal name', 'opportunity', 'opportunity name'],
   dealStage: ['deal stage', 'stage'],
   dealAmount: ['deal value', 'deal amount', 'amount', 'value'],
   dealCurrency: ['currency'],
   dealOwner: ['owner', 'deal owner', 'sales owner'],
+  callOutcome: ['last call outcome', 'call outcome', 'outcome'],
+  appointmentStatus: ['appointment status', 'meeting status'],
   lastCallAt: ['last contact date', 'last call date'],
   followUpAt: ['follow-up date', 'follow up date'],
   activityOccurredAt: ['last contact date', 'activity date'],
@@ -128,20 +143,24 @@ export function suggestCrmImportMapping(headers: string[]): CrmImportMapping {
 
 export interface CrmImportPreviewRow {
   rowNumber: number;
+  stableRowFingerprint: string;
   valid: boolean;
   issues: string[];
   warnings: string[];
   duplicateOfRow: number | null;
   existingCompanyId: string | null;
   existingContactId: string | null;
-  company: { name: string; industry: string | null; website: string | null; domain: string | null; phone: string | null; address_line_1: string | null; field_sources: CompanyFieldSources };
-  contact: { first_name: string | null; last_name: string | null; full_name: string | null; email: string | null; phone: string | null; job_title: string | null } | null;
-  deal: { name: string; stage: string; amount: number | null; currency: string; owner_label: string | null; last_call_at: string | null; follow_up_at: string | null } | null;
-  activities: Array<{ kind: 'note' | 'call'; body: string; occurred_at: string | null; source_column: string }>;
+  company: { name: string; industry: string | null; website: string | null; domain: string | null; phone: string | null; address_line_1: string | null; customer_status: string | null; field_sources: CompanyFieldSources };
+  contact: { first_name: string | null; last_name: string | null; full_name: string | null; email: string | null; phone: string | null; job_title: string | null; record_state: 'unverified' | 'outdated' } | null;
+  deal: { name: string; stage: string; amount: number | null; currency: string; owner_label: string | null; last_call_at: string | null; follow_up_at: string | null; call_outcome: string | null; appointment_status: string | null } | null;
+  activities: Array<{ kind: 'note' | 'call'; body: string; occurred_at: string | null; source_column: string; call_outcome: string | null }>;
 }
 
+const encoder = new TextEncoder();
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : String(value ?? '').trim(); }
 function key(value: string): string { return value.normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase(); }
+function digits(value: string): string { return value.replace(/\D+/g, ''); }
+function fingerprint(value: string): string { return bytesToHex(sha256(encoder.encode(value))); }
 function mapped(row: Record<string, unknown>, mapping: CrmImportMapping, role: keyof CrmImportMapping): string {
   const header = mapping[role];
   return header ? text(row[header]) : '';
@@ -173,6 +192,7 @@ export function normalizeCrmImportRows(
   rows: Record<string, unknown>[],
   mapping: CrmImportMapping,
   existing: { companies: Array<{ id: string; name: string }>; contacts: Array<{ id: string; email: string | null }> },
+  options: { sheetName?: string } = {},
 ): CrmImportPreviewRow[] {
   const companyIds = new Map(existing.companies.map((company) => [key(company.name), company.id]));
   const contactIds = new Map(existing.contacts.filter((contact) => contact.email).map((contact) => [contact.email!.trim().toLowerCase(), contact.id]));
@@ -196,7 +216,8 @@ export function normalizeCrmImportRows(
     const lastName = mapped(source, mapping, 'contactLastName');
     const suppliedFullName = mapped(source, mapping, 'contactFullName');
     const fullName = suppliedFullName || [firstName, lastName].filter(Boolean).join(' ');
-    const hasContact = Boolean(firstName || lastName || fullName || emailText || mapped(source, mapping, 'contactPhone') || mapped(source, mapping, 'contactJobTitle'));
+    const contactPhone = mapped(source, mapping, 'contactPhone');
+    const hasContact = Boolean(firstName || lastName || fullName || emailText || contactPhone || mapped(source, mapping, 'contactJobTitle'));
     if (hasContact && !fullName && !emailText) issues.push('Contact needs a name or email.');
 
     const dealName = mapped(source, mapping, 'dealName');
@@ -208,6 +229,8 @@ export function normalizeCrmImportRows(
     const lastCall = dateValue(mapped(source, mapping, 'lastCallAt'), 'Last call', warnings, dateSystem);
     const followUp = dateValue(mapped(source, mapping, 'followUpAt'), 'Follow-up', warnings, dateSystem);
     const activityAt = dateValue(mapped(source, mapping, 'activityOccurredAt'), 'Activity', warnings, dateSystem);
+    const callOutcome = optional(mapped(source, mapping, 'callOutcome'));
+    const appointmentStatus = optional(mapped(source, mapping, 'appointmentStatus'));
     const activityValues = [
       { role: 'callLog' as const, kind: 'call' as const, label: 'Call Log' },
       { role: 'remarks' as const, kind: 'note' as const, label: 'Remarks' },
@@ -219,7 +242,13 @@ export function normalizeCrmImportRows(
       const sourceColumn = mapping[role] ?? label;
       if (sourceColumn.length > 100) issues.push(`${label} source column exceeds 100 characters.`);
       if (body.length > 20000) issues.push(`${label} exceeds 20,000 characters.`);
-      return [{ kind, body: body.slice(0, 20000), occurred_at: activityAt, source_column: sourceColumn }];
+      return [{
+        kind,
+        body: body.slice(0, 20000),
+        occurred_at: activityAt,
+        source_column: sourceColumn,
+        call_outcome: kind === 'call' ? callOutcome : null,
+      }];
     });
     const contactIdentity = emailText
       ? `email:${emailText}`
@@ -228,6 +257,27 @@ export function normalizeCrmImportRows(
         : 'no-contact';
     const entityKey = `${key(companyName)}|${contactIdentity}`;
     const duplicateKey = dealName ? `${entityKey}|deal:${key(dealName)}` : entityKey;
+    const sourceRecordCode = key(mapped(source, mapping, 'sourceRecordCode'));
+    const stableIdentity = sourceRecordCode
+      ? `${key(companyName)}|code:${sourceRecordCode}`
+      : emailText
+        ? `${key(companyName)}|email:${emailText}`
+        : fullName && digits(contactPhone)
+          ? `${key(companyName)}|contact:${key(fullName)}|phone:${digits(contactPhone)}`
+          : dealName
+            ? `${key(companyName)}|deal:${key(dealName)}`
+            : `${key(companyName)}|row:${sourceRowNumber}`;
+    const explicitCustomerStatus = optional(mapped(source, mapping, 'companyCustomerStatus'));
+    const normalizedSheet = key(options.sheetName ?? '');
+    const inferredCustomerStatus = /inactive/.test(normalizedSheet)
+      ? 'Former Customer'
+      : /amc|maintenance/.test(normalizedSheet)
+        ? 'Maintenance Customer'
+        : /active/.test(normalizedSheet)
+          ? 'Current Customer'
+          : null;
+    const resignedValue = key(mapped(source, mapping, 'contactResigned'));
+    const contactRecordState = ['yes', 'y', 'true', '1', 'resigned'].includes(resignedValue) ? 'outdated' as const : 'unverified' as const;
     const rowIsValid = issues.length === 0;
     const duplicateOfRow = rowIsValid ? seen.get(duplicateKey) ?? null : null;
     if (rowIsValid && companyName) {
@@ -237,6 +287,7 @@ export function normalizeCrmImportRows(
 
     return {
       rowNumber: sourceRowNumber,
+      stableRowFingerprint: fingerprint(stableIdentity),
       valid: rowIsValid,
       issues,
       warnings,
@@ -250,6 +301,7 @@ export function normalizeCrmImportRows(
         domain: normalizeDomain(mapped(source, mapping, 'companyDomain')),
         phone: optional(mapped(source, mapping, 'companyPhone')),
         address_line_1: optional(mapped(source, mapping, 'companyAddress')),
+        customer_status: explicitCustomerStatus ?? inferredCustomerStatus,
         field_sources: {
           name: 'workbook',
           ...(classifiedIndustry.value ? { industry: workbookIndustry ? 'workbook' : 'classifier' } : {}),
@@ -257,18 +309,23 @@ export function normalizeCrmImportRows(
           ...(mapped(source, mapping, 'companyDomain') ? { domain: 'workbook' } : {}),
           ...(mapped(source, mapping, 'companyPhone') ? { phone: 'workbook' } : {}),
           ...(mapped(source, mapping, 'companyAddress') ? { address_line_1: 'workbook' } : {}),
+          ...((explicitCustomerStatus ?? inferredCustomerStatus)
+            ? { customer_status: explicitCustomerStatus ? 'workbook' : 'classifier' }
+            : {}),
         },
       },
       contact: hasContact ? {
         first_name: optional(firstName), last_name: optional(lastName), full_name: optional(fullName),
-        email: optional(emailText), phone: optional(mapped(source, mapping, 'contactPhone')),
+        email: optional(emailText), phone: optional(contactPhone),
         job_title: optional(mapped(source, mapping, 'contactJobTitle')),
+        record_state: contactRecordState,
       } : null,
       deal: dealName ? {
         name: dealName, stage: mapped(source, mapping, 'dealStage') || 'New',
         amount: Number.isFinite(amount) ? amount : null, currency,
         owner_label: optional(mapped(source, mapping, 'dealOwner')),
         last_call_at: lastCall, follow_up_at: followUp,
+        call_outcome: callOutcome, appointment_status: appointmentStatus,
       } : null,
       activities,
     };

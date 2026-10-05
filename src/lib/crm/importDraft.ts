@@ -1,5 +1,17 @@
 import type { ParsedWorkbook } from '../uploadedFileWorkbook';
 import type { CrmHeaderMatch, CrmImportMapping } from './importPreview';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
+
+const encoder = new TextEncoder();
+
+function normalizedWorkbookPart(value: string): string {
+  return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function buildCrmWorkbookIdentity(filename: string, sheetName: string): string {
+  return bytesToHex(sha256(encoder.encode(`${normalizedWorkbookPart(filename)}\n${normalizedWorkbookPart(sheetName)}`)));
+}
 
 export interface EmptyCrmImportDraft {
   file: File | null;

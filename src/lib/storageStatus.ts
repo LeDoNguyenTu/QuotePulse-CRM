@@ -98,7 +98,7 @@ export function capacityStatus(usedBytes: number, limitBytes: number): CapacityS
 }
 
 export function archiveAutomationSummary(run: ArchiveAutomationSummaryInput): string {
-  if (run.status === 'failed') return `Automatic archive failed: ${run.error ?? 'unknown error'}`;
+  if (run.status === 'failed') return `Latest recorded archive work failed: ${run.error ?? 'unknown error'}. The scheduler will retry automatically.`;
   if (run.status === 'degraded') return 'Automatic archive completed with warnings and will retry remaining data.';
   return `Archived ${run.dealsArchived.toLocaleString()} deal snapshots and ${run.genericAttachmentsArchived.toLocaleString()} attachment records across ${run.ownersProcessed.toLocaleString()} accounts.`;
 }

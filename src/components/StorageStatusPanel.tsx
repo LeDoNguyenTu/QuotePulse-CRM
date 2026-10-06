@@ -117,7 +117,7 @@ export function StorageStatusPanel() {
           : 'Ready. It activates at 60% database usage.'}
         {query.data.archiveAutomation && (
           <span className="ml-1 text-slate-400">
-            Last run {new Date(query.data.archiveAutomation.finishedAt).toLocaleString()}.
+            Last recorded work {new Date(query.data.archiveAutomation.finishedAt).toLocaleString()}.
           </span>
         )}
         <p className="mt-2 border-t border-slate-200 pt-2">

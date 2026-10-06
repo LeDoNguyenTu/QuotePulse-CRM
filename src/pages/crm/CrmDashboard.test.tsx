@@ -19,7 +19,11 @@ vi.mock('../../hooks/useStorageStatus', () => ({
       r2: { usedBytes: 100, limitBytes: 1000, objectCount: 4, source: 'r2-inventory', cached: false },
       snapshots: null,
       compaction: null,
-      archiveAutomation: null,
+      archiveAutomation: {
+        status: 'failed', pressure: 'warning', databaseBytes: 374_000_000,
+        ownersProcessed: 0, dealsArchived: 0, genericAttachmentsArchived: 0,
+        error: 'historic timeout', finishedAt: '2026-09-14T13:40:06.602Z',
+      },
     },
   }),
 }));
@@ -33,5 +37,7 @@ describe('Sales CRM dashboard', () => {
     expect(html).toContain('50%');
     expect(html).toContain('Cloudflare R2');
     expect(html).toContain('10%');
+    expect(html).toContain('Latest recorded archive work failed');
+    expect(html).toContain('Last recorded work');
   });
 });

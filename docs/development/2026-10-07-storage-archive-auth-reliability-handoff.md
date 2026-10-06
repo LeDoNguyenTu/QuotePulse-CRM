@@ -62,3 +62,13 @@ The password reset regression test was observed failing before the page existed,
 
 - Vercel CLI `62.5.0` is installed globally and authenticated as the current Vercel user.
 - `vercel project inspect quote-pulse-crm --scope itsbrian` resolves project `prj_NezMtWFkbQpytv32aaeYllJxEoqG` with `dist` output and Node.js 24.x.
+
+## Verified production release
+
+- PR #33 merged as `acb803a671d1e2a9817714e6588fc32b4ae70ab0`.
+- PR #34 merged as `7200ada6de273338566de461de0871e573a091c8` for the legacy Settings consistency follow-up.
+- GitHub/Supabase runs `37505679209` and `37506588329` completed successfully, including migrations, Edge Functions, transactional database checks, recovery controller enablement, and archive schedule verification.
+- Vercel deployments `dpl_ER4KG4cv4wwpiWMhhnEvhUisWPnC` and `dpl_Aa9PgA6Td39gziNFSHucCCW7LeG4` reached READY and the public alias was updated.
+- Authenticated production rendering confirmed the Sales CRM dashboard percentages, both Settings variants, the tokenless expired/invalid reset state, and legacy archive progress of 4,500 rows / 18 verified objects on `companies`.
+
+The storage card's September lease-timeout message is historical material-work history, not the current scheduler state. Read-only production evidence on 2026-10-07 showed the minute cron active with recent HTTP 200 responses (`idle` on ordinary minutes and `succeeded` on five-minute warning-pressure work intervals), no active archive lease, and no current error. The UI now labels this as the latest recorded archive work and explains that automatic retries continue, instead of presenting it as the live scheduler state.

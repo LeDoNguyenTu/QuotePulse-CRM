@@ -11,6 +11,7 @@ import { CrmEmailCampaigns } from './crm/CrmEmailCampaigns';
 import { CrmPstExtractor } from './crm/CrmPstExtractor';
 import { CrmSalesSettings } from './crm/CrmSalesSettings';
 import { CrmRecycleBin } from './crm/CrmRecycleBin';
+import { Templates } from './Templates';
 
 export function SalesWorkspacePage() {
   const { module, recordId } = useParams();
@@ -22,6 +23,7 @@ export function SalesWorkspacePage() {
   if (resolution === 'imports') return <CrmImports />;
   if (resolution === 'recycle-bin') return <CrmRecycleBin />;
   if (resolution === 'placeholder' && module === 'tasks') return <CrmTasks />;
+  if (resolution === 'placeholder' && module === 'templates') return <Templates />;
   if (resolution === 'placeholder' && module === 'email-campaigns') return <CrmEmailCampaigns />;
   if (resolution === 'placeholder' && module === 'pst-extractor') return <CrmPstExtractor />;
   if (resolution === 'placeholder' && module === 'settings') return <CrmSalesSettings />;

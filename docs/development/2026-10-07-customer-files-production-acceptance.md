@@ -82,6 +82,19 @@ Expected result: 1 test file and 9 tests pass. The suite fails if the approved f
 - [ ] Verify the storage-usage display and safely resume one bounded legacy archive step without deleting legacy rows.
 - [x] Password change was tested successfully by the workspace owner on 2026-10-07.
 
+## Production evidence after PR #36
+
+PR #36 was merged as `09f2f692ce12a66125074d2f1ad5e81acb2c7611` and Vercel reported the matching production deployment READY.
+
+- The dashboard storage card rendered after the live `storage-status` request completed: Supabase 74.8% (374 MB / 500 MB), R2 1.7% (171 MB / 10 GB), and recovery complete.
+- Contact search matched `Finance Manager` from the Role column. Verify, Mark outdated, Hide, Edit, and Delete are rendered as real buttons.
+- The contact export dialog supports selected rows or all matching rows, Excel or CSV, and user-selected ordered columns.
+- Deal columns expose independent Deal stage, Call outcome, Appointment status, Last call, and source/relationship fields with a small default set.
+- Company activities expose occurred time, call/note type, workbook destination, optional follow-up task, editable timeline entries, and source lineage.
+- The reminder button opens a task-reminder popup. This workspace currently has no unread reminders, so a due-task delivery event could not be observed without creating test data.
+- One safe legacy archive step completed without deletion, increasing coverage from 11,000 rows / 44 verified objects to 11,250 rows / 45 verified objects. The archive remains resumable and is still building the `companies` table.
+- Live review found the rich HTML template editor was unreachable from a Sales workspace. The follow-up fix adds `/sales/templates` to Sales navigation and dispatches it to the existing table/image/ZIP-capable editor.
+
 ### Browser automation prerequisite
 
 Automated file selection in the existing Chrome session requires the ChatGPT browser extension setting **Allow access to file URLs**. If it is disabled, the file chooser cannot be controlled even though the CRM page and input are otherwise reachable. Enable it from `chrome://extensions` → ChatGPT → Details before continuing the live upload pass.

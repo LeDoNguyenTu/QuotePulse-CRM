@@ -14,6 +14,7 @@ vi.mock('./crm/CrmTasks', () => ({ CrmTasks: () => <div /> }));
 vi.mock('./crm/CrmEmailCampaigns', () => ({ CrmEmailCampaigns: () => <div /> }));
 vi.mock('./crm/CrmPstExtractor', () => ({ CrmPstExtractor: () => <div /> }));
 vi.mock('./crm/CrmRecycleBin', () => ({ CrmRecycleBin: () => <div /> }));
+vi.mock('./Templates', () => ({ Templates: () => <div>Rich HTML email templates</div> }));
 
 vi.mock('../hooks/useWorkspaces', () => ({
   useActiveWorkspace: () => ({ id: 'sales-id', name: 'Sales CRM', kind: 'sales_crm', role: 'owner' }),
@@ -60,7 +61,21 @@ function renderSettings() {
   );
 }
 
+function renderTemplates() {
+  return renderToStaticMarkup(
+    <MemoryRouter initialEntries={['/w/sales-id/sales/templates']}>
+      <Routes>
+        <Route path="/w/:workspaceId/sales/:module" element={<SalesWorkspacePage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe('Sales CRM settings', () => {
+  it('exposes the rich email template manager inside a Sales workspace', () => {
+    expect(renderTemplates()).toContain('Rich HTML email templates');
+  });
+
   it('renders organized delivery, security, and privacy controls instead of a placeholder', () => {
     const html = renderSettings();
 

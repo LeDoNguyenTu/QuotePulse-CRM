@@ -117,9 +117,26 @@ function csvWorkbook(value: string): ParsedWorkbook {
 }
 
 function makeSheet(name: string, grid: Array<{ rowNumber: number; values: string[] }>, dateSystem: '1900' | '1904'): ParsedSheet {
-  const headers = grid[0].values.map((value) => value.trim());
+  const width = grid.reduce((widest, row) => {
+    for (let index = row.values.length - 1; index >= 0; index -= 1) {
+      if (String(row.values[index] ?? '').trim()) return Math.max(widest, index + 1);
+    }
+    return widest;
+  }, 0);
+  const usedHeaders = new Set<string>();
+  const headers = grid[0].values.slice(0, width).map((value) => {
+    const base = value.trim();
+    if (!base) return '';
+    let header = base;
+    let suffix = 2;
+    while (usedHeaders.has(header.toLowerCase())) {
+      header = `${base} (${suffix})`;
+      suffix += 1;
+    }
+    usedHeaders.add(header.toLowerCase());
+    return header;
+  });
   if (!headers.length || headers.some((header) => !header)) throw new Error(`${name} has a blank header.`);
-  if (new Set(headers.map((header) => header.toLowerCase())).size !== headers.length) throw new Error(`${name} has duplicate headers.`);
   if (headers.length > 200 || grid.length - 1 > 20000) throw new Error(`${name} exceeds the upload column or row limit.`);
   const rows = grid.slice(1).filter((row) => row.values.some(Boolean)).map((row) => {
     const record = Object.fromEntries(headers.map((header, index) => [header, String(row.values[index] ?? '').slice(0, 32000)]));

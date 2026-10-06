@@ -1,4 +1,4 @@
-import type { ParsedWorkbook } from '../uploadedFileWorkbook';
+import type { ParsedSheet, ParsedWorkbook } from '../uploadedFileWorkbook';
 import type { CrmHeaderMatch, CrmImportMapping } from './importPreview';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
@@ -11,6 +11,16 @@ function normalizedWorkbookPart(value: string): string {
 
 export function buildCrmWorkbookIdentity(filename: string, sheetName: string): string {
   return bytesToHex(sha256(encoder.encode(`${normalizedWorkbookPart(filename)}\n${normalizedWorkbookPart(sheetName)}`)));
+}
+
+export function buildCrmSourceRows(sheet: Pick<ParsedSheet, 'headers' | 'rows'>): Array<{
+  row_number: number;
+  cells: Record<string, string>;
+}> {
+  return sheet.rows.map((source, index) => ({
+    row_number: typeof source.__sourceRowNumber === 'number' ? source.__sourceRowNumber : index + 2,
+    cells: Object.fromEntries(sheet.headers.map((header) => [header, String(source[header] ?? '')])),
+  }));
 }
 
 export interface EmptyCrmImportDraft {

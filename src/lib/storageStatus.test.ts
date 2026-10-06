@@ -77,7 +77,7 @@ describe('storage capacity status', () => {
       genericAttachmentsArchived: 0,
       error: 'R2 unavailable',
       finishedAt: '2026-08-22T12:20:00.000Z',
-    })).toBe('Automatic archive failed: R2 unavailable');
+    })).toBe('Latest recorded archive work failed: R2 unavailable. The scheduler will retry automatically.');
     expect(archiveAutomationSummary({
       status: 'degraded',
       pressure: 'warning',

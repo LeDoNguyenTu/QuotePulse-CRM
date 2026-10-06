@@ -14,6 +14,7 @@ import { Settings } from './pages/Settings';
 import { Trash } from './pages/Trash';
 import { MsAuthCallback } from './pages/MsAuthCallback';
 import { AuthCallback } from './pages/AuthCallback';
+import { PasswordReset } from './pages/PasswordReset';
 import { UploadedFiles } from './pages/UploadedFiles';
 import { UploadedFileDetail } from './pages/UploadedFileDetail';
 import { WorkspaceSelector } from './pages/WorkspaceSelector';
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/ms-auth-callback" element={<MsAuthCallback />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/auth/reset-password" element={<PasswordReset />} />
 
         <Route
           path={workspaceRoutePaths.selector}

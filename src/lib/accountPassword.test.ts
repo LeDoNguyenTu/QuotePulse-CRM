@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preparePasswordChange } from './accountPassword';
+import { preparePasswordChange, prepareRecoveredPassword } from './accountPassword';
 
 describe('preparePasswordChange', () => {
   it('accepts matching non-empty passwords', () => {
@@ -24,6 +24,18 @@ describe('preparePasswordChange', () => {
     });
     expect(preparePasswordChange('same-password', 'same-password', 'same-password')).toEqual({
       error: 'Choose a new password that is different from the current password.',
+    });
+  });
+
+  it('validates both fields on the dedicated recovery page', () => {
+    expect(prepareRecoveredPassword('new-password', 'different')).toEqual({
+      error: 'New passwords do not match.',
+    });
+    expect(prepareRecoveredPassword('short', 'short')).toEqual({
+      error: 'Use at least 8 characters for the new password.',
+    });
+    expect(prepareRecoveredPassword('new-password', 'new-password')).toEqual({
+      newPassword: 'new-password',
     });
   });
 });

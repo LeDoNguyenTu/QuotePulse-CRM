@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authCallbackNoTokenState, authCallbackSessionState, authOtpType } from './authCallback';
+import { authCallbackNoTokenState, authCallbackSessionState, authOtpType, passwordRecoveryUrl } from './authCallback';
 
 describe('authOtpType', () => {
   it('preserves the email-change token type Supabase sends to the callback', () => {
@@ -19,5 +19,11 @@ describe('authOtpType', () => {
   it('keeps an email change pending while Supabase reports a new email waiting for confirmation', () => {
     expect(authCallbackSessionState('email-change', 'new@example.com')).toBe('email_change_pending');
     expect(authCallbackSessionState('email-change', null)).toBe('verified');
+  });
+
+  it('sends recovery emails to the dedicated password page', () => {
+    expect(passwordRecoveryUrl('https://quote-pulse-crm.vercel.app')).toBe(
+      'https://quote-pulse-crm.vercel.app/auth/reset-password',
+    );
   });
 });

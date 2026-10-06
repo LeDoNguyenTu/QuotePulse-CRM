@@ -21,6 +21,7 @@ export function Login() {
 
   const notice = SIGNED_OUT_REASONS[params.get('reason') ?? ''];
   const verified = params.get('verified') === '1';
+  const passwordReset = params.get('password_reset') === '1';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,6 +43,11 @@ export function Login() {
       {verified && (
         <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">
           Email verified. You can sign in now.
+        </p>
+      )}
+      {passwordReset && (
+        <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">
+          Password changed. Sign in with your new password.
         </p>
       )}
       {notice && (

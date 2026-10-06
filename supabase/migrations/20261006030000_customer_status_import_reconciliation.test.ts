@@ -7,6 +7,7 @@ describe('customer status import reconciliation migration', () => {
   it('persists review state without changing user-authored customer status', () => {
     expect(sql).toMatch(/alter table public\.crm_companies[\s\S]*customer_status_review_required boolean/i);
     expect(sql).toMatch(/customer_status_review_reason text/i);
+    expect(sql).toMatch(/constraint crm_companies_customer_status_review_reason_length_check\s+check/i);
     expect(sql).toMatch(/crm_commit_import_with_customer_status_review/i);
     expect(sql).toMatch(/field_sources->>'customer_status'[^\n]*<> 'user'/i);
     expect(sql).toMatch(/v_base_rows[\s\S]*'\{company,field_sources\}'[\s\S]*'\{\}'::jsonb/i);

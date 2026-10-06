@@ -602,6 +602,7 @@ body {
   .crm-module-grid { grid-template-columns: 1fr; }
   .crm-module-link { min-height: 11rem; }
   .crm-filter-bar { align-items: stretch; flex-direction: column; }
+  .crm-filter-bar__search { flex: 0 0 auto; }
   .crm-pagination { align-items: stretch; flex-direction: column; }
   .crm-detail-hero { align-items: flex-start; flex-direction: column; padding: 1.35rem; }
   .crm-detail-stamp, .crm-detail-value { min-width: 0; border-left: 0; padding-left: 0; text-align: left; }

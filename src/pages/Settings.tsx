@@ -16,6 +16,7 @@ import {
   parseSessionTimeoutDraft,
 } from '../lib/sessionTimeout';
 import { LegacyWorkspaceArchivePanel } from '../components/LegacyWorkspaceArchivePanel';
+import { preparePasswordChange } from '../lib/accountPassword';
 
 export function Settings() {
   const { user, changeLoginEmail, changePassword, applySessionTimeoutMinutes } = useAuth();
@@ -44,6 +45,7 @@ export function Settings() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordChangeMessage, setPasswordChangeMessage] = useState<string | null>(null);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const passwordPreparation = preparePasswordChange(currentPassword, newPassword, confirmPassword);
 
   useEffect(() => {
     if (data) {
@@ -219,10 +221,14 @@ export function Settings() {
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
         />
+        <p className="text-xs text-slate-500">New password and confirmation must match and contain at least 8 characters.</p>
+        {confirmPassword && 'error' in passwordPreparation && (
+          <p className="text-sm text-red-700" role="alert">{passwordPreparation.error}</p>
+        )}
         <button
-          className="btn-secondary"
+          className="btn-primary"
           onClick={handleChangePassword}
-          disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword}
+          disabled={isChangingPassword || 'error' in passwordPreparation}
         >
           {isChangingPassword ? 'Changing password…' : 'Change password'}
         </button>
@@ -445,8 +451,9 @@ export function Settings() {
       {error && <ErrorState error={error} />}
       {saved && <p className="text-sm text-emerald-700">Saved.</p>}
 
+      <p className="text-sm text-slate-500">This saves HubSpot, delivery, OCR, and session settings; it does not change your password.</p>
       <button className="btn-primary" onClick={handleSave} disabled={save.isPending}>
-        {save.isPending ? 'Saving…' : 'Save settings'}
+        {save.isPending ? 'Saving integration & delivery settings…' : 'Save integration & delivery settings'}
       </button>
     </div>
   );

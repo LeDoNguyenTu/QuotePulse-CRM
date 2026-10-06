@@ -26,7 +26,7 @@ Updated: 2026-10-07 (Asia/Singapore)
 ### Password and email-link flows
 
 - Signed-in password changes use Supabase's supported `current_password` field in the same `updateUser` request as the replacement password.
-- Settings show password requirements beside the fields, report mismatch inline, disable invalid submission, and visually separate the password action from delivery/session settings.
+- Both legacy and Sales CRM Settings show password requirements beside the fields, report mismatch inline, disable invalid submission, and visually separate the password action from integration/delivery/session settings.
 - Forgot-password emails redirect to `/auth/reset-password`.
 - The dedicated reset page handles token-hash and implicit recovery links, invalid/expired links, password confirmation, successful reset, sign-out, and return to sign-in.
 - A bare reset URL cannot change a password, even if the browser already has an unrelated signed-in session.

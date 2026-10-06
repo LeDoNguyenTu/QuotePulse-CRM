@@ -18,4 +18,11 @@ describe('password settings routes', () => {
       expect(source).toContain('Your new password will be required the next time you sign in.');
     }
   });
+
+  it('keeps legacy password validation separate from integration settings', () => {
+    expect(legacy).toContain('preparePasswordChange(currentPassword, newPassword, confirmPassword)');
+    expect(legacy).toContain('New password and confirmation must match');
+    expect(legacy).toContain('Save integration & delivery settings');
+    expect(legacy).toContain('does not change your password');
+  });
 });

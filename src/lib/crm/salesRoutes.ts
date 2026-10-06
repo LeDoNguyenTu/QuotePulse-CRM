@@ -13,6 +13,7 @@ export type SalesModuleResolution =
 
 const PLACEHOLDER_MODULES = new Set([
   'tasks',
+  'templates',
   'email-campaigns',
   'pst-extractor',
   'settings',

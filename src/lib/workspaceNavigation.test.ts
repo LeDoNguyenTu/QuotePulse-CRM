@@ -11,6 +11,7 @@ describe("workspace navigation", () => {
       "Contacts",
       "Deals",
       "Tasks",
+      "Templates",
       "Email Campaigns",
       "Imports",
       "PST Extractor",

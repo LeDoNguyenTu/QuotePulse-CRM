@@ -29,6 +29,7 @@ export function workspaceNavigation(
     { to: `${base}/contacts`, label: 'Contacts' },
     { to: `${base}/deals`, label: 'Deals' },
     { to: `${base}/tasks`, label: 'Tasks' },
+    { to: `${base}/templates`, label: 'Templates' },
     { to: `${base}/email-campaigns`, label: 'Email Campaigns' },
     { to: `${base}/imports`, label: 'Imports' },
     { to: `${base}/pst-extractor`, label: 'PST Extractor' },

@@ -12,8 +12,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { prepareLoginEmailChange } from '../lib/accountEmail';
-import { preparePasswordChange } from '../lib/accountPassword';
+import { preparePasswordChange, prepareRecoveredPassword } from '../lib/accountPassword';
 import { updatePasswordWithReauthentication } from '../lib/passwordChange';
+import { passwordRecoveryUrl } from '../lib/authCallback';
 import { useIdleTimeout } from './useIdleTimeout';
 import {
   DEFAULT_SESSION_TIMEOUT_MINUTES,
@@ -42,6 +43,7 @@ interface AuthContextValue {
   changeLoginEmail: (email: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string, confirmation: string) => Promise<void>;
   resetPassword: (email: string, captchaToken?: string) => Promise<void>;
+  completePasswordReset: (newPassword: string, confirmation: string) => Promise<void>;
   resendVerification: (email: string, captchaToken?: string) => Promise<void>;
 }
 
@@ -173,21 +175,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async changePassword(currentPassword, newPassword, confirmation) {
         const prepared = preparePasswordChange(currentPassword, newPassword, confirmation);
         if ('error' in prepared) throw new Error(prepared.error);
-        const email = session?.user.email;
-        if (!email) throw new Error('Your signed-in account does not have a login email.');
         await updatePasswordWithReauthentication(
           supabase.auth,
-          email,
           prepared.currentPassword,
           prepared.newPassword,
         );
       },
       async resetPassword(email, captchaToken) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/login`,
+          redirectTo: passwordRecoveryUrl(window.location.origin),
           captchaToken,
         });
         if (error) throw error;
+      },
+      async completePasswordReset(newPassword, confirmation) {
+        const prepared = prepareRecoveredPassword(newPassword, confirmation);
+        if ('error' in prepared) throw new Error(prepared.error);
+        const { error } = await supabase.auth.updateUser({ password: prepared.newPassword });
+        if (error) throw error;
+        await queryClient.cancelQueries();
+        queryClient.clear();
+        await supabase.auth.signOut();
       },
       async resendVerification(email, captchaToken) {
         const { error } = await supabase.auth.resend({

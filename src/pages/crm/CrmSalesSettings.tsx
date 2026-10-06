@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { useDisconnectMicrosoft, useSaveSettings, useSettings } from '../../hooks/useSettings';
 import { functions } from '../../lib/functions';
+import { preparePasswordChange } from '../../lib/accountPassword';
 import {
   DEFAULT_SESSION_TIMEOUT_MINUTES,
   MAX_SESSION_TIMEOUT_MINUTES,
@@ -49,6 +50,7 @@ export function CrmSalesSettings() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const passwordPreparation = preparePasswordChange(currentPassword, newPassword, confirmPassword);
 
   useEffect(() => {
     if (!data) return;
@@ -195,7 +197,9 @@ export function CrmSalesSettings() {
               <div className="crm-settings-control space-y-3">
                 <input aria-label="Current password" className="input" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" />
                 <div className="crm-inline-control"><input aria-label="New password" className="input" type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="New password" /><input aria-label="Confirm password" className="input" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" /></div>
-                <button type="button" className="btn-secondary self-start" disabled={!currentPassword || !newPassword || !confirmPassword || busyAction === 'password'} onClick={() => void run('password', async () => { await changePassword(currentPassword, newPassword, confirmPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }, 'Password changed. Your new password will be required the next time you sign in.')}>Change password</button>
+                <p className="text-xs text-slate-500">New password and confirmation must match and contain at least 8 characters.</p>
+                {confirmPassword && 'error' in passwordPreparation && <p className="text-sm text-red-700" role="alert">{passwordPreparation.error}</p>}
+                <button type="button" className="btn-primary self-start" disabled={'error' in passwordPreparation || busyAction === 'password'} onClick={() => void run('password', async () => { await changePassword(currentPassword, newPassword, confirmPassword); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }, 'Password changed. Your new password will be required the next time you sign in.')}>Change password</button>
               </div>
             </div>
 
@@ -223,7 +227,7 @@ export function CrmSalesSettings() {
           <div aria-live="polite" aria-atomic="true">
             {(error || message) && <div className="crm-settings-feedback">{error ? <div role="alert"><ErrorState error={error} /></div> : <p>{message}</p>}</div>}
           </div>
-          <div className="crm-settings-savebar"><span>Changes apply to future campaign activity.</span><button type="button" className="btn-primary crm-primary-action" onClick={() => void saveDelivery()} disabled={busyAction === 'save'}>{busyAction === 'save' ? 'Saving…' : 'Save settings'}</button></div>
+          <div className="crm-settings-savebar"><span>Saves email delivery and automatic sign-out only; it does not change your password.</span><button type="button" className="btn-primary crm-primary-action" onClick={() => void saveDelivery()} disabled={busyAction === 'save'}>{busyAction === 'save' ? 'Saving delivery & session settings…' : 'Save delivery & session settings'}</button></div>
         </div>
       </div>
     </div>

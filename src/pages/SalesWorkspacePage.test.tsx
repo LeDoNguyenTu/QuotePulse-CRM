@@ -75,10 +75,18 @@ describe('Sales CRM settings', () => {
     const html = renderSettings();
 
     expect(html).toContain('Settings sections');
-    expect(html).toContain('Save settings');
+    expect(html).toContain('Save delivery &amp; session settings');
+    expect(html).toContain('does not change your password');
     expect(html).toContain('crm-settings-layout');
     expect(html).not.toContain('<main class="crm-settings-content"');
     expect(html).toContain('aria-live="polite"');
+  });
+
+  it('explains password confirmation beside the dedicated action', () => {
+    const html = renderSettings();
+
+    expect(html).toContain('New password and confirmation must match');
+    expect(html).toContain('Change password');
   });
 
   it('associates controls with labels and preserves secret-removal controls', () => {

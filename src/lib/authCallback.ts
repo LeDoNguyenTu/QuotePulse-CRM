@@ -1,5 +1,10 @@
 const AUTH_OTP_TYPES = new Set(['signup', 'email', 'email_change', 'recovery', 'invite']);
 
+/** Dedicated destination for password-recovery emails. */
+export function passwordRecoveryUrl(origin: string): string {
+  return new URL('/auth/reset-password', origin).toString();
+}
+
 /** Return a Supabase email OTP type accepted by this callback. */
 export function authOtpType(type: string | null): 'signup' | 'email' | 'email_change' | 'recovery' | 'invite' {
   if (type && AUTH_OTP_TYPES.has(type)) {

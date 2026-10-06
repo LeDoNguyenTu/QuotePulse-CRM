@@ -87,6 +87,26 @@ describe('Sales CRM import preview', () => {
     });
   });
 
+  it('recognizes Customer Name as the company identity in customer databases', () => {
+    expect(suggestCrmImportMapping(['Customer Name', 'Name', 'Email'])).toMatchObject({
+      companyName: 'Customer Name',
+      contactFullName: 'Name',
+      contactEmail: 'Email',
+    });
+  });
+
+  it('treats Phone as a company phone in the supplied focused-company workbook only', () => {
+    const focused = { filename: 'June2026_Focused Michelle.xlsx', sheetName: 'Clean Calling List' };
+    expect(suggestCrmImportMapping(['Company Name', 'Phone', 'Email'], focused)).toMatchObject({
+      companyName: 'Company Name',
+      companyPhone: 'Phone',
+      contactEmail: 'Email',
+    });
+    expect(suggestCrmImportMapping(['Company Name', 'Phone'])).toMatchObject({
+      contactPhone: 'Phone',
+    });
+  });
+
   it('maps NAV, telemarketing, and support-customer workflow columns independently', () => {
     expect(suggestCrmImportMapping([
       'Customer Code', 'Company', 'Designation', 'Resigned', 'Customer Status',
@@ -317,6 +337,20 @@ describe('Sales CRM import preview', () => {
 
     expect(rows.every((row) => row.valid)).toBe(true);
     expect(rows.map((row) => row.duplicateOfRow)).toEqual([null, null, null, null]);
+  });
+
+  it('imports the company and preserves contact-only source cells when no contact identity exists', () => {
+    const [row] = normalizeCrmImportRows([
+      { Account: 'Acme', Phone: '+65 6123 4567', Designation: 'Accounts' },
+    ], {
+      companyName: 'Account',
+      contactPhone: 'Phone',
+      contactJobTitle: 'Designation',
+    }, { companies: [], contacts: [] });
+
+    expect(row.valid).toBe(true);
+    expect(row.contact).toBeNull();
+    expect(row.warnings).toContain('Contact fields have no name or email; the original workbook values will be preserved.');
   });
 
   it('still identifies repeated named contacts without email as duplicates', () => {

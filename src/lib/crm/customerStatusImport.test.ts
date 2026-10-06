@@ -38,6 +38,7 @@ describe('support-customer workbook status recognition', () => {
   it('keeps generic active customer worksheets backward compatible', () => {
     expect(inferCustomerStatusFromSource('Customer Contacts.xlsx', 'Active customers')).toBe('Current Customer');
     expect(inferCustomerStatusFromSource('Current AMC customers.xlsx', 'Customers')).toBe('Maintenance Customer');
+    expect(inferCustomerStatusFromSource('Current AMP customers.xlsx', 'Sheet1')).toBe('Maintenance Customer');
   });
 
   it('flags cross-tab and within-tab duplicate names for review', () => {
@@ -47,5 +48,27 @@ describe('support-customer workbook status recognition', () => {
     expect(review.get(normalizeImportedCompanyName('Repeated Ltd'))).toMatch(/more than once/i);
     expect(review.has(normalizeImportedCompanyName('Alpha Pte Ltd'))).toBe(false);
     expect(review.has(normalizeImportedCompanyName('Former Ltd'))).toBe(false);
+  });
+
+  it('flags an explicit support status that conflicts with the worksheet category', () => {
+    const conflicting: ParsedWorkbook = {
+      sheets: [{
+        name: 'Active customers',
+        headers: ['Name', 'Customer Status'],
+        rows: [
+          { Name: 'Expected Maintenance', 'Customer Status': 'Maintenance Customer' },
+          { Name: 'Suspicious Current', 'Customer Status': 'Current Customer' },
+        ],
+      }, {
+        name: 'Inactive Customers',
+        headers: ['Name', 'Customer Status'],
+        rows: [{ Name: 'Expected Former', 'Customer Status': 'Former Customer' }],
+      }],
+    };
+
+    const review = buildCustomerStatusReviewIndex('Support customers.xlsx', conflicting);
+    expect(review.has(normalizeImportedCompanyName('Expected Maintenance'))).toBe(false);
+    expect(review.has(normalizeImportedCompanyName('Expected Former'))).toBe(false);
+    expect(review.get(normalizeImportedCompanyName('Suspicious Current'))).toMatch(/conflicts.*active customers/i);
   });
 });

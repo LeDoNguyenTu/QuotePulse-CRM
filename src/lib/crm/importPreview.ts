@@ -65,7 +65,7 @@ export function formatCrmImportCell(row: Record<string, unknown>, header: string
 }
 
 const HEADER_ALIASES: Partial<Record<keyof CrmImportMapping, string[]>> = {
-  companyName: ['company name', 'company', 'account'],
+  companyName: ['company name', 'customer name', 'company', 'account'],
   companyIndustry: ['industry', 'vertical', 'business sector'],
   companyWebsite: ['website', 'website url', 'company website'],
   companyDomain: ['domain', 'company domain'],
@@ -120,6 +120,15 @@ export function buildCrmHeaderMatches(headers: string[], context: CrmImportSourc
       claimed.add('companyName');
       return {
         header, role: 'companyName' as const, label: 'Company name', group: 'Company' as const,
+        confidence: 'semantic' as const, requiresConfirmation: false,
+      };
+    }
+    const focusedCompanyPhone = normalized === 'phone'
+      && /focused\s+michelle/i.test(context.filename ?? '');
+    if (focusedCompanyPhone && !claimed.has('companyPhone')) {
+      claimed.add('companyPhone');
+      return {
+        header, role: 'companyPhone' as const, label: 'Phone', group: 'Company' as const,
         confidence: 'semantic' as const, requiresConfirmation: false,
       };
     }
@@ -234,7 +243,10 @@ export function normalizeCrmImportRows(
     const fullName = suppliedFullName || [firstName, lastName].filter(Boolean).join(' ');
     const contactPhone = mapped(source, mapping, 'contactPhone');
     const hasContact = Boolean(firstName || lastName || fullName || emailText || contactPhone || mapped(source, mapping, 'contactJobTitle'));
-    if (hasContact && !fullName && !emailText) issues.push('Contact needs a name or email.');
+    const hasContactIdentity = Boolean(fullName || emailText);
+    if (hasContact && !hasContactIdentity) {
+      warnings.push('Contact fields have no name or email; the original workbook values will be preserved.');
+    }
 
     const dealName = mapped(source, mapping, 'dealName');
     const amountText = mapped(source, mapping, 'dealAmount').replace(/,/g, '');
@@ -328,7 +340,7 @@ export function normalizeCrmImportRows(
             : {}),
         },
       },
-      contact: hasContact ? {
+      contact: hasContactIdentity ? {
         first_name: optional(firstName), last_name: optional(lastName), full_name: optional(fullName),
         email: optional(emailText), phone: optional(contactPhone),
         job_title: optional(mapped(source, mapping, 'contactJobTitle')),

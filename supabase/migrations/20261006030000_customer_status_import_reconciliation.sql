@@ -4,6 +4,7 @@
 alter table public.crm_companies
   add column customer_status_review_required boolean not null default false,
   add column customer_status_review_reason text
+    constraint crm_companies_customer_status_review_reason_length_check
     check (
       customer_status_review_reason is null
       or length(btrim(customer_status_review_reason)) between 1 and 500

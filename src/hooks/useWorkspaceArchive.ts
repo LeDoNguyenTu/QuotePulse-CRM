@@ -1,6 +1,8 @@
+import { useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { functions } from '../lib/functions';
 import { supabase } from '../lib/supabase';
+import { runWorkspaceArchiveToCompletion } from '../lib/workspaceArchiveRunner';
 
 export type WorkspaceArchive = {
   id: string;
@@ -23,6 +25,7 @@ export type WorkspaceArchiveProgress = {
 
 export function useWorkspaceArchive(workspaceId: string) {
   const client = useQueryClient();
+  const stopArchiveAllRef = useRef(false);
   const key = ['workspace-archive', workspaceId];
   const latest = useQuery({
     queryKey: key,
@@ -61,6 +64,20 @@ export function useWorkspaceArchive(workspaceId: string) {
     mutationFn: () => functions.workspaceArchive({ action: 'archive', workspace_id: workspaceId }),
     onSuccess: refresh,
   });
+  const archiveAll = useMutation({
+    mutationFn: async () => {
+      stopArchiveAllRef.current = false;
+      return runWorkspaceArchiveToCompletion({
+        step: () => functions.workspaceArchive({ action: 'archive', workspace_id: workspaceId }),
+        shouldStop: () => stopArchiveAllRef.current,
+        onStep: refresh,
+      });
+    },
+    onSuccess: refresh,
+  });
+  const stopArchiveAll = () => {
+    stopArchiveAllRef.current = true;
+  };
   const restore = useMutation({
     mutationFn: () => functions.workspaceArchive({ action: 'restore', workspace_id: workspaceId, archive_id: latest.data?.id }),
     onSuccess: refresh,
@@ -69,5 +86,5 @@ export function useWorkspaceArchive(workspaceId: string) {
     mutationFn: () => functions.workspaceArchive({ action: 'dry_run_delete', workspace_id: workspaceId, archive_id: latest.data?.id }),
     onSuccess: refresh,
   });
-  return { latest, progress, archive, restore, dryRunDelete };
+  return { latest, progress, archive, archiveAll, stopArchiveAll, restore, dryRunDelete };
 }

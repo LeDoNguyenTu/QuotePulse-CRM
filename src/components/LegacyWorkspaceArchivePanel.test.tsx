@@ -17,6 +17,8 @@ vi.mock('../hooks/useWorkspaceArchive', () => ({
       { table_name: 'deals', restore_order: 30, status: 'pending', object_count: 0, row_count: 0 },
     ], error: null },
     archive: { isPending: false, error: null, mutate: vi.fn() },
+    archiveAll: { isPending: false, error: null, mutate: vi.fn() },
+    stopArchiveAll: vi.fn(),
     restore: { isPending: false, error: null, mutate: vi.fn() },
     dryRunDelete: { isPending: false, error: null, mutate: vi.fn() },
   }),
@@ -30,6 +32,7 @@ describe('LegacyWorkspaceArchivePanel', () => {
     expect(html).toContain('18 verified objects');
     expect(html).toContain('Current table');
     expect(html).toContain('companies');
+    expect(html).toContain('Archive all remaining data');
     expect(html).toContain('Resume one bounded step');
   });
 });

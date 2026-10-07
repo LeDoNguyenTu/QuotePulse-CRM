@@ -151,6 +151,21 @@ describe("R2 cold archive keys and verification", () => {
     );
   });
 
+  it("uses SigV4 RFC 3986 encoding for workbook names with parentheses", async () => {
+    configureR2();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await deleteArchiveObject("owners/owner-a/crm-imports/NAV BC list (3).xlsm.json.gz");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("NAV%20BC%20list%20%283%29.xlsm.json.gz"),
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
   it("surfaces R2 deletion failures so the recovery manifest remains retryable", async () => {
     configureR2();
     vi.stubGlobal(

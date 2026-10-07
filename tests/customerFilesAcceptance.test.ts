@@ -6,6 +6,7 @@ import { basename, join } from 'node:path';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { prepareImportedEmailHtml } from '../src/lib/emailTemplateHtml';
+import { parseOutlookMsg } from '../src/lib/outlookMsg';
 import { parseUploadedWorkbook } from '../src/lib/uploadedFileWorkbook';
 import { buildCustomerStatusReviewIndex } from '../src/lib/crm/customerStatusImport';
 import {
@@ -139,10 +140,37 @@ describe.skipIf(!customerFilesDirectory)('customer file acceptance', () => {
     expect(prepared.html).not.toMatch(/<\s*(script|iframe|object|embed|form)\b|\son[a-z0-9_-]+\s*=|javascript\s*:/i);
   });
 
-  it('records the Outlook MSG as an intentionally unsupported direct-import source', () => {
+  it('imports the supplied Outlook MSG directly without storing the raw message', async () => {
     const filename = 'Free 30-Day Trial of Microsoft 365 Copilot for Business.msg';
-    expect(bytes(filename).byteLength).toBeGreaterThan(0);
-    expect(filename).toMatch(/\.msg$/i);
-    expect(workbookFiles).not.toContain(filename);
+    const runtime = globalThis as typeof globalThis & { Buffer?: unknown };
+    const nodeBuffer = runtime.Buffer;
+    Reflect.deleteProperty(runtime, 'Buffer');
+    let imported;
+    try {
+      imported = await parseOutlookMsg(new File([bytes(filename)], filename, {
+        type: 'application/vnd.ms-outlook',
+      }));
+    } finally {
+      runtime.Buffer = nodeBuffer;
+    }
+    const assetUrls = Object.fromEntries(imported.images.map((image) => [
+      image.name,
+      `https://acceptance.invalid/${encodeURIComponent(image.name)}`,
+    ]));
+    const prepared = prepareImportedEmailHtml(imported.html, assetUrls);
+    console.info('customer-msg summary', {
+      htmlLength: imported.html.length,
+      textLength: imported.text.length,
+      tableCount: imported.html.match(/<table\b/gi)?.length ?? 0,
+      imageCount: imported.images.length,
+      imageReferences: prepared.imageReferences.length,
+      unresolvedImages: prepared.unresolvedImages.length,
+    });
+
+    expect(imported.subject).toContain('Free 30-Day Trial');
+    expect(imported.html.match(/<table\b/gi)?.length).toBe(12);
+    expect(imported.images).toHaveLength(7);
+    expect(prepared.unresolvedImages).toEqual([]);
+    expect(prepared.text.length).toBeGreaterThan(0);
   });
 });

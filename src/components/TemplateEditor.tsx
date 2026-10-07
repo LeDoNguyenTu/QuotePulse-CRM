@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { EmailTemplate } from '../lib/types';
 import { renderTemplate } from '../lib/render';
 import { prepareImportedEmailHtml } from '../lib/emailTemplateHtml';
+import { parseOutlookMsg } from '../lib/outlookMsg';
 import { uploadEmailTemplateAssets } from '../hooks/useTemplates';
 import { useAuth } from '../hooks/useAuth';
 import { Modal } from './Modal';
@@ -52,10 +53,33 @@ export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEdito
 
   const importHtml = async (file: File | undefined) => {
     if (!file) return;
-    if (!/\.html?$/i.test(file.name)) { setImportMessage('Choose an .htm or .html file.'); return; }
-    const html = await file.text();
-    setBodyFormat('html');
-    applyHtml(html);
+    setUploading(true);
+    try {
+      if (/\.msg$/i.test(file.name)) {
+        const imported = await parseOutlookMsg(file);
+        const uploaded = imported.images.length && user
+          ? await uploadEmailTemplateAssets(user.id, imported.images)
+          : [];
+        const nextAssets = [...assets, ...uploaded];
+        setAssets(nextAssets);
+        if (!subject.trim() && imported.subject) setSubject(imported.subject);
+        if (!body.trim() && imported.text) setBody(imported.text);
+        setBodyFormat('html');
+        applyHtml(imported.html, nextAssets);
+        return;
+      }
+      if (!/\.html?$/i.test(file.name)) {
+        setImportMessage('Choose an Outlook .msg, .htm, or .html file.');
+        return;
+      }
+      const html = await file.text();
+      setBodyFormat('html');
+      applyHtml(html);
+    } catch (error) {
+      setImportMessage(error instanceof Error ? error.message : 'Unable to import the email template.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const importAssets = async (files: FileList | null) => {
@@ -151,7 +175,7 @@ export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEdito
               <label className="flex items-center gap-2"><input type="radio" checked={bodyFormat === 'html'} onChange={() => setBodyFormat('html')} /> HTML / table layout</label>
             </div>
             {bodyFormat === 'html' && <div className="space-y-2">
-              <label className="block text-sm font-medium">Import .htm or .html<input className="mt-1 block w-full text-sm" type="file" accept=".htm,.html,text/html" onChange={(event) => void importHtml(event.target.files?.[0])} /></label>
+              <label className="block text-sm font-medium">Import .msg, .htm, or .html<input className="mt-1 block w-full text-sm" type="file" accept=".msg,.htm,.html,application/vnd.ms-outlook,text/html" disabled={uploading} onChange={(event) => void importHtml(event.target.files?.[0])} /></label>
               <label className="block text-sm font-medium">Companion image ZIP or images<input className="mt-1 block w-full text-sm" type="file" multiple accept=".zip,image/png,image/jpeg,image/gif,image/webp" disabled={uploading} onChange={(event) => void importAssets(event.target.files)} /></label>
               <label className="block text-sm font-medium">Imported HTML source (sanitized for preview and sending)<textarea className="input mt-1 min-h-[140px] font-mono text-xs" value={rawHtml} onChange={(event) => applyHtml(event.target.value)} /></label>
               {importMessage && <p className="text-xs text-slate-600" role="status">{importMessage}</p>}

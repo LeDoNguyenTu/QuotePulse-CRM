@@ -12,8 +12,9 @@ export function LegacyWorkspaceArchivePanel() {
   const objects = progress.reduce((sum, table) => sum + Number(table.object_count ?? 0), 0);
   const rows = archive?.status === 'building' ? progressRows : finalRows;
   const currentTable = progress.find((table) => table.status !== 'verified');
-  const pending = api.archive.isPending || api.restore.isPending || api.dryRunDelete.isPending;
-  const error = api.latest.error || api.progress.error || api.archive.error || api.restore.error || api.dryRunDelete.error;
+  const archiveComplete = !!archive && ['verified', 'deletion_eligible', 'deleted'].includes(archive.status);
+  const pending = api.archive.isPending || api.archiveAll.isPending || api.restore.isPending || api.dryRunDelete.isPending;
+  const error = api.latest.error || api.progress.error || api.archive.error || api.archiveAll.error || api.restore.error || api.dryRunDelete.error;
 
   return (
     <section className="card space-y-3 p-5">
@@ -28,11 +29,13 @@ export function LegacyWorkspaceArchivePanel() {
         </div>
       ) : <p className="text-sm text-slate-600">No archive has been started.</p>}
       <div className="flex flex-wrap gap-2">
+        <button className="btn-primary" disabled={pending || archiveComplete} onClick={() => api.archiveAll.mutate()}>{archiveComplete ? 'Archive complete' : archive?.status === 'building' ? 'Archive all remaining data' : 'Start and archive all'}</button>
+        {api.archiveAll.isPending && <button className="btn-secondary" onClick={api.stopArchiveAll}>Stop after current step</button>}
         <button className="btn-secondary" disabled={pending} onClick={() => api.archive.mutate()}>{archive?.status === 'building' ? 'Resume one bounded step' : archive ? 'Start new archive' : 'Start archive'}</button>
         <button className="btn-secondary" disabled={pending || !archive || !['verified', 'deletion_eligible', 'deleted'].includes(archive.status) || archive.restore_status === 'verified'} onClick={() => api.restore.mutate()}>Restore next verified object</button>
         <button className="btn-secondary" disabled={pending || !archive || archive.status !== 'verified'} onClick={() => api.dryRunDelete.mutate()}>Dry-run deletion check</button>
       </div>
-      <p className="text-xs text-amber-700">The deletion check can mark a fully reconciled archive eligible, but it never deletes data. Continue archive/restore one bounded object at a time; interrupted work resumes safely.</p>
+      <p className="text-xs text-amber-700">Archive all repeats the same verified bounded step. Stop or close this page at any time; the next run resumes safely. The deletion check can mark a fully reconciled archive eligible, but it never deletes data.</p>
       {error && <ErrorState error={error} />}
     </section>
   );

@@ -107,7 +107,10 @@ export async function verifyArchivePayload(payload: string, expectedChecksum: st
 }
 
 function encodeKey(key: string): string {
-  return key.split('/').map(encodeURIComponent).join('/');
+  return key.split('/').map((segment) => encodeURIComponent(segment).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  )).join('/');
 }
 
 export function archiveObjectHeaders(): Record<string, string> {

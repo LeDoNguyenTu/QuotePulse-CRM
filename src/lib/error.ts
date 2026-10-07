@@ -44,3 +44,13 @@ export function normalizeError(error: unknown): NormalizedError {
   }
   return { message: error == null ? 'An unexpected error occurred.' : String(error) };
 }
+
+export function formatErrorSummary(error: unknown): string {
+  const normalized = normalizeError(error);
+  return [
+    normalized.message,
+    normalized.code ? `(code ${normalized.code})` : undefined,
+    normalized.details ? `Details: ${normalized.details}` : undefined,
+    normalized.hint ? `Hint: ${normalized.hint}` : undefined,
+  ].filter(Boolean).join(' ');
+}

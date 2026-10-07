@@ -17,7 +17,8 @@ describe('TemplateEditor rich email controls', () => {
       onSave={vi.fn()}
     />);
     expect(html).toContain('HTML / table layout');
-    expect(html).toContain('Import .htm or .html');
+    expect(html).toContain('Import .msg, .htm, or .html');
+    expect(html).toContain('.msg');
     expect(html).toContain('Companion image ZIP or images');
     expect(html).toContain('HTML email preview');
     expect(html).toContain('Plain fallback');

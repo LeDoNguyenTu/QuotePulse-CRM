@@ -240,8 +240,8 @@ export const functions = {
   mergeUploadedFile: (file_id: string, policy: { companies: string; contacts: string; deals: string }) =>
     invoke<{ ok: boolean; counts: { created: number; updated: number; failed: number }; errors: string[] }>('uploaded-file-merge', { file_id, policy }),
 
-  workspaceArchive: (body: { action: 'archive'|'restore'|'dry_run_delete'|'status'; workspace_id: string; archive_id?: string }) =>
-    invoke<{ok:boolean;archive_id:string;status:string;table?:string;rows?:number;complete?:boolean;eligible?:boolean;deleted?:boolean;message?:string}>('workspace-archive', body),
+  workspaceArchive: (body: { action: 'archive'|'restore'|'dry_run_delete'|'delete'|'status'; workspace_id: string; archive_id?: string; confirmation?: string }) =>
+    invoke<{ok:boolean;archive_id:string;status:string;table?:string;rows?:number;total_deleted_rows?:number;retained_rows?:number;total_retained_rows?:number;complete?:boolean;eligible?:boolean;deleted?:boolean;verified_objects?:number;message?:string}>('workspace-archive', body),
 
   storeCrmWorkbookTemplate: (body: { workspace_id: string; filename: string; mime_type: string; checksum_sha256: string; base64: string }) =>
     invoke<{ ok: true; r2_key: string; r2_sha256: string }>('crm-workbook-template', { action: 'store', ...body }),

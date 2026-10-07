@@ -1,4 +1,4 @@
-# Customer-file production acceptance — 2026-10-07
+# Customer-file production acceptance — 2026-10-08
 
 This checkpoint records the reproducible acceptance pass for the customer-supplied files in:
 
@@ -69,20 +69,38 @@ npx vitest run tests/customerFilesAcceptance.test.ts --reporter=verbose --silent
 
 Expected result: 1 test file and 9 tests pass. The suite fails if the approved file set or any hash changes, forcing a deliberate review of a replacement customer file.
 
+## Production workbook commits
+
+The authenticated production pass committed all CRM-ready rows from all ten workbook sheets. Invalid rows and exact duplicates remain in the immutable source revision index and preserved workbook artifact.
+
+| Database | Workbook / sheet | Source rows | Revision result |
+| --- | --- | ---: | --- |
+| `DB-PAZE4T` | Current AMP customers / Sheet1 | 54 | Revision 1: 50 created, 4 unchanged. Revision 2: 0 created, 11 updated, 43 unchanged. |
+| `DB-WLW47Z` | Customer Contacts / Sheet1 | 1,895 | 1,641 created, 120 updated, 80 unchanged, 2 duplicate-review flags, 262 activities. |
+| `DB-NANKRX` | June2026 Focused Michelle / Clean Calling List (Mic) | 282 | 279 created, 1 updated, 1 unchanged. |
+| `DB-YJ5TCJ` | June2026 Focused Michelle / Clean Calling List | 282 | 59 created, 1 updated, 222 unchanged. |
+| `DB-VZNY37` | June2026 Focused Michelle / Raw List | 353 | 66 created, 164 updated, 123 unchanged. |
+| `DB-98QLUZ` | NAV BC list / Orginal NAV | 1,304 | 1,302 created, 1 unchanged, 17 duplicate-review flags, 1,967 activities. |
+| `DB-EBTN8X` | Support customers / Active customers | 111 | 8 created, 78 updated, 25 unchanged, 4 customer-status review flags. |
+| `DB-2R8UTJ` | Support customers / Inactive Customers | 248 | 35 created, 203 updated, 7 unchanged, 5 customer-status review flags. |
+| `DB-YAJK3G` | Telemarketing Pipeline / Pipeline | 15 | 15 created, 16 activities. |
+| `DB-U6UTGR` | Telemarketing Pipeline / Potential Opportunities | 12 | 11 created, 3 duplicate-review flags, 13 activities. |
+
+A read-only production audit on 2026-10-08 confirmed all ten database identities, eleven source revisions, and eleven finalized R2 artifacts. `DB-PAZE4T` has two revisions and two ready artifacts; every other sheet has one. Re-uploading the unchanged AMP source retained its database identity and updated only values changed by the intervening overlapping workbook imports, which verifies both reconciliation and recoverable revision history without manufacturing a modified customer file.
+
 ## Live acceptance checklist
 
-- [ ] Upload and commit each workbook sheet in the authenticated production workspace.
-- [ ] Confirm all semantic mapping prompts before committing rows.
-- [ ] Verify Support Active/Inactive inferred statuses and review flags in the UI.
-- [ ] Re-upload an unchanged sheet and verify revision/provenance behavior without duplicate loss.
-- [ ] Re-upload a controlled changed copy and verify updates plus source history.
-- [ ] Export selected rows and user-selected columns for contacts and companies.
-- [ ] Import and preview the supplied HTML email with its companion image ZIP.
-- [ ] Verify due-task notification, role search, configurable deal columns, editable activity notes, hide/outdated/verified controls, and bulk-hide behavior.
-- [ ] Verify the storage-usage display and safely resume one bounded legacy archive step without deleting legacy rows.
+- [x] Uploaded and committed every CRM workbook sheet in the authenticated production workspace.
+- [x] Confirmed all semantic mapping prompts before committing rows.
+- [x] Verified Support Active/Inactive inferred statuses and ambiguous-status review flags in the UI and import result.
+- [x] Re-uploaded an unchanged sheet and verified stable identity, revision 2, reconciled updates, unchanged rows, and finalized per-revision artifacts.
+- [x] Verified selected/all-row export and user-selected ordered columns for contacts and companies.
+- [x] Imported the supplied HTML email and all seven companion images as the production template `Microsoft 365 Copilot 30-Day Trial`; its subject, 12-table layout, images, and plain-text fallback were retained.
+- [x] Verified the task-reminder popup, role search, configurable deal columns, editable activity notes, contact hide/outdated/verified controls, and bulk-hide behavior.
+- [x] Verified the storage-usage display and safely resumed one bounded legacy archive step without deleting legacy rows.
 - [x] Password change was tested successfully by the workspace owner on 2026-10-07.
 
-## Production evidence after PR #36
+## Production evidence and corrective releases
 
 PR #36 was merged as `09f2f692ce12a66125074d2f1ad5e81acb2c7611` and Vercel reported the matching production deployment READY.
 
@@ -95,6 +113,16 @@ PR #36 was merged as `09f2f692ce12a66125074d2f1ad5e81acb2c7611` and Vercel repor
 - One safe legacy archive step completed without deletion, increasing coverage from 11,000 rows / 44 verified objects to 11,250 rows / 45 verified objects. The archive remains resumable and is still building the `companies` table.
 - Live review found the rich HTML template editor was unreachable from a Sales workspace. The follow-up fix adds `/sales/templates` to Sales navigation and dispatches it to the existing table/image/ZIP-capable editor.
 
+The real production uploads then exposed five silent integration defects that unit-only validation had not reached. Each fix was merged to `main`, passed the full quality job, and completed the Supabase deployment workflow before the next retry:
+
+- PR #38 (`e35779dd2d712c9b767ede2b79308eb54d49a82d`) renders structured Supabase failures as actionable messages instead of `[object Object]`.
+- PR #39 (`93f36985207f9aac0c69794f61c0b683135b92a3`) grants the authenticated importer narrowly scoped permission to create its pending revision artifact.
+- PR #40 (`706d1075f72c3869f184c0d79a42b8b672a2e80c`) gives only the bounded CRM import RPC a 60-second statement timeout so the 1,895-row customer source can commit atomically.
+- PR #41 (`23b494d1ba1bc8773830ec702bd88582b36c6977`) applies RFC3986 encoding to shared R2 SigV4 object keys, fixing the parenthesized NAV filename without changing bucket scope.
+- PR #42 (`ff8882f1a588ee14395c56c69088a84e8a6bf870`) widens the canonical company-name constraint from 200 to 500 characters, preserving four legitimate NAV names of 201–212 characters.
+
+The final pre-documentation verification passed 153 test files with 564 tests, plus typecheck, lint, and the production build. The approved raw files remain outside Git; only hashes and aggregate evidence are committed.
+
 ### Browser automation prerequisite
 
-Automated file selection in the existing Chrome session requires the ChatGPT browser extension setting **Allow access to file URLs**. If it is disabled, the file chooser cannot be controlled even though the CRM page and input are otherwise reachable. Enable it from `chrome://extensions` → ChatGPT → Details before continuing the live upload pass.
+Automated file selection in the existing Chrome session requires the ChatGPT browser extension setting **Allow access to file URLs**. If it is disabled, the file chooser cannot be controlled even though the CRM page and input are otherwise reachable. Enable it from `chrome://extensions` → ChatGPT → Details before continuing a future live upload pass.

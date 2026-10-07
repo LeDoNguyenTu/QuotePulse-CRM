@@ -75,6 +75,11 @@ describe.skipIf(!customerFilesDirectory)('customer file acceptance', () => {
       );
       const ready = preview.filter((row) => row.valid);
       expect(ready.length).toBeGreaterThan(0);
+      expect(
+        ready.filter((row) => row.company.name.trim().length > 500)
+          .map((row) => ({ row: row.rowNumber, length: row.company.name.trim().length })),
+        'ready CRM company names must satisfy the database length constraint',
+      ).toEqual([]);
       const statusCounts = ready.reduce<Record<string, number>>((counts, row) => {
         const status = row.company.customer_status ?? '(none)';
         counts[status] = (counts[status] ?? 0) + 1;

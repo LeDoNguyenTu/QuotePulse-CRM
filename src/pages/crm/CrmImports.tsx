@@ -17,6 +17,7 @@ import {
 } from '../../lib/crm/importTableLayout';
 import { buildCrmSourceRows, buildCrmWorkbookIdentity, emptyCrmImportDraft } from '../../lib/crm/importDraft';
 import { buildCustomerStatusReviewIndex } from '../../lib/crm/customerStatusImport';
+import { formatErrorSummary } from '../../lib/error';
 import { CrmDeleteSourceDialog } from '../../components/crm/CrmDeleteSourceDialog';
 import { parseUploadedWorkbook, type ParsedWorkbook } from '../../lib/uploadedFileWorkbook';
 
@@ -99,7 +100,7 @@ export function CrmImports() {
       setPreviewPage(1);
       resetSheetMapping(parsed.sheets[0]?.headers ?? [], input.name, parsed.sheets[0]?.name ?? '');
       setResult(null); setLocalError(null);
-    } catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { setLocalError(formatErrorSummary(error)); }
   }
 
   function mapHeader(header: string, roleValue: string) {
@@ -141,7 +142,7 @@ export function CrmImports() {
       setConfirmedHeaders(emptyDraft.confirmedHeaders);
       setPreviewPage(emptyDraft.previewPage);
       setLocalError(null);
-    } catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { setLocalError(formatErrorSummary(error)); }
   }
 
   async function exportWorkbook(sourceImport: any) {
@@ -154,7 +155,7 @@ export function CrmImports() {
       anchor.click();
       URL.revokeObjectURL(url);
       setLocalError(null);
-    } catch (error) { setLocalError(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { setLocalError(formatErrorSummary(error)); }
   }
 
   return <div className="space-y-6">

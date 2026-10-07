@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeError } from './error';
+import { formatErrorSummary, normalizeError } from './error';
 
 describe('normalizeError', () => {
   it('uses structured PostgREST fields without leaking secrets', () => {
@@ -26,5 +26,14 @@ describe('normalizeError', () => {
     expect(normalizeError('timeout').message).toBe('timeout');
     expect(normalizeError(null).message).not.toBe('[object Object]');
     expect(normalizeError({ unexpected: true }).message).not.toBe('[object Object]');
+  });
+
+  it('keeps structured database diagnostics when an error must be stored as text', () => {
+    expect(formatErrorSummary({
+      message: 'statement was cancelled',
+      code: '57014',
+      details: 'statement timeout',
+      hint: 'retry with a smaller batch',
+    })).toBe('statement was cancelled (code 57014) Details: statement timeout Hint: retry with a smaller batch');
   });
 });

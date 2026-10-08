@@ -45,7 +45,8 @@ export function useCrmCampaigns(workspaceId: string, filters: { search: string; 
   const queue = useMutation({
     mutationFn: async (input: CrmCampaignInput) => {
       const { data, error } = await (supabase as any).rpc('crm_queue_email_campaign', {
-        p_workspace_id: workspaceId, p_name: input.name.trim(), p_subject: input.subject.trim(), p_body: input.body,
+        p_workspace_id: workspaceId, p_name: input.name.trim(), p_subject: input.subject.trim(),
+        p_body_html: input.bodyHtml, p_body_text: input.bodyText,
         p_provider: input.provider, p_cooldown_seconds: input.cooldownSeconds,
         p_contact_ids: input.sendAllMatching ? null : input.contactIds,
         p_industries: input.industries.length ? input.industries : null, p_search: input.search.trim() || null,

@@ -53,7 +53,8 @@ export function CrmEmailCampaigns() {
     const input: CrmCampaignInput = {
       name,
       subject,
-      body,
+      bodyText: body,
+      bodyHtml,
       provider,
       cooldownSeconds: cooldown,
       contactIds: selected,

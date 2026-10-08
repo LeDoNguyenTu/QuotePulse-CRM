@@ -79,7 +79,7 @@ export function CrmEmailCampaigns() {
       <div className="crm-campaign-layout">
         <div className="crm-campaign-main">
           <section className="crm-form-section" aria-labelledby="campaign-message-heading">
-            <div className="crm-section-heading"><span>01</span><div><h3 id="campaign-message-heading">Message content</h3><p>Start from a template, edit it here, and preview the recipient-specific result.</p></div></div>
+            <div className="crm-section-heading"><div><h3 id="campaign-message-heading">Message content</h3><p>Start from a template, edit it here, and preview the recipient-specific result.</p></div></div>
             <label className="crm-field"><span>Campaign name</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="September renewal outreach" /></label>
             {!!selected.length && <label className="crm-field"><span>Preview as recipient</span><select className="input" value={previewRecipientId || selected[0].contact_id} onChange={(event) => setPreviewRecipientId(event.target.value)}>{selected.map((recipient) => <option key={recipient.contact_id} value={recipient.contact_id}>{recipient.contact_name || recipient.email_normalized} · {recipient.email_normalized}</option>)}</select></label>}
             <CampaignMessageEditor templates={templates.data ?? []} templateId={templateId} draft={draft} dirty={draftDirty}
@@ -88,7 +88,7 @@ export function CrmEmailCampaigns() {
               onChange={(nextDraft) => { setDraft(nextDraft); setDraftDirty(true); }} />
           </section>
           <section className="crm-form-section" aria-labelledby="campaign-recipients-heading">
-            <div className="crm-section-heading"><span>02</span><div><h3 id="campaign-recipients-heading">Recipients</h3><p>Build one persistent selection across searches and industries.</p></div></div>
+            <div className="crm-section-heading"><div><h3 id="campaign-recipients-heading">Recipients</h3><p>Build one persistent selection across searches and industries.</p></div></div>
             <CampaignRecipientPicker matching={visible} selected={selected} matchingCount={matchingCount} isFetching={api.contacts.isFetching}
               isChoosingAll={api.resolveMatchingRecipientIds.isPending || search !== audienceSearch}
               onAdd={(recipient) => setSelection((current) => addRecipients(current, [recipient]))}
@@ -101,7 +101,7 @@ export function CrmEmailCampaigns() {
           </section>
         </div>
         <aside className="crm-campaign-sidebar" aria-labelledby="campaign-audience-heading">
-          <div className="crm-section-heading crm-section-heading--compact"><span>03</span><div><h3 id="campaign-audience-heading">Audience &amp; delivery</h3><p>Filters change matching contacts without clearing selected recipients.</p></div></div>
+          <div className="crm-section-heading crm-section-heading--compact"><div><h3 id="campaign-audience-heading">Audience &amp; delivery</h3><p>Filters change matching contacts without clearing selected recipients.</p></div></div>
           <label className="crm-field"><span>Audience search</span><input className="input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, company, or email" /></label>
           <label className="crm-field"><span>Industry</span><select className="input" value={industry} onChange={(event) => setIndustry(event.target.value)}><option value="">All industries</option>{industryOptions.data?.map((value) => <option key={value}>{value}</option>)}</select></label>
           <div className="crm-sidebar-rule" />

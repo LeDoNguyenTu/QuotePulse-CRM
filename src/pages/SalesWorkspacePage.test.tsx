@@ -84,6 +84,7 @@ describe('Sales CRM settings', () => {
     expect(html).toContain('Data &amp; privacy');
     expect(html).toContain('sales@example.com');
     expect(html).not.toContain('Workspace foundation active');
+    expect(html).not.toMatch(/>0[123]</);
   });
 
   it('provides navigation landmarks and a save action', () => {

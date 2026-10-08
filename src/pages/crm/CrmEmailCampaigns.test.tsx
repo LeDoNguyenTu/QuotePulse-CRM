@@ -43,6 +43,7 @@ describe('CRM email campaign composer', () => {
     expect(html).toContain('Message content');
     expect(html).toContain('Audience &amp; delivery');
     expect(html).toContain('Avery Tan');
+    expect(html).not.toMatch(/>0[123]</);
   });
 
   it('presents the queue action as a clear recipient-aware primary action', () => {

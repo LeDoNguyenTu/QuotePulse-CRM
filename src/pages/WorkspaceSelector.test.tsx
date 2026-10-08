@@ -63,9 +63,14 @@ describe('workspace selector', () => {
   });
 
   it('marks the compact database icon for contained header sizing', () => {
-    const html = renderToStaticMarkup(<WorkspaceBrand kind="sales_crm" compact />);
+    const salesHtml = renderToStaticMarkup(<WorkspaceBrand kind="sales_crm" compact />);
+    const legacyHtml = renderToStaticMarkup(<WorkspaceBrand kind="legacy" compact />);
 
-    expect(html).toContain('workspace-brand__icon--compact');
-    expect(html).not.toContain('<img');
+    expect(salesHtml).toContain('workspace-brand__icon--compact');
+    expect(salesHtml).toContain('workspace-brand__network');
+    expect(legacyHtml).toContain('workspace-brand__archive');
+    expect(salesHtml).not.toEqual(legacyHtml);
+    expect(salesHtml).not.toContain('<ellipse');
+    expect(salesHtml).not.toContain('<img');
   });
 });

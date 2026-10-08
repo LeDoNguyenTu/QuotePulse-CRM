@@ -13,6 +13,10 @@ describe('restore archived record migration', () => {
     expect(sql).toMatch(/owner_id/i);
     expect(sql).toMatch(/already_restored/i);
     expect(sql).toMatch(/conflict/i);
+    expect(sql).toMatch(/exception when sqlstate 'P0002'/i);
+    expect(sql).toMatch(/raise exception 'archive_restore_conflict'/i);
+    expect(sql).toMatch(/workspace_archive_record_restores/i);
+    expect(sql).toMatch(/insert into public\.workspace_archive_record_restores/i);
     expect(sql).not.toMatch(/on conflict.*do update/is);
   });
 });

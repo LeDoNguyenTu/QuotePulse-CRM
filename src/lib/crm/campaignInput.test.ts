@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateCrmCampaignInput, type CrmCampaignInput } from './campaignInput';
-const valid: CrmCampaignInput = { name: 'Renewals', subject: 'Hello', bodyText: 'Body', bodyHtml: '<p>Body</p>', provider: 'microsoft_graph', cooldownSeconds: 60, contactIds: ['contact-1'], industries: [], search: '', consentConfirmed: true, sendAllMatching: false, matchingCount: 1 };
+const valid: CrmCampaignInput = { name: 'Renewals', subject: 'Hello', bodyText: 'Body', bodyHtml: '<p>Body</p>', unresolvedTokens: [], provider: 'microsoft_graph', cooldownSeconds: 60, contactIds: ['contact-1'], industries: [], search: '', consentConfirmed: true, sendAllMatching: false, matchingCount: 1 };
 describe('CRM campaign input', () => {
   it('requires content, consent, and a safe cooldown', () => {
     expect(validateCrmCampaignInput(valid)).toBeNull();
@@ -8,6 +8,7 @@ describe('CRM campaign input', () => {
     expect(validateCrmCampaignInput({ ...valid, cooldownSeconds: 2 })).toMatch(/30 seconds/);
     expect(validateCrmCampaignInput({ ...valid, bodyText: '', bodyHtml: '' })).toMatch(/Message body/);
     expect(validateCrmCampaignInput({ ...valid, bodyText: '', bodyHtml: '<p>Only HTML</p>' })).toMatch(/Plain-text fallback/);
+    expect(validateCrmCampaignInput({ ...valid, unresolvedTokens: ['contact_name'] })).toMatch(/contact_name/);
     expect(validateCrmCampaignInput({ ...valid, contactIds: [] })).toMatch(/Select recipients/);
     expect(validateCrmCampaignInput({ ...valid, contactIds: [], sendAllMatching: true, matchingCount: 5001 })).toMatch(/5,000/);
     expect(validateCrmCampaignInput({ ...valid, contactIds: Array.from({ length: 5001 }, (_, index) => `contact-${index}`) })).toMatch(/5,000/);

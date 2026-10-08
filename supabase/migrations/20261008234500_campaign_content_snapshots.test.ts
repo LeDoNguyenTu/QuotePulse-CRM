@@ -5,6 +5,7 @@ const sql = readFileSync(new URL('./20261008234500_campaign_content_snapshots.sq
 
 describe('campaign content snapshot migration', () => {
   it('stores immutable HTML and text snapshots on campaigns and sends', () => {
+    expect(sql).toMatch(/alter column body_text set default ''/i);
     expect(sql).toMatch(/crm_email_campaigns[\s\S]+body_html[\s\S]+body_text/i);
     expect(sql).toMatch(/p_body_html text[\s\S]+p_body_text text/i);
     expect(sql).toMatch(/body_html_rendered[\s\S]+p_body_html/i);

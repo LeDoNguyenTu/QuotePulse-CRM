@@ -30,3 +30,11 @@ export function renderCampaignPreview(content: CampaignContent, recipient: Campa
     unresolvedTokens: [...unresolved].sort(),
   };
 }
+
+export function findUnresolvedCampaignTokens(content: CampaignContent, recipients: CampaignPreviewRecipient[]) {
+  const unresolved = new Set<string>();
+  for (const recipient of recipients) {
+    for (const token of renderCampaignPreview(content, recipient).unresolvedTokens) unresolved.add(token);
+  }
+  return [...unresolved].sort();
+}

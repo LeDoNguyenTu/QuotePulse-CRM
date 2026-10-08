@@ -11,7 +11,7 @@ import { useTemplates } from '../../hooks/useTemplates';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { validateCrmCampaignInput, type CrmCampaignInput } from '../../lib/crm/campaignInput';
 import { addRecipients, clearRecipients, removeRecipient, type CampaignRecipient } from '../../lib/crm/campaignRecipients';
-import type { CampaignContent } from '../../lib/emailCampaignPreview';
+import { findUnresolvedCampaignTokens, renderCampaignPreview, type CampaignContent } from '../../lib/emailCampaignPreview';
 
 const statusOrder = ['queued', 'scheduled', 'sending', 'retrying', 'sent', 'deferred', 'blocked', 'failed'];
 
@@ -34,17 +34,20 @@ export function CrmEmailCampaigns() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState('');
+  const [previewRecipientId, setPreviewRecipientId] = useState('');
   const visible = api.contacts.data?.rows ?? [];
   const matchingCount = api.contacts.data?.count ?? 0;
   const queueCount = selected.length;
   const queueLabel = queueCount ? `Queue ${queueCount.toLocaleString()} recipient${queueCount === 1 ? '' : 's'}` : 'Select recipients to continue';
+  const previewRecipient = selected.find((recipient) => recipient.contact_id === previewRecipientId) ?? selected[0] ?? visible[0] ?? { contact_name: null, company_name: null, industry: null };
+  const reviewed = renderCampaignPreview(draft, previewRecipient);
 
   useEffect(() => {
     if (settings.data?.email_provider) setProvider(settings.data.email_provider);
   }, [settings.data?.email_provider]);
 
   const setSelection = (update: (current: CampaignRecipient[]) => CampaignRecipient[]) => {
-    try { setSelected(update); setError(null); }
+    try { const next = update(selected); setSelected(next); setError(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
   };
 
@@ -52,6 +55,7 @@ export function CrmEmailCampaigns() {
     event.preventDefault();
     const input: CrmCampaignInput = {
       name, subject: draft.subject, bodyText: draft.bodyText, bodyHtml: draft.bodyHtml,
+      unresolvedTokens: findUnresolvedCampaignTokens(draft, selected),
       provider, cooldownSeconds: cooldown, contactIds: selected.map((recipient) => recipient.contact_id),
       industries: industry ? [industry] : [], search: audienceSearch, templateId: templateId || undefined,
       consentConfirmed: consent, sendAllMatching: false, matchingCount,
@@ -77,20 +81,21 @@ export function CrmEmailCampaigns() {
           <section className="crm-form-section" aria-labelledby="campaign-message-heading">
             <div className="crm-section-heading"><span>01</span><div><h3 id="campaign-message-heading">Message content</h3><p>Start from a template, edit it here, and preview the recipient-specific result.</p></div></div>
             <label className="crm-field"><span>Campaign name</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="September renewal outreach" /></label>
+            {!!selected.length && <label className="crm-field"><span>Preview as recipient</span><select className="input" value={previewRecipientId || selected[0].contact_id} onChange={(event) => setPreviewRecipientId(event.target.value)}>{selected.map((recipient) => <option key={recipient.contact_id} value={recipient.contact_id}>{recipient.contact_name || recipient.email_normalized} · {recipient.email_normalized}</option>)}</select></label>}
             <CampaignMessageEditor templates={templates.data ?? []} templateId={templateId} draft={draft} dirty={draftDirty}
-              recipient={selected[0] ?? visible[0] ?? { contact_name: null, company_name: null, industry: null }}
+              recipient={previewRecipient}
               onTemplateChange={(id, nextDraft) => { setTemplateId(id); setDraft(nextDraft); setDraftDirty(false); }}
               onChange={(nextDraft) => { setDraft(nextDraft); setDraftDirty(true); }} />
           </section>
           <section className="crm-form-section" aria-labelledby="campaign-recipients-heading">
             <div className="crm-section-heading"><span>02</span><div><h3 id="campaign-recipients-heading">Recipients</h3><p>Build one persistent selection across searches and industries.</p></div></div>
             <CampaignRecipientPicker matching={visible} selected={selected} matchingCount={matchingCount} isFetching={api.contacts.isFetching}
-              isChoosingAll={api.resolveMatchingRecipientIds.isPending}
+              isChoosingAll={api.resolveMatchingRecipientIds.isPending || search !== audienceSearch}
               onAdd={(recipient) => setSelection((current) => addRecipients(current, [recipient]))}
               onRemove={(id) => setSelection((current) => removeRecipient(current, id))}
               onClear={() => setSelection((current) => clearRecipients(current))}
               onChooseAll={async () => {
-                try { const matches = await api.resolveMatchingRecipientIds.mutateAsync(); setSelection((current) => addRecipients(current, matches)); }
+                try { if (search !== audienceSearch) throw new Error('Wait for the audience search to finish updating.'); const matches = await api.resolveMatchingRecipientIds.mutateAsync(); setSelection((current) => addRecipients(current, matches)); }
                 catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
               }} />
           </section>
@@ -103,7 +108,7 @@ export function CrmEmailCampaigns() {
           <label className="crm-field"><span>Provider</span><select className="input" value={provider} onChange={(event) => setProvider(event.target.value as typeof provider)}><option value="microsoft_graph">Microsoft Outlook</option><option value="brevo">Brevo</option></select></label>
           <label className="crm-field"><span>Cooldown between messages</span><div className="crm-input-suffix"><input className="input" type="number" min={30} value={cooldown} onChange={(event) => setCooldown(Number(event.target.value))} /><span>seconds</span></div></label>
           <label className="crm-choice-row crm-consent-row"><input className="crm-checkbox" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span><strong>Recipients expect this message</strong><small>They are customers, opted in, or have another legitimate expectation.</small></span></label>
-          <div className="crm-campaign-review"><strong>Review campaign</strong><span>{queueCount.toLocaleString()} recipients</span><span>{provider === 'brevo' ? 'Brevo' : 'Microsoft Outlook'} · {cooldown}s cooldown</span><span>{draft.subject || 'No subject yet'}</span></div>
+          <div className="crm-campaign-review"><strong>Review campaign</strong><span>{queueCount.toLocaleString()} recipients · previewing {previewRecipient.contact_name || 'unselected recipient'}</span><span>{provider === 'brevo' ? 'Brevo' : 'Microsoft Outlook'} · {cooldown}s cooldown · consent {consent ? 'confirmed' : 'not confirmed'}</span><span>Subject: {reviewed.subject || 'No subject yet'}</span><details><summary>Reviewed message</summary>{reviewed.bodyHtml ? <iframe title="Final campaign HTML review" sandbox="" srcDoc={reviewed.bodyHtml} /> : null}<pre>{reviewed.bodyText}</pre><small>A unique unsubscribe link is appended for each queued recipient.</small></details></div>
           <div aria-live="polite" aria-atomic="true">{error && <p role="alert" className="crm-inline-status crm-inline-status--error">{error}</p>}{result && <p className="crm-inline-status crm-inline-status--success">{result}</p>}</div>
           <button className="btn-primary crm-primary-action" disabled={api.queue.isPending || queueCount === 0}>{api.queue.isPending ? 'Queueing campaign…' : queueLabel}</button>
           <p className="crm-action-note">Messages enter the durable queue; they are not sent from this screen immediately.</p>

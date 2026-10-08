@@ -5,9 +5,9 @@ export type ArchiveCursorPayload = {
 };
 
 const DISPLAY_FIELDS: Record<string, string[]> = {
-  companies: ['id', 'name_raw', 'name_clean', 'industry', 'website', 'linkedin_url', 'phone', 'address', 'created_at', 'updated_at'],
-  deals: ['id', 'company_id', 'deal_name_raw', 'product', 'deal_stage', 'pipeline', 'amount', 'hubspot_created_at', 'created_at', 'updated_at'],
-  contacts: ['id', 'company_id', 'first_name', 'last_name', 'full_name', 'email', 'phone', 'job_title', 'created_at', 'updated_at'],
+  companies: ['id', 'name_raw', 'name_clean', 'industry', 'website', 'hubspot_company_id', 'created_at', 'updated_at'],
+  deals: ['id', 'company_id', 'hubspot_deal_id', 'deal_name_raw', 'product', 'deal_stage', 'pipeline', 'amount', 'hubspot_created_at', 'created_at', 'updated_at'],
+  contacts: ['id', 'company_id', 'hubspot_contact_id', 'full_name', 'email', 'phone', 'role_title', 'created_at', 'updated_at'],
 };
 
 function base64UrlEncode(value: string | Uint8Array) {

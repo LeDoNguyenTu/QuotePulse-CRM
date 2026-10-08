@@ -523,7 +523,7 @@ export function Dashboard() {
 function ArchivedDashboard() {
   const workspace = useActiveWorkspace();
   const archive = useWorkspaceArchive(workspace.id);
-  const archiveId = archive.latest.data?.id;
+  const archiveId = archive.browsable.data?.id;
   const [table, setTable] = useState<ArchivedLegacyTable>('companies');
   const [search, setSearch] = useState('');
   const [cursor, setCursor] = useState<string | undefined>();
@@ -531,8 +531,8 @@ function ArchivedDashboard() {
   const api = useArchivedCrmRecords({ workspaceId: workspace.id, archiveId, table, search, cursor, enabled: !!archiveId });
   const result = api.records.data;
   const switchTable = (next: ArchivedLegacyTable) => { setTable(next); setCursor(undefined); setEditing(null); };
-  if (archive.latest.isLoading) return <Spinner label="Loading archive…" />;
-  if (archive.latest.error) return <ErrorState error={archive.latest.error} />;
+  if (archive.browsable.isLoading) return <Spinner label="Loading archive…" />;
+  if (archive.browsable.error) return <ErrorState error={archive.browsable.error} />;
   if (!archiveId) return <div className="card p-5"><p>No verified legacy archive is available yet.</p></div>;
   return <div className="space-y-4">
     <div className="flex gap-1 border-b border-slate-200" role="tablist" aria-label="Archived object type">{(['companies', 'deals', 'contacts'] as ArchivedLegacyTable[]).map((value) => <button key={value} role="tab" aria-selected={table === value} className={`border-b-2 px-4 py-2 text-sm font-medium capitalize ${table === value ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`} onClick={() => switchTable(value)}>{value}</button>)}</div>

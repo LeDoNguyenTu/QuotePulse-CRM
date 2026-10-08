@@ -521,6 +521,10 @@ body {
 .crm-campaign-review { display: grid; gap: 0.25rem; margin-top: 1rem; border: 1px solid #d9e3f2; border-radius: 0.75rem; background: #fff; padding: 0.85rem; }
 .crm-campaign-review strong { color: var(--workspace-ink); font-size: 0.8rem; }
 .crm-campaign-review span { color: #64748b; font-size: 0.72rem; overflow-wrap: anywhere; }
+.crm-campaign-review details { margin-top: 0.35rem; color: #475569; font-size: 0.72rem; }
+.crm-campaign-review iframe { width: 100%; min-height: 12rem; margin-top: 0.5rem; border: 1px solid #dbe3ee; border-radius: 0.5rem; background: white; }
+.crm-campaign-review pre { max-height: 12rem; overflow: auto; margin-top: 0.5rem; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.crm-campaign-review small { display: block; margin-top: 0.5rem; color: #7b8799; }
 .crm-input-suffix { position: relative; }
 .crm-input-suffix .input { padding-right: 5rem; }
 .crm-input-suffix > span { position: absolute; top: 50%; right: 0.8rem; color: #718096; font-size: 0.72rem; font-weight: 600; transform: translateY(-50%); }

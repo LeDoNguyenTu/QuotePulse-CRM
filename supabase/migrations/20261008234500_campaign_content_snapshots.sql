@@ -7,6 +7,7 @@ set body_text = body
 where body_text is null;
 
 alter table public.crm_email_campaigns
+  alter column body_text set default '',
   alter column body_text set not null;
 
 create or replace function public.crm_queue_email_campaign(

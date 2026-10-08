@@ -20,6 +20,7 @@ describe('archive browse primitives', () => {
   it('projects allow-listed display fields without object metadata or secret bodies', () => {
     expect(projectArchiveRow('companies', { id: '1', name_clean: 'Northstar', owner_id: 'u', r2_key: 'secret' })).toEqual({ id: '1', name_clean: 'Northstar' });
     expect(projectArchiveRow('deals', { id: '2', deal_name_raw: 'Renewal', deal_stage: 'won', owner_id: 'u' })).toEqual({ id: '2', deal_name_raw: 'Renewal', deal_stage: 'won' });
+    expect(projectArchiveRow('contacts', { id: '3', full_name: 'Avery', role_title: 'Director', hubspot_contact_id: 'hs-3', owner_id: 'u' })).toEqual({ id: '3', full_name: 'Avery', role_title: 'Director', hubspot_contact_id: 'hs-3' });
     expect(() => projectArchiveRow('user_settings', { id: '1' })).toThrow(/allow-listed/);
   });
 });

@@ -135,7 +135,7 @@ export function CrmSalesSettings() {
         <div className="crm-settings-content">
           <section id="delivery" className="crm-settings-section">
             <div className="crm-settings-section-header">
-              <div><span>01</span><h2>Delivery defaults</h2></div>
+              <div><h2>Delivery defaults</h2></div>
               <p>Choose the sending account and guard rails applied to new campaigns.</p>
             </div>
 
@@ -183,7 +183,7 @@ export function CrmSalesSettings() {
 
           <section id="security" className="crm-settings-section">
             <div className="crm-settings-section-header">
-              <div><span>02</span><h2>Account &amp; security</h2></div>
+              <div><h2>Account &amp; security</h2></div>
               <p>Keep sign-in details current and control idle-session protection.</p>
             </div>
 
@@ -214,7 +214,7 @@ export function CrmSalesSettings() {
 
           <section id="privacy" className="crm-settings-section">
             <div className="crm-settings-section-header">
-              <div><span>03</span><h2>Data &amp; privacy</h2></div>
+              <div><h2>Data &amp; privacy</h2></div>
               <p>Understand what leaves the browser and what remains isolated to this workspace.</p>
             </div>
             <div className="crm-privacy-grid">

@@ -14,6 +14,7 @@ describe('Sales CRM detail query plans', () => {
       expect.objectContaining({ table: 'crm_contacts', foreignKey: 'company_id' }),
       expect.objectContaining({ table: 'crm_deals', foreignKey: 'company_id' }),
     ]));
+    expect(spec.associations.find((association) => association.table === 'crm_contacts')?.allPages).toBe(true);
     expect(spec.lineage).toMatchObject({ foreignKey: 'company_id', workspaceId: 'workspace-1' });
     expect(spec.activity).toMatchObject({ table: 'crm_activities', foreignKey: 'company_id', workspaceId: 'workspace-1' });
     expect(spec.activity.secondaryOrder).toEqual({ column: 'id', ascending: false });

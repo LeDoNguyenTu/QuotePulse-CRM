@@ -5,6 +5,7 @@ import { useOptionalActiveWorkspace } from '../hooks/useWorkspaces';
 import { workspaceNavigation } from '../lib/workspaceNavigation';
 import { WorkspaceBrand } from './WorkspaceBrand';
 import { CrmReminderCenter } from './crm/CrmReminderCenter';
+import { ThemeToggle } from './ThemeToggle';
 
 const legacyFallbackNavigation = [
   { to: '/', label: 'Dashboard', end: true },
@@ -46,6 +47,7 @@ export function Layout({
                   Switch workspace
                 </Link>
               )}
+              <ThemeToggle />
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-500">
               {isSales && workspace && <CrmReminderCenter workspaceId={workspace.id} />}

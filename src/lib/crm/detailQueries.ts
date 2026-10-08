@@ -9,6 +9,7 @@ export interface CrmDetailQuery {
   order?: { column: string; ascending: boolean };
   secondaryOrder?: { column: string; ascending: boolean };
   limit?: number;
+  allPages?: boolean;
 }
 
 export interface CrmDetailSpec {
@@ -73,7 +74,7 @@ export function crmDetailSpec(
     company: [
       {
         table: 'crm_contacts', select: '*', workspaceId, foreignKey: 'company_id', recordId,
-        order: { column: 'full_name', ascending: true }, limit: 100,
+        order: { column: 'full_name', ascending: true }, allPages: true,
       },
       {
         table: 'crm_deals', select: '*', workspaceId, foreignKey: 'company_id', recordId,

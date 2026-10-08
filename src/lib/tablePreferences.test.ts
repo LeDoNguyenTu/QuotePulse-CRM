@@ -56,6 +56,10 @@ describe('table preferences', () => {
     expect(DEFAULT_VISIBLE_COLUMNS.crm_contacts).toContain('record_state');
   });
 
+  it('shows expandable contacts in the compact default company view', () => {
+    expect(DEFAULT_VISIBLE_COLUMNS.crm_companies).toContain('contact_count');
+  });
+
   it('reads legacy Sales CRM choices as a workspace fallback', () => {
     const legacy: TableColumnPreferences = { crm_contacts: ['full_name', 'email'] };
 

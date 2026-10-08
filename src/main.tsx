@@ -7,6 +7,9 @@ import { AuthProvider } from './hooks/useAuth';
 import { HubspotImportProvider, HubspotImportToast } from './hooks/useHubspotImport';
 import { WorkspaceProvider } from './hooks/useWorkspaces';
 import './styles/index.css';
+import { initializeTheme } from './lib/theme';
+
+initializeTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

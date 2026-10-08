@@ -2,6 +2,10 @@
 
 Updated: 2026-10-05 (Asia/Singapore)
 
+## Final status update - 2026-10-08
+
+This is a historical pre-merge handoff. The implementation has since been merged and released. The current acceptance source is [`2026-10-07-customer-files-production-acceptance.md`](./2026-10-07-customer-files-production-acceptance.md), which records the production workbook commits, direct `.msg` support, verified reminder materialization, completed legacy-archive deletion/retention, storage compaction, and final test evidence.
+
 ## Start here
 
 - Branch: `feat/client-crm-workflow-upgrades`
@@ -33,7 +37,7 @@ The supplied `D:\PROJECTS\Customer files` material was inspected during implemen
 - `Free 30-Day Trial of Microsoft 365 Copilot for Business.htm.html` contained 12 tables and 7 image references.
 - `Free 30-Day Trial of Microsoft 365 Copilot for Business_files.zip` contained the corresponding seven image assets.
 - The import transformation test preserved all 12 tables, resolved all 7 image references, and found no unresolved paths.
-- Direct `.msg` parsing is intentionally not implemented. The supported workflow is HTML plus its companion ZIP/images, which matches the provided formatted-email assets.
+- Direct `.msg` parsing was added in PR #45. It runs in the browser without uploading the raw Outlook file and preserves the supplied subject, HTML, text fallback, 12 tables, and 7 inline images. HTML plus companion ZIP/images remains supported.
 
 Images must be externally reachable for email clients to render them. The implementation limits uploads to PNG/JPEG/GIF/WebP, has per-file and total upload limits, hashes assets, uses owner-prefixed storage paths, and has owner-only upload/write rules. Review the public asset-bucket policy before changing that design.
 

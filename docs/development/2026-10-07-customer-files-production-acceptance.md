@@ -58,16 +58,18 @@ Status inference is deliberately conservative:
 
 ## Email-template acceptance
 
-The supplied HTML email contains 12 tables and 7 companion image references. The companion ZIP contains all 7 supported images, and the production import pipeline resolves all 7 references before sanitization. Table structure and a plain-text fallback are retained. The `.msg` file is recorded as an unsupported direct-import source; the matching HTML plus companion ZIP is the supported loss-minimizing path.
+The supplied Outlook `.msg` is now a supported direct-import source. Parsing runs locally in the browser; the raw message is never uploaded or stored. The exact approved file imports its subject, 62,433-character HTML body, 2,546-character plain-text fallback, 12 tables, and 7 inline images with zero unresolved image references. Compressed-RTF encapsulated HTML and CID image references are supported. The existing HTML plus companion ZIP/image workflow remains available as an alternative.
+
+The source `.msg` is limited to 25 MiB. Only supported inline image attachments are uploaded through the existing protected template-asset flow, with the existing 5 MiB per-image and 20 MiB aggregate limits. Brevo and Microsoft Graph continue to receive both the sanitized HTML and the plain-text fallback.
 
 ## Reproduce locally
 
 ```powershell
 $env:CUSTOMER_FILES_DIR='C:\Users\ADMIN\OneDrive - Murdoch University\Ca-Meo Backup\Desktop\Customer files'
-npx vitest run tests/customerFilesAcceptance.test.ts --reporter=verbose --silent=false
+npx vitest run tests/customerFilesAcceptance.test.ts src/lib/outlookMsg.test.ts src/components/TemplateEditor.test.tsx --reporter=verbose
 ```
 
-Expected result: 1 test file and 9 tests pass. The suite fails if the approved file set or any hash changes, forcing a deliberate review of a replacement customer file.
+Expected result: 3 test files and 14 tests pass. The suite fails if the approved file set or any hash changes, forcing a deliberate review of a replacement customer file. It also verifies direct `.msg` parsing, table/image preservation, compressed RTF, CID rewriting, upload limits, and the template-editor import flow.
 
 ## Production workbook commits
 
@@ -96,21 +98,22 @@ A read-only production audit on 2026-10-08 confirmed all ten database identities
 - [x] Re-uploaded an unchanged sheet and verified stable identity, revision 2, reconciled updates, unchanged rows, and finalized per-revision artifacts.
 - [x] Verified selected/all-row export and user-selected ordered columns for contacts and companies.
 - [x] Imported the supplied HTML email and all seven companion images as the production template `Microsoft 365 Copilot 30-Day Trial`; its subject, 12-table layout, images, and plain-text fallback were retained.
+- [x] Verified direct browser-local import of the exact supplied `.msg`: subject, HTML, text fallback, 12 tables, 7 inline images, and zero unresolved references.
 - [x] Verified the task-reminder popup, role search, configurable deal columns, editable activity notes, contact hide/outdated/verified controls, and bulk-hide behavior.
-- [x] Verified the storage-usage display and safely resumed one bounded legacy archive step without deleting legacy rows.
+- [x] Verified the storage-usage display, completed and re-verified the legacy R2 archive, permanently removed the archived legacy rows after explicit confirmation, retained referenced records, and compacted the database.
 - [x] Password change was tested successfully by the workspace owner on 2026-10-07.
 
 ## Production evidence and corrective releases
 
 PR #36 was merged as `09f2f692ce12a66125074d2f1ad5e81acb2c7611` and Vercel reported the matching production deployment READY.
 
-- The dashboard storage card rendered after the live `storage-status` request completed: Supabase 74.8% (374 MB / 500 MB), R2 1.7% (171 MB / 10 GB), and recovery complete.
+- The dashboard storage card rendered after the live `storage-status` request completed. The later verified archive deletion and compaction reduced the database from 381 MB before deletion to 67 MB after `VACUUM (FULL, ANALYZE)`, reclaiming about 314 MB. The R2 archive remains intact and restorable.
 - Contact search matched `Finance Manager` from the Role column. Verify, Mark outdated, Hide, Edit, and Delete are rendered as real buttons.
 - The contact export dialog supports selected rows or all matching rows, Excel or CSV, and user-selected ordered columns.
 - Deal columns expose independent Deal stage, Call outcome, Appointment status, Last call, and source/relationship fields with a small default set.
 - Company activities expose occurred time, call/note type, workbook destination, optional follow-up task, editable timeline entries, and source lineage.
-- The reminder button opens a task-reminder popup. This workspace currently has no unread reminders, so a due-task delivery event could not be observed without creating test data.
-- One safe legacy archive step completed without deletion, increasing coverage from 11,000 rows / 44 verified objects to 11,250 rows / 45 verified objects. The archive remains resumable and is still building the `companies` table.
+- The reminder button opens the tested task-reminder popup. A production acceptance probe on 2026-10-08 inserted a temporary due task, invoked the private materializer, verified exactly one matching unread notification and the active per-minute cron job, then removed the task and notification in the same statement. A final query confirmed zero acceptance-test rows remained.
+- Legacy archive `84c1b5f4-66b4-4213-a528-beaec8f52e62` completed at 2,059 verified R2 objects and 512,824 reconciled rows. Permanent deletion removed 512,815 archived rows and retained 9 still-referenced records: 6 email sends, 1 email template, and 2 companies. All six unsubscribe-token relationships remain intact; no authentication records, API/refresh tokens, or unsubscribe-token hashes were archived or deleted.
 - Live review found the rich HTML template editor was unreachable from a Sales workspace. The follow-up fix adds `/sales/templates` to Sales navigation and dispatches it to the existing table/image/ZIP-capable editor.
 
 The real production uploads then exposed five silent integration defects that unit-only validation had not reached. Each fix was merged to `main`, passed the full quality job, and completed the Supabase deployment workflow before the next retry:
@@ -121,7 +124,11 @@ The real production uploads then exposed five silent integration defects that un
 - PR #41 (`23b494d1ba1bc8773830ec702bd88582b36c6977`) applies RFC3986 encoding to shared R2 SigV4 object keys, fixing the parenthesized NAV filename without changing bucket scope.
 - PR #42 (`ff8882f1a588ee14395c56c69088a84e8a6bf870`) widens the canonical company-name constraint from 200 to 500 characters, preserving four legitimate NAV names of 201–212 characters.
 
-The final pre-documentation verification passed 153 test files with 564 tests, plus typecheck, lint, and the production build. The approved raw files remain outside Git; only hashes and aggregate evidence are committed.
+PR #45 (`487856e74321e55cadeda2516bff1082e4eae29b`) adds direct browser-local Outlook `.msg` template import with compressed-RTF HTML and inline-image support. PR #46 (`9e02dce606ba4aaab4cb14ea8fd7df214b9fcab0`) adds full R2 re-verification, exact typed confirmation, bounded reverse-dependency deletion, and referenced-record retention. PR #47 (`a2b408cbd133710ff5ff0dab67798301ae5b77d5`) corrects an ambiguous archive-progress update exposed by the first production-safe deletion attempt; that failed attempt deleted zero rows, and the corrected migration passed a rolled-back live probe before permanent deletion.
+
+The final archive-hotfix verification passed 158 test files with 578 tests (plus 1 file / 9 environment-gated tests skipped), typecheck, lint, and the production build. The customer-file and direct-`.msg` acceptance rerun passed 3 files / 14 tests against the exact approved local hashes. The approved raw files remain outside Git; only hashes and aggregate evidence are committed.
+
+No real customer email was sent as part of acceptance. The Graph/Brevo HTML-plus-text payload contract and queue code are tested, but an external delivery test requires a deliberately chosen controlled recipient and action-time approval.
 
 ### Browser automation prerequisite
 

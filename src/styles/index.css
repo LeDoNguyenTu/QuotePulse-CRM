@@ -530,6 +530,21 @@ body {
 .crm-inline-status--error { background: #fff1f2; color: #9f1239; }
 .crm-inline-status--success { background: #ecfdf5; color: #047857; }
 .crm-reporting-panel { overflow: hidden; }
+.crm-data-mode { display: inline-flex; gap: 0.25rem; border: 1px solid #dbe3ee; border-radius: 0.75rem; background: #f8fafc; padding: 0.25rem; }
+.crm-data-mode button { border-radius: 0.55rem; padding: 0.55rem 0.85rem; color: #64748b; font-size: 0.78rem; font-weight: 700; }
+.crm-data-mode button[aria-selected="true"] { background: white; color: #2458c7; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+.crm-archive-browser { overflow: hidden; border: 1px solid var(--workspace-line); border-radius: 1rem; background: white; }
+.crm-archive-browser > header, .crm-archive-browser > footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; }
+.crm-archive-browser > header { border-bottom: 1px solid var(--workspace-line); }
+.crm-archive-browser > footer { border-top: 1px solid var(--workspace-line); color: #64748b; font-size: 0.75rem; }
+.crm-archive-browser h2 { margin-top: 0.35rem; color: var(--workspace-ink); font-size: 1.1rem; font-weight: 750; text-transform: capitalize; }
+.crm-archive-browser header p, .crm-archive-browser header > span { color: #718096; font-size: 0.72rem; }
+.crm-archive-badge { display: inline-flex; border-radius: 999px; background: #fff7ed; padding: 0.25rem 0.55rem; color: #9a3412; font-size: 0.68rem; font-weight: 750; }
+.crm-archive-warning { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; background: rgba(15, 23, 42, 0.42); padding: 1rem; }
+.crm-archive-warning > div { width: min(32rem, 100%); border-radius: 1rem; background: white; padding: 1.25rem; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25); }
+.crm-archive-warning h3 { color: var(--workspace-ink); font-size: 1.05rem; font-weight: 750; }
+.crm-archive-warning p { margin-top: 0.65rem; color: #475569; font-size: 0.82rem; line-height: 1.55; }
+.crm-archive-warning > div > div { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
 
 .crm-settings-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: 1.25rem; align-items: start; }
 .crm-settings-nav { position: sticky; top: 1rem; display: grid; gap: 0.3rem; border: 1px solid var(--workspace-line); border-radius: 0.9rem; background: #fff; padding: 0.8rem; box-shadow: 0 10px 25px rgba(16, 35, 63, 0.045); }

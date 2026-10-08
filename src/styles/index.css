@@ -484,6 +484,13 @@ body {
 .crm-field-grid .crm-field { margin-top: 0; }
 .crm-field small { color: #7b8799; font-size: 0.72rem; font-weight: 500; line-height: 1.5; }
 .crm-message-editor { min-height: 15rem; resize: vertical; line-height: 1.65; }
+.crm-message-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.8fr); gap: 1rem; align-items: start; }
+.crm-message-fields > small { display: block; margin-top: 0.55rem; color: #718096; font-size: 0.72rem; }
+.crm-message-preview { margin-top: 1rem; overflow: hidden; border: 1px solid var(--workspace-line); border-radius: 0.8rem; background: #f8fafd; padding: 1rem; }
+.crm-message-preview h4 { margin: 0.4rem 0 0.8rem; overflow-wrap: anywhere; color: var(--workspace-ink); font-size: 0.9rem; }
+.crm-message-preview iframe { width: 100%; min-height: 22rem; border: 1px solid #dbe3ee; border-radius: 0.55rem; background: white; }
+.crm-message-preview pre { overflow: auto; max-height: 22rem; white-space: pre-wrap; overflow-wrap: anywhere; color: #334155; font: inherit; font-size: 0.78rem; }
+.crm-message-preview details { margin-top: 0.7rem; color: #64748b; font-size: 0.75rem; }
 .crm-campaign-sidebar { border-left: 1px solid var(--workspace-line); background: #f8fafd; padding: 1.5rem; }
 .crm-sidebar-rule { margin: 1.35rem 0 0.35rem; border-top: 1px solid var(--workspace-line); }
 .crm-choice-row { display: flex; align-items: flex-start; gap: 0.7rem; margin-top: 1rem; border-radius: 0.75rem; background: #fff; padding: 0.8rem; color: #334155; }
@@ -504,6 +511,16 @@ body {
 .crm-recipient-row > span { display: grid; gap: 0.2rem; }
 .crm-recipient-row strong { color: #20324d; font-size: 0.82rem; }
 .crm-recipient-row small { color: #718096; font-size: 0.72rem; }
+.crm-recipient-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.crm-recipient-picker .crm-panel-heading { align-items: flex-start; }
+.crm-recipient-picker .crm-panel-heading h4 { color: var(--workspace-ink); font-size: 0.9rem; }
+.crm-recipient-picker .crm-panel-heading p { margin-top: 0.15rem; color: #718096; font-size: 0.7rem; }
+.crm-recipient-picker .crm-recipient-row { justify-content: space-between; }
+.crm-recipient-picker .crm-recipient-row > span { min-width: 0; margin-right: auto; }
+.crm-recipient-remove { color: #b42318; font-size: 0.7rem; font-weight: 700; }
+.crm-campaign-review { display: grid; gap: 0.25rem; margin-top: 1rem; border: 1px solid #d9e3f2; border-radius: 0.75rem; background: #fff; padding: 0.85rem; }
+.crm-campaign-review strong { color: var(--workspace-ink); font-size: 0.8rem; }
+.crm-campaign-review span { color: #64748b; font-size: 0.72rem; overflow-wrap: anywhere; }
 .crm-input-suffix { position: relative; }
 .crm-input-suffix .input { padding-right: 5rem; }
 .crm-input-suffix > span { position: absolute; top: 50%; right: 0.8rem; color: #718096; font-size: 0.72rem; font-weight: 600; transform: translateY(-50%); }
@@ -582,6 +599,7 @@ body {
   .crm-campaign-layout { grid-template-columns: 1fr; }
   .crm-campaign-main, .crm-campaign-sidebar { padding: 1rem; }
   .crm-campaign-sidebar { border-top: 1px solid var(--workspace-line); border-left: 0; }
+  .crm-message-workspace, .crm-recipient-picker { grid-template-columns: 1fr; }
   .crm-field-grid { grid-template-columns: 1fr; }
   .crm-settings-layout { grid-template-columns: 1fr; }
   .crm-settings-nav { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow-x: auto; }

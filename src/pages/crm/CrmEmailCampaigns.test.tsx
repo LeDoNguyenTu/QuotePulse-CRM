@@ -18,6 +18,7 @@ vi.mock('../../hooks/crm/useCrmCampaigns', () => ({
       error: null,
     },
     campaigns: { data: [], isLoading: false, error: null },
+    resolveMatchingRecipientIds: { isPending: false, mutateAsync: vi.fn() },
     queue: { isPending: false, mutateAsync: vi.fn() },
   }),
 }));

@@ -8,6 +8,7 @@ export function validateCrmCampaignInput(input: CrmCampaignInput): string | null
   if (!input.name.trim()) return 'Campaign name is required.';
   if (!input.subject.trim()) return 'Subject is required.';
   if (!input.bodyText.trim() && !input.bodyHtml?.trim()) return 'Message body is required.';
+  if (!input.bodyText.trim()) return 'Plain-text fallback is required for every campaign.';
   if (!input.consentConfirmed) return 'Confirm that recipients expect this message.';
   if (!input.contactIds.length && (!input.sendAllMatching || input.matchingCount === 0)) return 'Select recipients or explicitly confirm sending to all matching contacts.';
   if (input.contactIds.length > 5000) return 'Select 5,000 recipients or fewer.';

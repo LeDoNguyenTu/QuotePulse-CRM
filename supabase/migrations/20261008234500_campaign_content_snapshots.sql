@@ -27,7 +27,7 @@ begin
   if p_consent_confirmed is distinct from true then raise exception 'recipient consent confirmation is required' using errcode = '22023'; end if;
   if coalesce(p_unsubscribe_base_url, '') !~ '^https?://' then raise exception 'valid unsubscribe URL required' using errcode = '22023'; end if;
   if p_provider not in ('microsoft_graph', 'brevo') then raise exception 'unsupported email provider' using errcode = '22023'; end if;
-  if nullif(btrim(p_name), '') is null or nullif(btrim(p_subject), '') is null or (nullif(btrim(p_body_text), '') is null and nullif(btrim(p_body_html), '') is null) then raise exception 'campaign name, subject, and body are required' using errcode = '22023'; end if;
+  if nullif(btrim(p_name), '') is null or nullif(btrim(p_subject), '') is null or nullif(btrim(p_body_text), '') is null then raise exception 'campaign name, subject, and plain-text fallback are required' using errcode = '22023'; end if;
   if coalesce(cardinality(p_contact_ids), 0) = 0 then raise exception 'select at least one campaign recipient' using errcode = '22023'; end if;
   if cardinality(p_contact_ids) > 5000 then raise exception 'campaign audience exceeds the 5,000 recipient safety limit' using errcode = '54000'; end if;
   if p_template_id is not null and not exists (select 1 from public.email_templates t where t.id = p_template_id and t.owner_id = v_user) then raise exception 'template not found' using errcode = '22023'; end if;

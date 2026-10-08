@@ -10,6 +10,7 @@ export function validateCrmCampaignInput(input: CrmCampaignInput): string | null
   if (!input.body.trim()) return 'Message body is required.';
   if (!input.consentConfirmed) return 'Confirm that recipients expect this message.';
   if (!input.contactIds.length && (!input.sendAllMatching || input.matchingCount === 0)) return 'Select recipients or explicitly confirm sending to all matching contacts.';
+  if (input.contactIds.length > 5000) return 'Select 5,000 recipients or fewer.';
   if (input.sendAllMatching && input.matchingCount > 5000) return 'Narrow the audience to 5,000 matching contacts or fewer.';
   if (!Number.isFinite(input.cooldownSeconds) || input.cooldownSeconds < 30) return 'Cooldown must be at least 30 seconds.';
   return null;

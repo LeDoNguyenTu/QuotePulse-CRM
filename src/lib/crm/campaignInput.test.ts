@@ -8,5 +8,6 @@ describe('CRM campaign input', () => {
     expect(validateCrmCampaignInput({ ...valid, cooldownSeconds: 2 })).toMatch(/30 seconds/);
     expect(validateCrmCampaignInput({ ...valid, contactIds: [] })).toMatch(/Select recipients/);
     expect(validateCrmCampaignInput({ ...valid, contactIds: [], sendAllMatching: true, matchingCount: 5001 })).toMatch(/5,000/);
+    expect(validateCrmCampaignInput({ ...valid, contactIds: Array.from({ length: 5001 }, (_, index) => `contact-${index}`) })).toMatch(/5,000/);
   });
 });

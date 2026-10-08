@@ -7,8 +7,26 @@ import {
   type CrmDetailQuery,
 } from '../../lib/crm/detailQueries';
 import type { CrmTask } from '../../lib/crm/types';
+import { collectCrmOptionPages } from '../../lib/crm/options';
 
 async function fetchAssociation(querySpec: CrmDetailQuery): Promise<{ rows: unknown[]; count: number }> {
+  if (querySpec.allPages) {
+    let exactCount = 0;
+    const rows = await collectCrmOptionPages<unknown>(async (from, to) => {
+      let pageQuery = (supabase as any)
+        .from(querySpec.table)
+        .select(querySpec.select, { count: 'exact' })
+        .eq('workspace_id', querySpec.workspaceId)
+        .eq(querySpec.foreignKey, querySpec.recordId);
+      if (querySpec.order) pageQuery = pageQuery.order(querySpec.order.column, { ascending: querySpec.order.ascending });
+      if (querySpec.secondaryOrder) pageQuery = pageQuery.order(querySpec.secondaryOrder.column, { ascending: querySpec.secondaryOrder.ascending });
+      const { data, count, error } = await pageQuery.range(from, to);
+      if (error) throw error;
+      exactCount = count ?? exactCount;
+      return data ?? [];
+    });
+    return { rows, count: exactCount };
+  }
   let query = (supabase as any)
     .from(querySpec.table)
     .select(querySpec.select, { count: 'exact' })

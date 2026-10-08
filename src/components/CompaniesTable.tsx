@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { CompanyDashboardRow } from '../lib/types';
 import { formatDate, formatRelative } from '../lib/dates';
@@ -5,6 +6,8 @@ import { Flag, PriorityBadge, StatusBadge } from './ui';
 import { detailNavigationState, saveScrollPosition } from '../lib/returnNavigation';
 import { useActiveWorkspace } from '../hooks/useWorkspaces';
 import { legacyPath } from '../lib/appRoutes';
+import { useCompanyContacts } from '../hooks/useCompany';
+import { CompanyContactsDisclosure } from './crm/CompanyContactsDisclosure';
 
 /** Relative label ("3d ago") with the absolute date on hover; em dash when empty. */
 function RelativeDate({ value }: { value: string | null }) {
@@ -104,18 +107,8 @@ export function CompaniesTable({
               {shown.has('source_priority') && <td className="px-3 py-2">
                 <PriorityBadge value={r.source_priority} />
               </td>}
-              {shown.has('primary_contact') && <td className="px-3 py-2">
-                {r.primary_contact_name || r.primary_contact_email ? (
-                  <div>
-                    <div className="text-slate-700">{r.primary_contact_name ?? '—'}</div>
-                    <div className="text-xs text-slate-400">
-                      {r.primary_contact_email ?? ''}
-                      {r.primary_contact_phone ? ` · ${r.primary_contact_phone}` : ''}
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-slate-400">—</span>
-                )}
+              {shown.has('primary_contact') && <td className="px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                <LegacyCompanyContacts companyId={r.id} />
               </td>}
               {shown.has('flags') && <td className="px-3 py-2">
                 <div className="flex flex-wrap gap-1">
@@ -145,6 +138,26 @@ export function CompaniesTable({
       )}
     </div>
   );
+}
+
+function LegacyCompanyContacts({ companyId }: { companyId: string }) {
+  const [open, setOpen] = useState(false);
+  const query = useCompanyContacts(open ? companyId : undefined);
+  return <CompanyContactsDisclosure
+    count={open ? query.data?.length : undefined}
+    contacts={(query.data ?? []).map((contact) => ({
+      id: contact.id,
+      name: contact.full_name || contact.email || 'Unnamed contact',
+      role: contact.role_title,
+      email: contact.email,
+      phone: contact.phone,
+      primary: contact.is_primary_contact,
+    }))}
+    open={open}
+    loading={query.isLoading}
+    error={query.error}
+    onOpenChange={setOpen}
+  />;
 }
 
 /**

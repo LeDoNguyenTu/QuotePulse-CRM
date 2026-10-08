@@ -24,7 +24,7 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<TablePreferenceKey, string[]> = {
     'hubspot_modified_at', 'is_archived',
   ],
   contacts: ['full_name', 'email', 'phone', 'role_title', 'is_primary_contact', 'source'],
-  crm_companies: ['name', 'customer_status', 'industry', 'location', 'phone', 'latest_activity', 'source'],
+  crm_companies: ['name', 'customer_status', 'industry', 'location', 'phone', 'latest_activity', 'source', 'contact_count'],
   crm_contacts: ['full_name', 'company', 'job_title', 'email', 'phone', 'record_state', 'source'],
   crm_deals: ['name', 'company', 'stage', 'status', 'amount', 'follow_up_at', 'source'],
 };

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
 import { functions } from '../../lib/functions';
 import { crmKeys } from '../../lib/crm/queryKeys';
-import type { CrmCompany, CrmCompanyInput } from '../../lib/crm/types';
+import type { CrmCompany, CrmCompanyInput, CrmContact } from '../../lib/crm/types';
 import { collectCrmOptionPages, mergeCustomerStatusOptions } from '../../lib/crm/options';
 import { useCrmMutations, useCrmPage } from './useCrmResource';
 
@@ -76,6 +76,25 @@ export function useCrmCompanyOptions(workspaceId: string) {
         return data ?? [];
       });
     },
+  });
+}
+
+export function useCrmCompanyContacts(workspaceId: string, companyId?: string) {
+  return useQuery<CrmContact[]>({
+    queryKey: [...crmKeys.contactRoot(workspaceId), 'by-company', companyId],
+    enabled: Boolean(workspaceId && companyId),
+    queryFn: async () => collectCrmOptionPages<CrmContact>(async (from, to) => {
+      const { data, error } = await (supabase as any)
+        .from('crm_contacts')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .eq('company_id', companyId)
+        .order('full_name', { ascending: true, nullsFirst: false })
+        .order('id', { ascending: true })
+        .range(from, to);
+      if (error) throw error;
+      return data ?? [];
+    }),
   });
 }
 

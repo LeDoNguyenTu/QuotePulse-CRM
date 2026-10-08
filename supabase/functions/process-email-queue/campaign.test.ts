@@ -15,5 +15,6 @@ describe('campaign queue worker isolation', () => {
     expect(source).toMatch(/appendHtmlUnsubscribe/);
     expect(source).toMatch(/bodyHtml/);
     expect(source).toMatch(/body_html_rendered: bodyHtml/);
+    expect(source).not.toMatch(/from\('email_templates'\)/);
   });
 });

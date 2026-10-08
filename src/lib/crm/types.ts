@@ -146,6 +146,8 @@ export interface CrmEmailCampaign extends CrmAuditFields {
   template_id: string | null;
   subject: string;
   body: string;
+  body_html: string | null;
+  body_text: string;
   provider: 'microsoft_graph' | 'brevo';
   cooldown_seconds: number;
   audience_filter: Record<string, unknown>;

@@ -68,3 +68,16 @@ npm run build
 
 The migration test checks service-role-only execution, version/object guards, reverse dependency
 order, bounded batches, trigger scoping, statement timeout, and final row-count reconciliation.
+
+## Read-only access after deletion
+
+The dashboard now separates the live database from the verified R2 archive. Archived Companies,
+Deals, and Contacts are read through the authenticated `workspace-archive` function. Each request
+reads at most two checksum-verified objects, uses an HMAC-authenticated continuation cursor, and
+returns only table-specific display fields. R2 keys and ownership columns never reach the browser.
+
+Archived rows stay read-only. Choosing **Edit** explains that the row must be restored, and the
+user may cancel or selectively restore it. Selective restore re-verifies the object, restores a
+required parent company first, refuses cross-owner or divergent live rows, and leaves every R2
+object unchanged. The service-role-only transaction returns `restored`, `already_restored`, or
+`conflict` and never overwrites a live row.

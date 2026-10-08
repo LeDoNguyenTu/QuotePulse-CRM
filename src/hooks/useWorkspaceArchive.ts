@@ -47,6 +47,21 @@ export function useWorkspaceArchive(workspaceId: string) {
       return data as WorkspaceArchive | null;
     },
   });
+  const browsable = useQuery({
+    queryKey: ['workspace-archive-browsable', workspaceId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('workspace_archives')
+        .select('id,status,restore_status,table_counts,manifest_key,created_at,verified_at,deleted_at,last_error')
+        .eq('workspace_id', workspaceId)
+        .in('status', ['verified', 'deletion_eligible', 'deleted'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as WorkspaceArchive | null;
+    },
+  });
   const progress = useQuery({
     queryKey: ['workspace-archive-progress', workspaceId, latest.data?.id],
     enabled: !!latest.data?.id,
@@ -76,6 +91,7 @@ export function useWorkspaceArchive(workspaceId: string) {
   const refresh = async () => {
     await Promise.all([
       client.invalidateQueries({ queryKey: key }),
+      client.invalidateQueries({ queryKey: ['workspace-archive-browsable', workspaceId] }),
       client.invalidateQueries({ queryKey: ['workspace-archive-progress', workspaceId] }),
       client.invalidateQueries({ queryKey: ['workspace-archive-deletion-verification', workspaceId] }),
     ]);
@@ -131,5 +147,5 @@ export function useWorkspaceArchive(workspaceId: string) {
     onSuccess: refresh,
   });
   const stopDeletionWork = () => { stopDeletionWorkRef.current = true; };
-  return { latest, progress, deletionVerification, archive, archiveAll, stopArchiveAll, restore, dryRunDelete, verifyAllForDeletion, deleteAll, stopDeletionWork };
+  return { latest, browsable, progress, deletionVerification, archive, archiveAll, stopArchiveAll, restore, dryRunDelete, verifyAllForDeletion, deleteAll, stopDeletionWork };
 }

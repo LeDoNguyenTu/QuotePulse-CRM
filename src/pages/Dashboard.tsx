@@ -40,11 +40,18 @@ import { StorageStatusPanel } from '../components/StorageStatusPanel';
 import { ImportRecoveryWarning } from '../components/ImportRecoveryWarning';
 import { useStorageStatus } from '../hooks/useStorageStatus';
 import { importRecoveryLock, shouldStopImportForRecovery } from '../lib/storageStatus';
+import { ArchivedRecordTable } from '../components/crm/ArchivedRecordTable';
+import { ArchivedEditWarning } from '../components/crm/ArchivedEditWarning';
+import { useArchivedCrmRecords } from '../hooks/useArchivedCrmRecords';
+import { useWorkspaceArchive } from '../hooks/useWorkspaceArchive';
+import { useActiveWorkspace } from '../hooks/useWorkspaces';
+import type { ArchivedLegacyTable } from '../lib/functions';
 
 const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
 
 export function Dashboard() {
+  const [dataMode, setDataMode] = useState<'live' | 'archived'>('live');
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const dashboardState = useMemo(() => readDashboardState(searchParams), [searchParams]);
@@ -335,6 +342,11 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4">
+      <div className="crm-data-mode" role="tablist" aria-label="Database source">
+        <button role="tab" aria-selected={dataMode === 'live'} onClick={() => setDataMode('live')}>Live database</button>
+        <button role="tab" aria-selected={dataMode === 'archived'} onClick={() => setDataMode('archived')}>Archived in R2</button>
+      </div>
+      {dataMode === 'archived' ? <ArchivedDashboard /> : <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">HubSpot CRM</h1>
         <div className="flex flex-wrap gap-2">
@@ -503,8 +515,32 @@ export function Dashboard() {
       />
       <NewCompanyModal open={newOpen} onClose={() => setNewOpen(false)} />
       <ExportScopeModal open={exportOpen} onClose={() => setExportOpen(false)} onExport={handleExport} busy={exporting} />
+      </>}
     </div>
   );
+}
+
+function ArchivedDashboard() {
+  const workspace = useActiveWorkspace();
+  const archive = useWorkspaceArchive(workspace.id);
+  const archiveId = archive.browsable.data?.id;
+  const [table, setTable] = useState<ArchivedLegacyTable>('companies');
+  const [search, setSearch] = useState('');
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [editing, setEditing] = useState<(Record<string, unknown> & { id: string; _archive_cursor: string }) | null>(null);
+  const api = useArchivedCrmRecords({ workspaceId: workspace.id, archiveId, table, search, cursor, enabled: !!archiveId });
+  const result = api.records.data;
+  const switchTable = (next: ArchivedLegacyTable) => { setTable(next); setCursor(undefined); setEditing(null); };
+  if (archive.browsable.isLoading) return <Spinner label="Loading archive…" />;
+  if (archive.browsable.error) return <ErrorState error={archive.browsable.error} />;
+  if (!archiveId) return <div className="card p-5"><p>No verified legacy archive is available yet.</p></div>;
+  return <div className="space-y-4">
+    <div className="flex gap-1 border-b border-slate-200" role="tablist" aria-label="Archived object type">{(['companies', 'deals', 'contacts'] as ArchivedLegacyTable[]).map((value) => <button key={value} role="tab" aria-selected={table === value} className={`border-b-2 px-4 py-2 text-sm font-medium capitalize ${table === value ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`} onClick={() => switchTable(value)}>{value}</button>)}</div>
+    <div className="flex gap-2"><input className="input" value={search} onChange={(event) => { setSearch(event.target.value); setCursor(undefined); }} placeholder={`Search archived ${table}`} /><button className="btn-secondary" type="button" onClick={() => api.records.refetch()}>Search</button></div>
+    {api.records.error && <ErrorState error={api.records.error} />}
+    {api.records.isLoading || !result ? <Spinner label={`Loading archived ${table}…`} /> : <ArchivedRecordTable table={table} rows={result.rows} archivedAt={result.archived_at} progress={result.progress} hasNext={!!result.cursor} loading={api.records.isFetching} onNext={() => setCursor(result.cursor ?? undefined)} onEdit={(row) => setEditing(row as typeof editing)} />}
+    {editing && <ArchivedEditWarning recordLabel={String(editing.name_clean ?? editing.deal_name_raw ?? editing.full_name ?? editing.id)} pending={api.restore.isPending} onCancel={() => setEditing(null)} onRestore={async () => api.restore.mutateAsync({ id: editing.id, _archive_cursor: editing._archive_cursor })} />}
+  </div>;
 }
 
 /**

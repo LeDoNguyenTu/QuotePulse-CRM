@@ -185,6 +185,13 @@ export interface StorageStatusResult {
   compaction: StorageCompactionStatus | { error: string };
 }
 
+export type ArchivedLegacyTable = 'companies' | 'deals' | 'contacts';
+export interface ArchivedBrowseResult {
+  ok: true; archive_id: string; table: ArchivedLegacyTable; rows: Array<Record<string, unknown> & { _archive_cursor: string }>;
+  cursor: string | null; read_only: true; archived_at: string | null;
+  progress: { objects_read: number; total_objects: number; total_rows: number };
+}
+
 async function getStorageStatus(): Promise<StorageStatusResult> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
@@ -240,8 +247,14 @@ export const functions = {
   mergeUploadedFile: (file_id: string, policy: { companies: string; contacts: string; deals: string }) =>
     invoke<{ ok: boolean; counts: { created: number; updated: number; failed: number }; errors: string[] }>('uploaded-file-merge', { file_id, policy }),
 
-  workspaceArchive: (body: { action: 'archive'|'restore'|'dry_run_delete'|'delete'|'status'; workspace_id: string; archive_id?: string; confirmation?: string }) =>
+  workspaceArchive: (body: { action: 'archive'|'restore'|'dry_run_delete'|'delete'|'status'|'browse'|'record'; workspace_id: string; archive_id?: string; confirmation?: string; table?: ArchivedLegacyTable; cursor?: string; page_size?: number; search?: string; record_id?: string }) =>
     invoke<{ok:boolean;archive_id:string;status:string;table?:string;rows?:number;total_deleted_rows?:number;retained_rows?:number;total_retained_rows?:number;complete?:boolean;eligible?:boolean;deleted?:boolean;verified_objects?:number;message?:string}>('workspace-archive', body),
+
+  browseWorkspaceArchive: (body: { workspace_id: string; archive_id: string; table: ArchivedLegacyTable; cursor?: string; page_size?: number; search?: string }) =>
+    invoke<ArchivedBrowseResult>('workspace-archive', { action: 'browse', ...body }),
+
+  getWorkspaceArchiveRecord: (body: { workspace_id: string; archive_id: string; table: ArchivedLegacyTable; cursor: string; record_id: string }) =>
+    invoke<{ ok: true; archive_id: string; table: ArchivedLegacyTable; row: Record<string, unknown>; read_only: true }>('workspace-archive', { action: 'record', ...body }),
 
   storeCrmWorkbookTemplate: (body: { workspace_id: string; filename: string; mime_type: string; checksum_sha256: string; base64: string }) =>
     invoke<{ ok: true; r2_key: string; r2_sha256: string }>('crm-workbook-template', { action: 'store', ...body }),

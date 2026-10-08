@@ -2,10 +2,11 @@ import {errorResponse,handleOptions,json} from '../_shared/cors.ts';
 import {getAdminClient,getUserId} from '../_shared/supabaseAdmin.ts';
 import {assertWorkspaceArchivePointer,getArchiveJson,putVerifiedArchive,sha256Hex,verifyArchivePayload,workspaceArchiveManifestKey,workspaceArchiveObjectKey} from '../_shared/r2Archive.ts';
 import {archiveTableSpec,assertArchivePayload,LEGACY_ARCHIVE_CHUNK_ROWS,LEGACY_ARCHIVE_EXCLUDED,LEGACY_ARCHIVE_SCHEMA,LEGACY_ARCHIVE_TABLES,sanitizeArchiveRows} from '../_shared/legacyWorkspaceArchive.ts';
+import {createArchiveCursor,decodeArchiveCursor,projectArchiveRow} from './archiveBrowse.ts';
 
-type Action='archive'|'restore'|'dry_run_delete'|'delete'|'status';
-type Body={action?:Action;workspace_id?:string;archive_id?:string;confirmation?:string};
-type ArchiveRow={id:string;workspace_id:string;status:string;manifest_key:string|null;manifest_sha256:string|null;table_counts:Record<string,number>;restore_status:string;source_version:number};
+type Action='archive'|'restore'|'dry_run_delete'|'delete'|'status'|'browse'|'record';
+type Body={action?:Action;workspace_id?:string;archive_id?:string;confirmation?:string;table?:string;cursor?:string;page_size?:number;search?:string;record_id?:string};
+type ArchiveRow={id:string;workspace_id:string;status:string;manifest_key:string|null;manifest_sha256:string|null;table_counts:Record<string,number>;restore_status:string;source_version:number;created_at?:string};
 type TableProgress={table_name:string;restore_order:number;status:string;cursor_value:string|null;high_water:string|null;object_count:number;row_count:number;lease_token?:string|null;lease_expires_at?:string|null};
 type ObjectRow={id:string;table_name:string;sequence:number;r2_key:string;r2_sha256:string;row_count:number;first_key?:string;last_key?:string;status:string;restore_status:string;restore_row_count:number;deletion_verified_at?:string|null};
 
@@ -19,8 +20,31 @@ async function assertOwner(admin:ReturnType<typeof getAdminClient>,workspaceId:s
 
 async function loadArchive(admin:ReturnType<typeof getAdminClient>,workspaceId:string,archiveId:string,userId:string){
   await assertOwner(admin,workspaceId,userId);
-  const{data,error}=await admin.from('workspace_archives').select('id,workspace_id,status,manifest_key,manifest_sha256,table_counts,restore_status,source_version').eq('id',archiveId).eq('workspace_id',workspaceId).eq('created_by',userId).maybeSingle();
+  const{data,error}=await admin.from('workspace_archives').select('id,workspace_id,status,manifest_key,manifest_sha256,table_counts,restore_status,source_version,created_at').eq('id',archiveId).eq('workspace_id',workspaceId).eq('created_by',userId).maybeSingle();
   if(error)throw error;if(!data)throw new Error('Workspace archive not found.');return data as ArchiveRow;
+}
+
+function cursorSecret(){const value=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');if(!value)throw new Error('Archive cursor signing is not configured.');return value;}
+
+async function browseArchive(admin:ReturnType<typeof getAdminClient>,archive:ArchiveRow,userId:string,body:Body){
+  if(!['verified','deletion_eligible','deleted'].includes(archive.status))throw new Error('Only a verified archive can be browsed.');
+  const table=body.table??'';archiveTableSpec(table);if(!['companies','deals','contacts'].includes(table))throw new Error('Workspace archive table is not browse allow-listed.');
+  const pageSize=Math.min(100,Math.max(1,Number(body.page_size??50)));const expected={archiveId:archive.id,workspaceId:archive.workspace_id,ownerId:userId,table};
+  const position=body.cursor?await decodeArchiveCursor(cursorSecret(),body.cursor,expected):{...expected,sequence:0,offset:0};
+  const metadata=await admin.from('workspace_archive_objects').select('id,table_name,sequence,r2_key,r2_sha256,row_count,status').eq('archive_id',archive.id).eq('workspace_id',archive.workspace_id).eq('table_name',table).gte('sequence',position.sequence).order('sequence').limit(2);
+  if(metadata.error)throw metadata.error;const rows:Record<string,unknown>[]=[];let nextSequence=position.sequence;let nextOffset=position.offset;let objectsRead=0;const search=(body.search??'').trim().toLowerCase().slice(0,120);
+  for(const object of (metadata.data??[]) as ObjectRow[]){objectsRead++;assertWorkspaceArchivePointer(object.r2_key,userId,archive.workspace_id,archive.id);const payload=await getArchiveJson<unknown>(object.r2_key);await verifyArchivePayload(JSON.stringify(payload),object.r2_sha256);assertArchivePayload(payload,{archiveId:archive.id,workspaceId:archive.workspace_id,ownerId:userId,table,sequence:object.sequence});let offset=object.sequence===position.sequence?position.offset:0;
+    for(;offset<payload.rows.length;offset++){const projected=projectArchiveRow(table,payload.rows[offset]);const matches=!search||Object.values(projected).some((value)=>String(value??'').toLowerCase().includes(search));if(matches)rows.push({...projected,_archive_cursor:await createArchiveCursor(cursorSecret(),{...expected,sequence:object.sequence,offset})});if(rows.length>=pageSize){nextSequence=object.sequence;nextOffset=offset+1;break;}}
+    if(rows.length>=pageSize)break;nextSequence=object.sequence+1;nextOffset=0;
+  }
+  const tableState=await admin.from('workspace_archive_tables').select('row_count,object_count').eq('archive_id',archive.id).eq('workspace_id',archive.workspace_id).eq('table_name',table).maybeSingle();if(tableState.error)throw tableState.error;
+  const complete=(metadata.data??[]).length<2&&rows.length<pageSize;const cursor=complete?null:await createArchiveCursor(cursorSecret(),{...expected,sequence:nextSequence,offset:nextOffset});
+  return{ok:true,archive_id:archive.id,table,rows,cursor,progress:{objects_read:objectsRead,total_objects:Number(tableState.data?.object_count??0),total_rows:Number(tableState.data?.row_count??0)},read_only:true,archived_at:archive.created_at??null};
+}
+
+async function archivedRecord(admin:ReturnType<typeof getAdminClient>,archive:ArchiveRow,userId:string,body:Body){
+  if(!body.cursor||!body.record_id)throw new Error('record cursor and record_id are required.');const table=body.table??'';const expected={archiveId:archive.id,workspaceId:archive.workspace_id,ownerId:userId,table};const position=await decodeArchiveCursor(cursorSecret(),body.cursor,expected);
+  const object=await admin.from('workspace_archive_objects').select('id,table_name,sequence,r2_key,r2_sha256,row_count,status').eq('archive_id',archive.id).eq('workspace_id',archive.workspace_id).eq('table_name',table).eq('sequence',position.sequence).maybeSingle();if(object.error)throw object.error;if(!object.data)throw new Error('Archived record not found.');const metadata=object.data as ObjectRow;assertWorkspaceArchivePointer(metadata.r2_key,userId,archive.workspace_id,archive.id);const payload=await getArchiveJson<unknown>(metadata.r2_key);await verifyArchivePayload(JSON.stringify(payload),metadata.r2_sha256);assertArchivePayload(payload,{archiveId:archive.id,workspaceId:archive.workspace_id,ownerId:userId,table,sequence:metadata.sequence});const row=payload.rows[position.offset];if(!row||String(row.id)!==body.record_id)throw new Error('Archived record cursor does not match the requested record.');return{ok:true,archive_id:archive.id,table,row:projectArchiveRow(table,row),read_only:true};
 }
 
 async function beginArchive(admin:ReturnType<typeof getAdminClient>,workspaceId:string,userId:string){
@@ -94,4 +118,4 @@ async function deleteStep(admin:ReturnType<typeof getAdminClient>,archive:Archiv
   return{ok:true,archive_id:archive.id,status:String(row.status??'deleting'),table:row.table_name?String(row.table_name):undefined,rows:Number(row.deleted_rows??0),total_deleted_rows:Number(row.total_deleted_rows??0),retained_rows:Number(row.retained_rows??0),total_retained_rows:Number(row.total_retained_rows??0),complete:Boolean(row.complete),deleted:row.status==='deleted'};
 }
 
-Deno.serve(async(req)=>{const preflight=handleOptions(req);if(preflight)return preflight;try{const userId=await getUserId(req);const body=await req.json().catch(()=>({})) as Body;const action=body.action??'status';if(!body.workspace_id||!uuid.test(body.workspace_id))return errorResponse('valid workspace_id is required',400);const admin=getAdminClient();if(action==='archive')return json(await archiveStep(admin,body.workspace_id,userId));if(!body.archive_id||!uuid.test(body.archive_id))return errorResponse('valid archive_id is required',400);const archive=await loadArchive(admin,body.workspace_id,body.archive_id,userId);if(action==='restore')return json(await restoreStep(admin,archive,userId));if(action==='dry_run_delete')return json(await deletionDryRun(admin,archive,userId));if(action==='delete')return json(await deleteStep(admin,archive,userId,body.confirmation));if(action==='status')return json({ok:true,archive});return errorResponse('unsupported archive action',400);}catch(error){return errorResponse(error instanceof Error?error.message:'Workspace archive failed',500);}});
+Deno.serve(async(req)=>{const preflight=handleOptions(req);if(preflight)return preflight;try{const userId=await getUserId(req);const body=await req.json().catch(()=>({})) as Body;const action=body.action??'status';if(!body.workspace_id||!uuid.test(body.workspace_id))return errorResponse('valid workspace_id is required',400);const admin=getAdminClient();if(action==='archive')return json(await archiveStep(admin,body.workspace_id,userId));if(!body.archive_id||!uuid.test(body.archive_id))return errorResponse('valid archive_id is required',400);const archive=await loadArchive(admin,body.workspace_id,body.archive_id,userId);if(action==='browse')return json(await browseArchive(admin,archive,userId,body));if(action==='record')return json(await archivedRecord(admin,archive,userId,body));if(action==='restore')return json(await restoreStep(admin,archive,userId));if(action==='dry_run_delete')return json(await deletionDryRun(admin,archive,userId));if(action==='delete')return json(await deleteStep(admin,archive,userId,body.confirmation));if(action==='status')return json({ok:true,archive});return errorResponse('unsupported archive action',400);}catch(error){return errorResponse(error instanceof Error?error.message:'Workspace archive failed',500);}});

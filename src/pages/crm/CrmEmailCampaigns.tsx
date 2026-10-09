@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CampaignMessageEditor } from '../../components/crm/CampaignMessageEditor';
 import { CampaignRecipientPicker } from '../../components/crm/CampaignRecipientPicker';
 import { CrmPageHeader } from '../../components/crm/CrmPageChrome';
@@ -8,6 +8,7 @@ import { useCrmIndustryOptions } from '../../hooks/crm/useCrmCompanies';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useSettings } from '../../hooks/useSettings';
 import { useTemplates } from '../../hooks/useTemplates';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { validateCrmCampaignInput, type CrmCampaignInput } from '../../lib/crm/campaignInput';
 import { addRecipients, clearRecipients, removeRecipient, type CampaignRecipient } from '../../lib/crm/campaignRecipients';
@@ -35,12 +36,35 @@ export function CrmEmailCampaigns() {
   const [result, setResult] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState('');
   const [previewRecipientId, setPreviewRecipientId] = useState('');
+  const [queuedBaseline, setQueuedBaseline] = useState<string | null>(null);
   const visible = api.contacts.data?.rows ?? [];
   const matchingCount = api.contacts.data?.count ?? 0;
   const queueCount = selected.length;
   const queueLabel = queueCount ? `Queue ${queueCount.toLocaleString()} recipient${queueCount === 1 ? '' : 's'}` : 'Select recipients to continue';
   const previewRecipient = selected.find((recipient) => recipient.contact_id === previewRecipientId) ?? selected[0] ?? visible[0] ?? { contact_name: null, company_name: null, industry: null };
   const reviewed = renderCampaignPreview(draft, previewRecipient);
+  const defaultProvider = settings.data?.email_provider ?? 'microsoft_graph';
+  const campaignSnapshot = useMemo(() => JSON.stringify({
+    name,
+    draft,
+    provider,
+    cooldown,
+    selected: selected.map((recipient) => recipient.contact_id).sort(),
+    consent,
+    templateId,
+  }), [consent, cooldown, draft, name, provider, selected, templateId]);
+  const blankCampaignSnapshot = useMemo(() => JSON.stringify({
+    name: '',
+    draft: { subject: '', bodyText: '', bodyHtml: null },
+    provider: defaultProvider,
+    cooldown: 60,
+    selected: [],
+    consent: false,
+    templateId: '',
+  }), [defaultProvider]);
+  const campaignDirty = campaignSnapshot !== (queuedBaseline ?? blankCampaignSnapshot);
+
+  useUnsavedChanges({ dirty: campaignDirty, message: 'Discard this unsaved campaign draft and leave the page?' });
 
   useEffect(() => {
     if (settings.data?.email_provider) setProvider(settings.data.email_provider);
@@ -66,6 +90,16 @@ export function CrmEmailCampaigns() {
       const queued = await api.queue.mutateAsync(input);
       setResult(`${queued.queued} queued, ${queued.blocked} blocked`);
       setError(null); setConsent(false); setSelected([]);
+      setDraftDirty(false);
+      setQueuedBaseline(JSON.stringify({
+        name,
+        draft,
+        provider,
+        cooldown,
+        selected: [],
+        consent: false,
+        templateId,
+      }));
     } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
   };
 

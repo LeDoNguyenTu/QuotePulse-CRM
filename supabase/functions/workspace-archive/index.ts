@@ -2,7 +2,7 @@ import {errorResponse,handleOptions,json} from '../_shared/cors.ts';
 import {getAdminClient,getUserId} from '../_shared/supabaseAdmin.ts';
 import {assertWorkspaceArchivePointer,getArchiveJson,putVerifiedArchive,sha256Hex,verifyArchivePayload,workspaceArchiveManifestKey,workspaceArchiveObjectKey} from '../_shared/r2Archive.ts';
 import {archiveTableSpec,assertArchivePayload,LEGACY_ARCHIVE_CHUNK_ROWS,LEGACY_ARCHIVE_EXCLUDED,LEGACY_ARCHIVE_SCHEMA,LEGACY_ARCHIVE_TABLES,sanitizeArchiveRows} from '../_shared/legacyWorkspaceArchive.ts';
-import {createArchiveCursor,decodeArchiveCursor,projectArchiveRow} from './archiveBrowse.ts';
+import {archiveObjectsScanned,createArchiveCursor,decodeArchiveCursor,projectArchiveRow} from './archiveBrowse.ts';
 import {buildRestoreSet,type RestoreTable} from './archiveRestoreRecord.ts';
 
 type Action='archive'|'restore'|'restore_record'|'dry_run_delete'|'delete'|'status'|'browse'|'record';
@@ -33,14 +33,15 @@ async function browseArchive(admin:ReturnType<typeof getAdminClient>,archive:Arc
   const pageSize=Math.min(100,Math.max(1,Number(body.page_size??50)));const expected={archiveId:archive.id,workspaceId:archive.workspace_id,ownerId:userId,table};
   const position=body.cursor?await decodeArchiveCursor(cursorSecret(),body.cursor,expected):{...expected,sequence:0,offset:0};
   const metadata=await admin.from('workspace_archive_objects').select('id,table_name,sequence,r2_key,r2_sha256,row_count,status').eq('archive_id',archive.id).eq('workspace_id',archive.workspace_id).eq('table_name',table).gte('sequence',position.sequence).order('sequence').limit(2);
-  if(metadata.error)throw metadata.error;const rows:Record<string,unknown>[]=[];let nextSequence=position.sequence;let nextOffset=position.offset;let objectsRead=0;const search=(body.search??'').trim().toLowerCase().slice(0,120);
-  for(const object of (metadata.data??[]) as ObjectRow[]){objectsRead++;assertWorkspaceArchivePointer(object.r2_key,userId,archive.workspace_id,archive.id);const payload=await getArchiveJson<unknown>(object.r2_key);await verifyArchivePayload(JSON.stringify(payload),object.r2_sha256);assertArchivePayload(payload,{archiveId:archive.id,workspaceId:archive.workspace_id,ownerId:userId,table,sequence:object.sequence});let offset=object.sequence===position.sequence?position.offset:0;
+  if(metadata.error)throw metadata.error;const rows:Record<string,unknown>[]=[];let nextSequence=position.sequence;let nextOffset=position.offset;const search=(body.search??'').trim().toLowerCase().slice(0,120);
+  for(const object of (metadata.data??[]) as ObjectRow[]){assertWorkspaceArchivePointer(object.r2_key,userId,archive.workspace_id,archive.id);const payload=await getArchiveJson<unknown>(object.r2_key);await verifyArchivePayload(JSON.stringify(payload),object.r2_sha256);assertArchivePayload(payload,{archiveId:archive.id,workspaceId:archive.workspace_id,ownerId:userId,table,sequence:object.sequence});let offset=object.sequence===position.sequence?position.offset:0;
     for(;offset<payload.rows.length;offset++){const projected=projectArchiveRow(table,payload.rows[offset]);const matches=!search||Object.values(projected).some((value)=>String(value??'').toLowerCase().includes(search));if(matches)rows.push({...projected,_archive_cursor:await createArchiveCursor(cursorSecret(),{...expected,sequence:object.sequence,offset})});if(rows.length>=pageSize){nextSequence=object.sequence;nextOffset=offset+1;break;}}
     if(rows.length>=pageSize)break;nextSequence=object.sequence+1;nextOffset=0;
   }
   const tableState=await admin.from('workspace_archive_tables').select('row_count,object_count').eq('archive_id',archive.id).eq('workspace_id',archive.workspace_id).eq('table_name',table).maybeSingle();if(tableState.error)throw tableState.error;
   const complete=(metadata.data??[]).length<2&&rows.length<pageSize;const cursor=complete?null:await createArchiveCursor(cursorSecret(),{...expected,sequence:nextSequence,offset:nextOffset});
-  return{ok:true,archive_id:archive.id,table,rows,cursor,progress:{objects_read:objectsRead,total_objects:Number(tableState.data?.object_count??0),total_rows:Number(tableState.data?.row_count??0)},read_only:true,archived_at:archive.created_at??null};
+  const totalObjects=Number(tableState.data?.object_count??0);const cumulativeObjectsRead=archiveObjectsScanned(nextSequence,nextOffset,totalObjects);
+  return{ok:true,archive_id:archive.id,table,rows,cursor,progress:{objects_read:cumulativeObjectsRead,total_objects:totalObjects,total_rows:Number(tableState.data?.row_count??0)},read_only:true,archived_at:archive.created_at??null};
 }
 
 async function archivedRecord(admin:ReturnType<typeof getAdminClient>,archive:ArchiveRow,userId:string,body:Body){

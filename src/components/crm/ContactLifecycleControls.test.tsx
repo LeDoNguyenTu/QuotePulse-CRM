@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import type { CrmContact } from '../../lib/crm/types';
-import { ContactLifecycleActions, ContactStateBadges } from './ContactLifecycleControls';
+import { ContactLifecycleActions, ContactRowActions, ContactStateBadges } from './ContactLifecycleControls';
 
 const contact = {
   id: 'contact-1', workspace_id: 'workspace-1', company_id: null,
@@ -25,5 +26,61 @@ describe('contact lifecycle controls', () => {
     expect(html).toContain('Resolve review');
     expect(html).toContain('Hide');
     expect(html).not.toContain('Show');
+  });
+
+  it('keeps Edit primary and groups lifecycle and destructive actions in More', () => {
+    const html = renderToStaticMarkup(
+      <ContactRowActions
+        contact={contact}
+        pending={false}
+        onChange={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(html).toMatch(/contact-row-actions__primary[^>]*>Edit</);
+    expect(html).toContain('<summary');
+    expect(html).toContain('More');
+    expect(html).toContain('Verify');
+    expect(html).toContain('Resolve review');
+    expect(html).toContain('Hide');
+    expect(html).toMatch(/contact-row-actions__danger[^>]*>Delete</);
+
+    const activeHtml = renderToStaticMarkup(
+      <ContactRowActions
+        contact={{ ...contact, record_state: 'unverified' }}
+        pending={false}
+        onChange={vi.fn()}
+        onEdit={vi.fn()}
+      />,
+    );
+    expect(activeHtml).toContain('Mark outdated');
+  });
+
+  it('closes More after a lifecycle action is chosen', () => {
+    const onChange = vi.fn();
+    let renderer: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <ContactRowActions
+          contact={contact}
+          pending={false}
+          onChange={onChange}
+          onEdit={vi.fn()}
+          onDelete={vi.fn()}
+        />,
+      );
+    });
+    const details = renderer!.root.findByType('details');
+    const summary = renderer!.root.findByType('summary');
+    act(() => summary.props.onClick({ preventDefault: vi.fn() }));
+    expect(details.props.open).toBe(true);
+    const verify = renderer!.root.findAllByType('button').find((button) => button.children.join('') === 'Verify');
+
+    act(() => verify!.props.onClick());
+
+    expect(onChange).toHaveBeenCalledWith({ record_state: 'verified', duplicate_review_of: null });
+    expect(details.props.open).toBe(false);
   });
 });

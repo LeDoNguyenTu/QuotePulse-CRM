@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useOptionalActiveWorkspace } from '../hooks/useWorkspaces';
@@ -25,20 +25,32 @@ function isNavigationItemActive(item: WorkspaceNavigationItem, pathname: string)
   return item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
 }
 
-function NavigationGroup({ label, items, pathname }: { label: string; items: WorkspaceNavigationItem[]; pathname: string }) {
+function NavigationGroup({ label, items, pathname, open, onToggle, onClose }: {
+  label: string;
+  items: WorkspaceNavigationItem[];
+  pathname: string;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
   const active = items.some((item) => isNavigationItemActive(item, pathname));
   return (
-    <details aria-label={`${label} navigation`} data-active={active ? 'true' : undefined} className="workspace-nav-group">
-      <summary>{label}<span aria-hidden="true">⌄</span></summary>
-      <div className="workspace-nav-group__menu">
+    <div aria-label={`${label} navigation`} data-active={active ? 'true' : undefined} data-open={open ? 'true' : undefined} className="workspace-nav-group">
+      <button type="button" className="workspace-nav-group__trigger" aria-expanded={open} onClick={onToggle}>
+        <span>{label}</span>
+        <span className="workspace-nav-group__orb" aria-hidden="true">
+          <svg viewBox="0 0 16 16" focusable="false">
+            <path className="workspace-nav-group__chevron" d="M5 6.5 8 9.5l3-3" />
+            <path className="workspace-nav-group__minus" d="M5 8h6" />
+          </svg>
+        </span>
+      </button>
+      <div className="workspace-nav-group__menu" hidden={!open}>
         {items.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.end} onClick={(event) => {
-            const group = event.currentTarget.closest('details');
-            if (group) group.open = false;
-          }}>{item.label}</NavLink>
+          <NavLink key={item.to} to={item.to} end={item.end} onClick={onClose}>{item.label}</NavLink>
         ))}
       </div>
-    </details>
+    </div>
   );
 }
 
@@ -52,12 +64,34 @@ export function Layout({
   const { user, signOut } = useAuth();
   const workspace = useOptionalActiveWorkspace();
   const location = useLocation();
+  const [openNavigationGroup, setOpenNavigationGroup] = useState<string | null>(null);
+  const navigationRef = useRef<HTMLElement>(null);
   const navItems = workspace
     ? workspaceNavigation(workspace.kind, workspace.id)
     : legacyFallbackNavigation;
   const isSales = area === 'sales';
   const groupedLabels = new Set<string>(SALES_NAV_GROUPS.flatMap((group) => group.items));
   const directNavItems = isSales ? navItems.filter((item) => !groupedLabels.has(item.label)) : navItems;
+
+  useEffect(() => {
+    setOpenNavigationGroup(null);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!openNavigationGroup) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!navigationRef.current?.contains(event.target as Node)) setOpenNavigationGroup(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenNavigationGroup(null);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [openNavigationGroup]);
 
   return (
     <div className={`min-h-screen ${isSales ? 'workspace-canvas--sales' : ''}`}>
@@ -92,7 +126,7 @@ export function Layout({
               Switch workspace
             </Link>
           )}
-          <nav aria-label={`${workspace?.name ?? 'Legacy'} navigation`} className="workspace-nav">
+          <nav ref={navigationRef} aria-label={`${workspace?.name ?? 'Legacy'} navigation`} className="workspace-nav">
               {directNavItems.map((n) => (
                 <NavLink
                   key={n.to}
@@ -109,6 +143,9 @@ export function Layout({
                   label={group.label}
                   items={navItems.filter((item) => (group.items as readonly string[]).includes(item.label))}
                   pathname={location.pathname}
+                  open={openNavigationGroup === group.label}
+                  onToggle={() => setOpenNavigationGroup((current) => current === group.label ? null : group.label)}
+                  onClose={() => setOpenNavigationGroup(null)}
                 />
               ))}
             </nav>

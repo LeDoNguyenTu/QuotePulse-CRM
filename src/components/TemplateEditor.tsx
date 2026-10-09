@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { EmailTemplate } from '../lib/types';
 import { renderTemplate } from '../lib/render';
 import { prepareImportedEmailHtml } from '../lib/emailTemplateHtml';
 import { parseOutlookMsg } from '../lib/outlookMsg';
 import { uploadEmailTemplateAssets } from '../hooks/useTemplates';
 import { useAuth } from '../hooks/useAuth';
+import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { Modal } from './Modal';
 
 interface TemplateEditorProps {
@@ -12,6 +13,7 @@ interface TemplateEditorProps {
   initial: Partial<EmailTemplate> | null;
   onClose: () => void;
   onSave: (t: Partial<EmailTemplate>) => Promise<void>;
+  confirmDiscard?: (message: string) => boolean;
 }
 
 const SAMPLE = {
@@ -20,7 +22,7 @@ const SAMPLE = {
   industry: 'Manufacturing',
 };
 
-export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEditorProps) {
+export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard }: TemplateEditorProps) {
   const { user } = useAuth();
   const [name, setName] = useState(initial?.name ?? '');
   const [industry, setIndustry] = useState(initial?.industry ?? '');
@@ -34,6 +36,11 @@ export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEdito
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [savedDraft, setSavedDraft] = useState<string | null>(null);
+  const draftSnapshot = useMemo(() => JSON.stringify({ name, industry, subject, body, bodyFormat, rawHtml, bodyHtml, assets, fromEmail }), [assets, body, bodyFormat, bodyHtml, fromEmail, industry, name, rawHtml, subject]);
+  const dirty = open && savedDraft !== null && draftSnapshot !== savedDraft;
+
+  useUnsavedChanges({ dirty, message: 'Discard your unsaved template changes and leave the page?' });
 
   useEffect(() => {
     if (!open) return;
@@ -41,7 +48,18 @@ export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEdito
     setBody(initial?.body ?? ''); setBodyFormat(initial?.body_format ?? 'plain');
     setRawHtml(initial?.body_html ?? ''); setBodyHtml(initial?.body_html ?? '');
     setAssets(initial?.asset_manifest ?? []); setFromEmail(initial?.from_email ?? ''); setImportMessage(null);
+    setSavedDraft(JSON.stringify({
+      name: initial?.name ?? '', industry: initial?.industry ?? '', subject: initial?.subject ?? '', body: initial?.body ?? '',
+      bodyFormat: initial?.body_format ?? 'plain', rawHtml: initial?.body_html ?? '', bodyHtml: initial?.body_html ?? '',
+      assets: initial?.asset_manifest ?? [], fromEmail: initial?.from_email ?? '',
+    }));
   }, [initial, open]);
+
+  const requestClose = () => {
+    const approve = confirmDiscard ?? ((message: string) => globalThis.confirm(message));
+    if (dirty && !approve('Discard your unsaved template changes?')) return;
+    onClose();
+  };
 
   const assetUrls = (nextAssets = assets) => Object.fromEntries(nextAssets.map((asset) => [asset.original_name, asset.public_url]));
   const applyHtml = (html: string, nextAssets = assets) => {
@@ -112,6 +130,7 @@ export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEdito
         asset_manifest: bodyFormat === 'html' ? assets : [],
         from_email: fromEmail || null,
       });
+      setSavedDraft(draftSnapshot);
       onClose();
     } finally {
       setSaving(false);
@@ -121,7 +140,7 @@ export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEdito
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       title={initial?.id ? 'Edit template' : 'New template'}
       wide
     >
@@ -197,7 +216,7 @@ export function TemplateEditor({ open, initial, onClose, onSave }: TemplateEdito
       </div>
 
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>
+        <button className="btn-secondary" onClick={requestClose}>
           Cancel
         </button>
         <button

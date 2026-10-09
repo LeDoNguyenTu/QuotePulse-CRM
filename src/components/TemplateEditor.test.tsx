@@ -1,9 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import { TemplateEditor } from './TemplateEditor';
 
+const useUnsavedChangesMock = vi.hoisted(() => vi.fn());
+
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-1' } }) }));
 vi.mock('../hooks/useTemplates', () => ({ uploadEmailTemplateAssets: vi.fn() }));
+vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: useUnsavedChangesMock }));
 
 describe('TemplateEditor rich email controls', () => {
   it('offers HTML/table import, companion images, sanitized preview, and text fallback', () => {
@@ -22,5 +26,46 @@ describe('TemplateEditor rich email controls', () => {
     expect(html).toContain('Companion image ZIP or images');
     expect(html).toContain('HTML email preview');
     expect(html).toContain('Plain fallback');
+  });
+
+  it('warns before closing an edited template and keeps the editor open when declined', () => {
+    const onClose = vi.fn();
+    const confirmDiscard = vi.fn().mockReturnValue(false);
+    let renderer: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(<TemplateEditor
+        open
+        initial={{ name: 'Offer', subject: 'Hello', body: 'Body' }}
+        onClose={onClose}
+        onSave={vi.fn()}
+        confirmDiscard={confirmDiscard}
+      />);
+    });
+    const name = renderer!.root.findAllByType('input').find((input) => input.props.value === 'Offer')!;
+    act(() => name.props.onChange({ target: { value: 'Changed offer' } }));
+    expect(useUnsavedChangesMock).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true }));
+    const cancel = renderer!.root.findAllByType('button').find((button) => button.children.join('') === 'Cancel')!;
+
+    act(() => cancel.props.onClick());
+
+    expect(confirmDiscard).toHaveBeenCalledWith('Discard your unsaved template changes?');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('clears the dirty baseline after a successful save', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    let renderer: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<TemplateEditor open initial={{ name: 'Offer', subject: 'Hello', body: 'Body' }} onClose={vi.fn()} onSave={onSave} />);
+    });
+    const name = renderer!.root.findAllByType('input').find((input) => input.props.value === 'Offer')!;
+    act(() => name.props.onChange({ target: { value: 'Updated offer' } }));
+    expect(useUnsavedChangesMock).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true }));
+    const save = renderer!.root.findAllByType('button').find((button) => button.children.join('') === 'Save')!;
+
+    await act(async () => save.props.onClick());
+
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(useUnsavedChangesMock).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: false }));
   });
 });

@@ -63,6 +63,10 @@ export function pageArchiveRows(objects: Record<string, unknown>[][], position: 
   return { rows, objectsRead, next: sequence < objects.length ? { sequence, offset } : null };
 }
 
+export function archiveObjectsScanned(sequence: number, offset: number, totalObjects: number) {
+  return Math.min(totalObjects, sequence + (offset > 0 ? 1 : 0));
+}
+
 export function projectArchiveRow(table: string, row: Record<string, unknown>) {
   archiveTableSpec(table);
   const fields = DISPLAY_FIELDS[table];

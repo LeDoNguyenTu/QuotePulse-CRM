@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import { CrmEmailCampaigns } from './CrmEmailCampaigns';
+
+const useUnsavedChangesMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../hooks/useWorkspaces', () => ({
   useActiveWorkspace: () => ({ id: 'sales-id', name: 'Sales CRM', kind: 'sales_crm', role: 'owner' }),
@@ -35,6 +38,8 @@ vi.mock('../../hooks/crm/useCrmCompanies', () => ({
   useCrmIndustryOptions: () => ({ data: ['Technology'] }),
 }));
 
+vi.mock('../../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: useUnsavedChangesMock }));
+
 describe('CRM email campaign composer', () => {
   it('separates message editing from audience and delivery controls', () => {
     const html = renderToStaticMarkup(<CrmEmailCampaigns />);
@@ -66,5 +71,15 @@ describe('CRM email campaign composer', () => {
 
     expect(html).toContain('Updating audience');
     expect(html).toContain('Avery Tan');
+  });
+
+  it('marks the campaign dirty when message metadata is edited', () => {
+    let renderer: ReturnType<typeof create>;
+    act(() => { renderer = create(<CrmEmailCampaigns />); });
+    const name = renderer!.root.findAllByType('input').find((input) => input.props.placeholder === 'September renewal outreach')!;
+
+    act(() => name.props.onChange({ target: { value: 'October renewal outreach' } }));
+
+    expect(useUnsavedChangesMock).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true }));
   });
 });

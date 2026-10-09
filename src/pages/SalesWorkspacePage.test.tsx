@@ -1,8 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { act, create } from 'react-test-renderer';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SalesWorkspacePage } from './SalesWorkspacePage';
 import * as salesSettings from './crm/CrmSalesSettings';
+
+const useSettingsMock = vi.hoisted(() => vi.fn());
+const useUnsavedChangesMock = vi.hoisted(() => vi.fn());
 
 vi.mock('./crm/CrmCompanies', () => ({ CrmCompanies: () => <div /> }));
 vi.mock('./crm/CrmContacts', () => ({ CrmContacts: () => <div /> }));
@@ -30,8 +34,13 @@ vi.mock('../hooks/useAuth', () => ({
 }));
 
 vi.mock('../hooks/useSettings', () => ({
-  useSettings: () => ({
-    data: {
+  useSettings: useSettingsMock,
+  useSaveSettings: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useDisconnectMicrosoft: () => ({ isPending: false, mutateAsync: vi.fn() }),
+}));
+
+const defaultSettings = {
+  data: {
       email_provider: 'brevo',
       daily_send_limit: 50,
       session_timeout_minutes: 60,
@@ -40,16 +49,15 @@ vi.mock('../hooks/useSettings', () => ({
       brevo_sender_email: null,
       brevo_sender_name: null,
       brevo_api_key: 'saved-key',
-    },
-    isLoading: false,
-  }),
-  useSaveSettings: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useDisconnectMicrosoft: () => ({ isPending: false, mutateAsync: vi.fn() }),
-}));
+  },
+  isLoading: false,
+};
 
 vi.mock('../lib/functions', () => ({
   functions: { msAuthStart: vi.fn() },
 }));
+
+vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: useUnsavedChangesMock }));
 
 function renderSettings() {
   return renderToStaticMarkup(
@@ -72,6 +80,8 @@ function renderTemplates() {
 }
 
 describe('Sales CRM settings', () => {
+  beforeEach(() => useSettingsMock.mockReturnValue(defaultSettings));
+
   it('exposes the rich email template manager inside a Sales workspace', () => {
     expect(renderTemplates()).toContain('Rich HTML email templates');
   });
@@ -91,11 +101,18 @@ describe('Sales CRM settings', () => {
     const html = renderSettings();
 
     expect(html).toContain('Settings sections');
-    expect(html).toContain('Save delivery &amp; session settings');
-    expect(html).toContain('does not change your password');
+    expect(html).toContain('Save changes');
+    expect(html).not.toContain('does not change your password');
     expect(html).toContain('crm-settings-layout');
     expect(html).not.toContain('<main class="crm-settings-content"');
     expect(html).toContain('aria-live="polite"');
+  });
+
+  it('uses compact feedback instead of nesting the global error panel', () => {
+    const html = renderSettings();
+
+    expect(html).toContain('crm-settings-feedback');
+    expect(html).not.toContain('rounded-lg border border-red-200');
   });
 
   it('explains password confirmation beside the dedicated action', () => {
@@ -123,6 +140,27 @@ describe('Sales CRM settings', () => {
     expect(validate(0, 60)).toContain('between 1 and 10,000');
     expect(validate(10001, 60)).toContain('between 1 and 10,000');
     expect(validate(50, 60)).toBeNull();
+  });
+
+  it('shows the validation reason beside a disabled save action', () => {
+    useSettingsMock.mockReturnValue({
+      ...defaultSettings,
+      data: { ...defaultSettings.data, daily_send_limit: 0 },
+    });
+
+    const html = renderSettings();
+    expect(html).toContain('Daily send limit must be a whole number between 1 and 10,000.');
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Save changes<\/button>/);
+  });
+
+  it('marks delivery settings dirty when a persisted value changes', () => {
+    let renderer: ReturnType<typeof create>;
+    act(() => { renderer = create(<salesSettings.CrmSalesSettings />); });
+    const limit = renderer!.root.findAllByType('input').find((input) => input.props['aria-label'] === 'Daily send limit')!;
+
+    act(() => limit.props.onChange({ target: { value: '51' } }));
+
+    expect(useUnsavedChangesMock).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true }));
   });
 
   it('requires confirmation before forgetting the Microsoft token', () => {

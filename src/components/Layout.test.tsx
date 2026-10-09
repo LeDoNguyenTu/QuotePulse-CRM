@@ -38,7 +38,8 @@ describe('Layout navigation', () => {
   it('marks the group containing the current route without pinning its menu open', () => {
     const html = renderLayout('/w/sales-id/sales/email-campaigns');
 
-    expect(html).toMatch(/<details[^>]*aria-label="Outreach navigation"[^>]*data-active="true"/);
-    expect(html).not.toMatch(/<details[^>]*open=""/);
+    expect(html).toContain('data-active="true"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toMatch(/workspace-nav-group__menu" hidden=""/);
   });
 });

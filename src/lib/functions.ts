@@ -186,6 +186,23 @@ export interface StorageStatusResult {
 }
 
 export type ArchivedLegacyTable = 'companies' | 'deals' | 'contacts';
+export type ArchivedCompanyBundleResult = {
+  ok: true;
+  archive_id: string;
+  company_id: string;
+  status: 'building';
+  read_only: true;
+  progress: { objects_indexed: number; total_objects: number };
+} | {
+  ok: true;
+  archive_id: string;
+  company_id: string;
+  status: 'ready';
+  read_only: true;
+  progress: { objects_indexed: number; total_objects: number };
+  contacts: Array<Record<string, unknown> & { id: string; _archive_cursor: string }>;
+  deals: Array<Record<string, unknown> & { id: string; _archive_cursor: string }>;
+};
 export interface ArchivedBrowseResult {
   ok: true; archive_id: string; table: ArchivedLegacyTable; rows: Array<Record<string, unknown> & { _archive_cursor: string }>;
   cursor: string | null; read_only: true; archived_at: string | null;
@@ -252,6 +269,9 @@ export const functions = {
 
   browseWorkspaceArchive: (body: { workspace_id: string; archive_id: string; table: ArchivedLegacyTable; cursor?: string; page_size?: number; search?: string }) =>
     invoke<ArchivedBrowseResult>('workspace-archive', { action: 'browse', ...body }),
+
+  getArchivedCompanyBundle: (body: { workspace_id: string; archive_id: string; company_id: string }) =>
+    invoke<ArchivedCompanyBundleResult>('workspace-archive', { action: 'company_bundle', ...body }),
 
   getWorkspaceArchiveRecord: (body: { workspace_id: string; archive_id: string; table: ArchivedLegacyTable; cursor: string; record_id: string }) =>
     invoke<{ ok: true; archive_id: string; table: ArchivedLegacyTable; row: Record<string, unknown>; read_only: true }>('workspace-archive', { action: 'record', ...body }),

@@ -31,6 +31,14 @@ describe('company attachment function wrapper', () => {
       body: { deal_ids: ['deal-id'] },
     }));
   });
+
+  it('loads a read-only archived company bundle through the workspace archive endpoint', async () => {
+    invoke.mockResolvedValue({ data: { ok: true, status: 'ready', contacts: [], deals: [] }, error: null });
+    await functions.getArchivedCompanyBundle({ workspace_id: 'workspace-id', archive_id: 'archive-id', company_id: 'company-id' });
+    expect(invoke).toHaveBeenCalledWith('workspace-archive', expect.objectContaining({
+      body: { action: 'company_bundle', workspace_id: 'workspace-id', archive_id: 'archive-id', company_id: 'company-id' },
+    }));
+  });
 });
 
 describe('storage status function wrapper', () => {

@@ -49,3 +49,7 @@ export function companyBloomMayContain(value: string | null | undefined, company
   if (!bytes) return true;
   return positions(companyId).every((position) => (bytes[position >>> 3] & (1 << (position & 7))) !== 0);
 }
+
+export function findCompanyRelationships(rows: Array<Record<string, unknown>>, companyId: string) {
+  return rows.flatMap((row, offset) => row.company_id === companyId ? [{ row, offset }] : []);
+}

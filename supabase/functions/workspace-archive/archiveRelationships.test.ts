@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { companyBloomMayContain, createCompanyBloom } from './archiveRelationships';
+import { companyBloomMayContain, createCompanyBloom, findCompanyRelationships } from './archiveRelationships';
 
 describe('archive company relationship Bloom metadata', () => {
   const companyA = '11111111-1111-4111-8111-111111111111';
@@ -29,5 +29,18 @@ describe('archive company relationship Bloom metadata', () => {
     expect(companyBloomMayContain('', companyA)).toBe(true);
     expect(companyBloomMayContain('v1:not-base64!', companyA)).toBe(true);
     expect(companyBloomMayContain('v2:AAAA', companyA)).toBe(true);
+  });
+
+  it('returns only exact company matches with their source offsets', () => {
+    const rows = [
+      { id: 'contact-a', company_id: companyA },
+      { id: 'contact-b', company_id: companyB },
+      { id: 'contact-a2', company_id: companyA },
+    ];
+
+    expect(findCompanyRelationships(rows, companyA)).toEqual([
+      { offset: 0, row: rows[0] },
+      { offset: 2, row: rows[2] },
+    ]);
   });
 });

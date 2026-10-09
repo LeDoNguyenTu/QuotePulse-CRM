@@ -2,7 +2,7 @@
 
 Date: 2026-10-10
 
-Branch: `feat/reminder-archive-parity`
+Release branches: `feat/reminder-archive-parity`, `fix/reminder-outside-dismiss`, and `fix/archive-tab-placeholder`
 
 Base: `main` at `809e707169fed36fb6d960ddf28e937e98415b70`
 
@@ -14,6 +14,8 @@ Base: `main` at `809e707169fed36fb6d960ddf28e937e98415b70`
 - The archive Columns menu reads the durable HubSpot field catalog, preserves human labels and null-field grouping, and saves independent R2 column preferences without changing the live ledger selection.
 - A filtered archive request scans up to 12 verified workspace-archive objects per bounded call instead of two. It matches normalized fields before hydrating cold deal properties, so nested verified R2 reads are capped by the returned page size rather than every scanned row.
 - Archived rows remain read-only. Selecting a row or **Restore to edit** opens the existing warning; only the selected record and required parent are restored, and conflicts never overwrite live data.
+- Reminder dismissal uses both pointer and mouse events for consistent outside-click behavior across browsers, while Escape, navigation, and reminder actions also close the menu.
+- Archive placeholder rows are retained only while paging or searching the same ledger. Switching Companies, Deals, or Contacts clears the previous ledger immediately, so company records can never render temporarily under deal columns (or vice versa).
 
 ## Security and data-integrity boundaries
 
@@ -23,18 +25,19 @@ Base: `main` at `809e707169fed36fb6d960ddf28e937e98415b70`
 
 ## Local verification
 
-- `npm test -- --run`: 178 files passed, 1 skipped; 641 tests passed, 9 skipped.
+- `npm test -- --run`: 179 files passed, 1 skipped; 645 tests passed, 9 skipped.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - `npm run build`: passed; only the existing browser-polyfill and large-chunk advisories were reported.
 - `deno check supabase/functions/workspace-archive/index.ts`: not available in this Windows environment because Deno is not installed. The archive primitives run in Vitest and the production Edge Function must be verified by the exact-SHA Supabase workflow after merge.
+- `npm test -- --run src/hooks/useArchivedCrmRecords.test.ts`: 4 tests passed for same-ledger retention plus cross-table, cross-workspace, and cross-archive clearing.
 
 ## Release evidence
 
-- Pull request: pending.
-- Merged SHA: pending.
-- Supabase exact-SHA workflow: pending.
-- Vercel production deployment: pending.
+- Archive parity pull request: [#55](https://github.com/LeDoNguyenTu/QuotePulse-CRM/pull/55), merged as `c9cc880c1f4ab3816f0f3e18bf8b1e1eecc0e11d`.
+- Reminder outside-click compatibility pull request: [#56](https://github.com/LeDoNguyenTu/QuotePulse-CRM/pull/56), merged as `755556a5fafa678fae5613a6f41f0132dea8a65e`.
+- Supabase exact-SHA workflow for `755556a`: [run 37959566952](https://github.com/LeDoNguyenTu/QuotePulse-CRM/actions/runs/37959566952), passed.
+- Vercel production deployment for the final archive-tab placeholder release: pending merge.
 - Authenticated production smoke: pending.
 
 ## Production smoke checklist

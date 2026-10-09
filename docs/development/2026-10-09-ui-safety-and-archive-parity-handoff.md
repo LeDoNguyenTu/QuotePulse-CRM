@@ -16,15 +16,16 @@ Base: `main` at `6acae6400b1279e1ecc88ab0590e72d7b0d758ff`
 
 ## Local verification
 
-- `npm test -- --run`: 176 files passed, 1 skipped; 624 tests passed, 9 skipped.
+- `npm test -- --run`: 177 files passed, 1 skipped; 632 tests passed, 9 skipped.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - `npm run build`: passed. Vite reported the existing browser-polyfill and large-chunk advisories only.
 - GitNexus staged detection: HIGH for the shared settings/template/campaign and Dashboard orchestration surfaces; the focused symbol impacts were LOW, and those paths are mandatory in the independent review and authenticated smoke test.
+- Fresh independent review approved exact code SHA `9975e65ccd65c89ac945776474f58e86e56b446d` with no remaining blocking or Important findings.
 
 ## Release evidence
 
-- Commits: `d371bcc`, `b57ce0d`, `8c0194e`, `f2983a0`, `b2aa4fe`.
+- Commits: `d371bcc`, `b57ce0d`, `8c0194e`, `f2983a0`, `b2aa4fe`, `9975e65`.
 - Pull request: pending.
 - Merged SHA: pending.
 - Supabase workflow: pending for the merged SHA.

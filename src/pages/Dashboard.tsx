@@ -46,12 +46,14 @@ import { useArchivedCrmRecords } from '../hooks/useArchivedCrmRecords';
 import { useWorkspaceArchive } from '../hooks/useWorkspaceArchive';
 import { useActiveWorkspace } from '../hooks/useWorkspaces';
 import type { ArchivedLegacyTable } from '../lib/functions';
+import { resolveLegacyDataMode, type LegacyDataMode } from '../lib/legacyArchiveMode';
 
 const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
 
 export function Dashboard() {
-  const [dataMode, setDataMode] = useState<'live' | 'archived'>('live');
+  const [dataMode, setDataMode] = useState<LegacyDataMode>('live');
+  const [dataModeChosen, setDataModeChosen] = useState(false);
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const dashboardState = useMemo(() => readDashboardState(searchParams), [searchParams]);
@@ -64,6 +66,8 @@ export function Dashboard() {
   const [exportOpen, setExportOpen] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
+  const workspace = useActiveWorkspace();
+  const archive = useWorkspaceArchive(workspace.id);
 
   const qc = useQueryClient();
   const { state: importState, startImport, stopImport, dismissImportReport } = useHubspotImport();
@@ -93,6 +97,16 @@ export function Dashboard() {
   const page = filters.page ?? 0;
   const pageSize = filters.pageSize ?? PAGE_SIZE;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    setDataMode((current) => resolveLegacyDataMode({
+      current,
+      userSelected: dataModeChosen,
+      liveCount: total,
+      liveCountResolved: countQuery.isSuccess,
+      archiveStatus: archive.browsable.data?.status,
+    }));
+  }, [archive.browsable.data?.status, countQuery.isSuccess, dataModeChosen, total]);
 
   useEffect(() => {
     if (shouldStopImportForRecovery(importing, !!importState?.stopRequested, importLock.locked)) {
@@ -343,10 +357,10 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <div className="crm-data-mode" role="tablist" aria-label="Database source">
-        <button role="tab" aria-selected={dataMode === 'live'} onClick={() => setDataMode('live')}>Live database</button>
-        <button role="tab" aria-selected={dataMode === 'archived'} onClick={() => setDataMode('archived')}>Archived in R2</button>
+        <button role="tab" aria-selected={dataMode === 'live'} onClick={() => { setDataModeChosen(true); setDataMode('live'); }}>Supabase live</button>
+        <button role="tab" aria-selected={dataMode === 'archived'} onClick={() => { setDataModeChosen(true); setDataMode('archived'); }}>R2 archive</button>
       </div>
-      {dataMode === 'archived' ? <ArchivedDashboard /> : <>
+      {dataMode === 'archived' ? <ArchivedDashboard workspaceId={workspace.id} archive={archive} /> : <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">HubSpot CRM</h1>
         <div className="flex flex-wrap gap-2">
@@ -520,25 +534,38 @@ export function Dashboard() {
   );
 }
 
-function ArchivedDashboard() {
-  const workspace = useActiveWorkspace();
-  const archive = useWorkspaceArchive(workspace.id);
+function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; archive: ReturnType<typeof useWorkspaceArchive> }) {
   const archiveId = archive.browsable.data?.id;
   const [table, setTable] = useState<ArchivedLegacyTable>('companies');
+  const [searchDraft, setSearchDraft] = useState('');
   const [search, setSearch] = useState('');
   const [cursor, setCursor] = useState<string | undefined>();
+  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>([]);
   const [editing, setEditing] = useState<(Record<string, unknown> & { id: string; _archive_cursor: string }) | null>(null);
-  const api = useArchivedCrmRecords({ workspaceId: workspace.id, archiveId, table, search, cursor, enabled: !!archiveId });
+  const api = useArchivedCrmRecords({ workspaceId, archiveId, table, search, cursor, enabled: !!archiveId });
   const result = api.records.data;
-  const switchTable = (next: ArchivedLegacyTable) => { setTable(next); setCursor(undefined); setEditing(null); };
+  const resetPaging = () => { setCursor(undefined); setCursorHistory([]); };
+  const switchTable = (next: ArchivedLegacyTable) => { setTable(next); resetPaging(); setEditing(null); };
+  const applySearch = () => { setSearch(searchDraft.trim()); resetPaging(); };
+  const clearSearch = () => { setSearchDraft(''); setSearch(''); resetPaging(); };
+  const previousPage = () => {
+    setCursor(cursorHistory.at(-1));
+    setCursorHistory((history) => history.slice(0, -1));
+  };
+  const nextPage = () => {
+    if (!result?.cursor) return;
+    setCursorHistory((history) => [...history, cursor]);
+    setCursor(result.cursor);
+  };
   if (archive.browsable.isLoading) return <Spinner label="Loading archive…" />;
   if (archive.browsable.error) return <ErrorState error={archive.browsable.error} />;
   if (!archiveId) return <div className="card p-5"><p>No verified legacy archive is available yet.</p></div>;
   return <div className="space-y-4">
+    <div className="crm-archive-notice" role="status"><div><strong>Verified archive served directly from Cloudflare R2</strong><span>The familiar Companies, Deals, and Contacts ledgers remain searchable and readable. Restore only the record you need before editing it.</span></div><span>Read-only</span></div>
     <div className="flex gap-1 border-b border-slate-200" role="tablist" aria-label="Archived object type">{(['companies', 'deals', 'contacts'] as ArchivedLegacyTable[]).map((value) => <button key={value} role="tab" aria-selected={table === value} className={`border-b-2 px-4 py-2 text-sm font-medium capitalize ${table === value ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`} onClick={() => switchTable(value)}>{value}</button>)}</div>
-    <div className="flex gap-2"><input className="input" value={search} onChange={(event) => { setSearch(event.target.value); setCursor(undefined); }} placeholder={`Search archived ${table}`} /><button className="btn-secondary" type="button" onClick={() => api.records.refetch()}>Search</button></div>
+    <form className="crm-archive-search" onSubmit={(event) => { event.preventDefault(); applySearch(); }}><input className="input" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder={`Search archived ${table}`} /><button className="btn-secondary" type="submit">Search</button>{(search || searchDraft) && <button className="btn-secondary" type="button" onClick={clearSearch}>Clear</button>}</form>
     {api.records.error && <ErrorState error={api.records.error} />}
-    {api.records.isLoading || !result ? <Spinner label={`Loading archived ${table}…`} /> : <ArchivedRecordTable table={table} rows={result.rows} archivedAt={result.archived_at} progress={result.progress} hasNext={!!result.cursor} loading={api.records.isFetching} onNext={() => setCursor(result.cursor ?? undefined)} onEdit={(row) => setEditing(row as typeof editing)} />}
+    {api.records.isLoading || !result ? <Spinner label={`Loading archived ${table}…`} /> : <ArchivedRecordTable table={table} rows={result.rows} archivedAt={result.archived_at} progress={result.progress} hasPrevious={cursorHistory.length > 0} hasNext={!!result.cursor} loading={api.records.isFetching} onPrevious={previousPage} onNext={nextPage} onEdit={(row) => setEditing(row as typeof editing)} />}
     {editing && <ArchivedEditWarning recordLabel={String(editing.name_clean ?? editing.deal_name_raw ?? editing.full_name ?? editing.id)} pending={api.restore.isPending} onCancel={() => setEditing(null)} onRestore={async () => api.restore.mutateAsync({ id: editing.id, _archive_cursor: editing._archive_cursor })} />}
   </div>;
 }

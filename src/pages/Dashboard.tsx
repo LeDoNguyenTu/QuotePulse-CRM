@@ -549,7 +549,7 @@ function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; arch
   const applySearch = () => { setSearch(searchDraft.trim()); resetPaging(); };
   const clearSearch = () => { setSearchDraft(''); setSearch(''); resetPaging(); };
   const previousPage = () => {
-    setCursor(cursorHistory.at(-1));
+    setCursor(cursorHistory[cursorHistory.length - 1]);
     setCursorHistory((history) => history.slice(0, -1));
   };
   const nextPage = () => {

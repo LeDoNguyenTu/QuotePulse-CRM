@@ -14,3 +14,7 @@ export function resolveLegacyDataMode(input: {
   if (input.liveCountResolved && input.liveCount === 0) return 'archived';
   return input.current;
 }
+
+export function resetArchivedTableView<T extends string>(table: T) {
+  return { table, search: '', cursor: undefined, cursorHistory: [] as Array<string | undefined> };
+}

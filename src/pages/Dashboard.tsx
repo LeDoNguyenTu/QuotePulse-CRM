@@ -47,7 +47,7 @@ import { useArchivedCrmRecords } from '../hooks/useArchivedCrmRecords';
 import { useWorkspaceArchive } from '../hooks/useWorkspaceArchive';
 import { useActiveWorkspace } from '../hooks/useWorkspaces';
 import type { ArchivedLegacyTable } from '../lib/functions';
-import { resolveLegacyDataMode, type LegacyDataMode } from '../lib/legacyArchiveMode';
+import { resetArchivedTableView, resolveLegacyDataMode, type LegacyDataMode } from '../lib/legacyArchiveMode';
 
 const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
@@ -547,7 +547,15 @@ function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; arch
   const api = useArchivedCrmRecords({ workspaceId, archiveId, table, search, cursor, enabled: !!archiveId });
   const result = api.records.data;
   const resetPaging = () => { setCursor(undefined); setCursorHistory([]); };
-  const switchTable = (next: ArchivedLegacyTable) => { setTable(next); resetPaging(); setEditing(null); };
+  const switchTable = (next: ArchivedLegacyTable) => {
+    const reset = resetArchivedTableView(next);
+    setTable(reset.table);
+    setSearchDraft(reset.search);
+    setSearch(reset.search);
+    setCursor(reset.cursor);
+    setCursorHistory(reset.cursorHistory);
+    setEditing(null);
+  };
   const applySearch = () => { setSearch(searchDraft.trim()); resetPaging(); };
   const clearSearch = () => { setSearchDraft(''); setSearch(''); resetPaging(); };
   const previousPage = () => {

@@ -89,16 +89,18 @@ export function CrmReminderCenter({ workspaceId }: { workspaceId: string }) {
 
   useEffect(() => {
     if (!panelOpen) return;
-    const closeOutside = (event: PointerEvent) => {
+    const closeOutside = (event: Event) => {
       if (!centerRef.current?.contains(event.target as Node)) setPanelOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setPanelOpen(false);
     };
     document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('mousedown', closeOutside);
     document.addEventListener('keydown', closeOnEscape);
     return () => {
       document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('mousedown', closeOutside);
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [panelOpen]);

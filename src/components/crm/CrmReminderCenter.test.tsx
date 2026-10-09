@@ -66,7 +66,7 @@ describe('CRM reminder center', () => {
     it('collapses on outside click and Escape', () => {
       act(() => trigger().click());
       expect(trigger().getAttribute('aria-expanded')).toBe('true');
-      act(() => document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+      act(() => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
       expect(trigger().getAttribute('aria-expanded')).toBe('false');
 
       act(() => trigger().click());

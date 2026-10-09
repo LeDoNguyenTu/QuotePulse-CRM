@@ -52,6 +52,13 @@ describe('table preferences', () => {
     expect(resolveVisibleColumns('crm_deals', deals)).toEqual(['name', 'stage', 'amount', 'follow_up_at']);
   });
 
+  it('persists R2 ledger columns independently from live database columns', () => {
+    const live = saveVisibleColumns(null, 'deals', ['deal_name_raw']);
+    const archived = saveVisibleColumns(live, 'archive_deals', ['deal_name_raw', 'custom_region']);
+    expect(resolveVisibleColumns('deals', archived)).toEqual(['deal_name_raw']);
+    expect(resolveVisibleColumns('archive_deals', archived)).toEqual(['deal_name_raw', 'custom_region']);
+  });
+
   it('shows contact lifecycle state in the compact default contact view', () => {
     expect(DEFAULT_VISIBLE_COLUMNS.crm_contacts).toContain('record_state');
   });

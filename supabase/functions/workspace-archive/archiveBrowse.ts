@@ -1,13 +1,14 @@
 import { archiveTableSpec } from '../_shared/legacyWorkspaceArchive.ts';
+import { propertiesForDeal } from '../_shared/dealArchive.ts';
 
 export type ArchiveCursorPayload = {
   archiveId: string; workspaceId: string; ownerId: string; table: string; sequence: number; offset: number;
 };
 
 const DISPLAY_FIELDS: Record<string, string[]> = {
-  companies: ['id', 'name_raw', 'name_clean', 'industry', 'website', 'hubspot_company_id', 'created_at', 'updated_at'],
-  deals: ['id', 'company_id', 'hubspot_deal_id', 'deal_name_raw', 'product', 'deal_stage', 'pipeline', 'amount', 'hubspot_created_at', 'created_at', 'updated_at'],
-  contacts: ['id', 'company_id', 'hubspot_contact_id', 'full_name', 'email', 'phone', 'role_title', 'created_at', 'updated_at'],
+  companies: ['id', 'name_raw', 'name_clean', 'industry', 'website', 'hubspot_company_id', 'source_priority', 'deleted_at', 'last_deal_at', 'last_hubspot_created_at', 'last_hubspot_modified_at', 'hubspot_properties', 'hubspot_properties_schema_version', 'created_at', 'updated_at'],
+  deals: ['id', 'company_id', 'hubspot_deal_id', 'deal_name_raw', 'product', 'deal_stage', 'pipeline', 'amount', 'is_archived', 'archived_at', 'hubspot_created_at', 'hubspot_modified_at', 'hubspot_properties', 'hubspot_properties_schema_version', 'created_at', 'updated_at'],
+  contacts: ['id', 'company_id', 'hubspot_contact_id', 'full_name', 'email', 'phone', 'role_title', 'is_primary_contact', 'source', 'hubspot_properties', 'hubspot_properties_schema_version', 'created_at', 'updated_at'],
 };
 
 function base64UrlEncode(value: string | Uint8Array) {
@@ -72,4 +73,33 @@ export function projectArchiveRow(table: string, row: Record<string, unknown>) {
   const fields = DISPLAY_FIELDS[table];
   if (!fields) throw new Error('Workspace archive table is not browse allow-listed.');
   return Object.fromEntries(fields.filter((field) => field in row).map((field) => [field, row[field]]));
+}
+
+export async function hydrateArchivedDealRow(
+  row: Record<string, unknown>,
+  loadArchive: (key: string, checksum: string) => Promise<unknown>,
+) {
+  const live = row.hubspot_properties;
+  if (live && typeof live === 'object' && !Array.isArray(live) && Object.keys(live).length > 0) return row;
+  const key = typeof row.r2_archive_key === 'string' ? row.r2_archive_key : '';
+  const checksum = typeof row.r2_archive_sha256 === 'string' ? row.r2_archive_sha256 : '';
+  if (!key) return row;
+  if (!checksum) throw new Error('Cold-archived deal properties are missing their checksum.');
+  const archived = propertiesForDeal(await loadArchive(key, checksum), String(row.id));
+  return archived ? { ...row, hubspot_properties: archived } : row;
+}
+
+export async function prepareArchiveBrowseRow(
+  table: string,
+  row: Record<string, unknown>,
+  search: string,
+  hydrateDeal: (row: Record<string, unknown>) => Promise<Record<string, unknown>>,
+) {
+  const normalized = projectArchiveRow(table, row);
+  const matches = !search || Object.values(normalized).some((value) => (
+    (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+    && String(value).toLowerCase().includes(search)
+  ));
+  if (!matches) return null;
+  return table === 'deals' ? projectArchiveRow(table, await hydrateDeal(row)) : normalized;
 }

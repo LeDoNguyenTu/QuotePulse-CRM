@@ -24,7 +24,7 @@ import { cleanDealName } from '../lib/dealName';
 import type { SourcePriority } from '../lib/types';
 import { useSettings, useSaveSettings } from '../hooks/useSettings';
 import { useHubspotPropertyCatalog, useHubspotPropertyCoverage } from '../hooks/useHubspotPropertyCatalog';
-import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns, type ConfigurableTable } from '../lib/tablePreferences';
+import { DEFAULT_VISIBLE_COLUMNS, resolveVisibleColumns, saveVisibleColumns, type ArchiveConfigurableTable, type ConfigurableTable } from '../lib/tablePreferences';
 import { useHubspotImport, type LiveImport } from '../hooks/useHubspotImport';
 import { splitPropertiesByCoverage } from '../lib/propertyCoverage';
 import { importCompletionPercent, shouldShowImportReport } from '../lib/importReport';
@@ -48,6 +48,7 @@ import { useWorkspaceArchive } from '../hooks/useWorkspaceArchive';
 import { useActiveWorkspace } from '../hooks/useWorkspaces';
 import type { ArchivedLegacyTable } from '../lib/functions';
 import { resetArchivedTableView, resolveLegacyDataMode, type LegacyDataMode } from '../lib/legacyArchiveMode';
+import { archiveColumnOptions } from '../lib/archiveTable';
 
 const PAGE_SIZE = 25;
 const MAX_REBUILD_STEPS = 200;
@@ -544,6 +545,9 @@ function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; arch
   const [cursor, setCursor] = useState<string | undefined>();
   const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>([]);
   const [editing, setEditing] = useState<(Record<string, unknown> & { id: string; _archive_cursor: string }) | null>(null);
+  const settings = useSettings();
+  const saveSettings = useSaveSettings();
+  const catalog = useHubspotPropertyCatalog(table);
   const api = useArchivedCrmRecords({ workspaceId, archiveId, table, search, cursor, enabled: !!archiveId });
   const result = api.records.data;
   const resetPaging = () => { setCursor(undefined); setCursorHistory([]); };
@@ -556,7 +560,6 @@ function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; arch
     setCursorHistory(reset.cursorHistory);
     setEditing(null);
   };
-  const applySearch = () => { setSearch(searchDraft.trim()); resetPaging(); };
   const clearSearch = () => { setSearchDraft(''); setSearch(''); resetPaging(); };
   const previousPage = () => {
     setCursor(cursorHistory[cursorHistory.length - 1]);
@@ -575,12 +578,27 @@ function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; arch
   if (archive.browsable.isLoading) return <Spinner label="Loading archive…" />;
   if (archive.browsable.error) return <ErrorState error={archive.browsable.error} />;
   if (!archiveId) return <div className="card p-5"><p>No verified legacy archive is available yet.</p></div>;
+  const preferenceTable = `archive_${table}` as ArchiveConfigurableTable;
+  const configuredColumns = resolveVisibleColumns(preferenceTable, settings.data?.table_column_preferences);
+  const columnOptions = archiveColumnOptions(table, result?.rows ?? [], configuredColumns, catalog.data ?? []);
+  const allowedColumns = new Set(columnOptions.map((column) => column.id));
+  const visibleColumns = configuredColumns.filter((column) => allowedColumns.has(column));
   return <div className="space-y-4">
     <div className="crm-archive-notice" role="status"><div><strong>Verified archive served directly from Cloudflare R2</strong><span>The familiar Companies, Deals, and Contacts ledgers remain searchable and readable. Restore only the record you need before editing it.</span></div><span>Read-only</span></div>
     <div className="flex gap-1 border-b border-slate-200" role="tablist" aria-label="Archived object type">{(['companies', 'deals', 'contacts'] as ArchivedLegacyTable[]).map((value) => <button key={value} role="tab" aria-selected={table === value} className={`border-b-2 px-4 py-2 text-sm font-medium capitalize ${table === value ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500'}`} onClick={() => switchTable(value)}>{value}</button>)}</div>
-    <form className="crm-archive-search" onSubmit={(event) => { event.preventDefault(); applySearch(); }}><input className="input" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder={`Search archived ${table}`} /><button className="btn-secondary" type="submit">Search</button>{(search || searchDraft) && <button className="btn-secondary" type="button" onClick={clearSearch}>Clear</button>}</form>
+    <div className="flex flex-wrap items-center gap-3">
+      <SearchBar value={searchDraft} onChange={(value) => { setSearchDraft(value); setSearch(value.trim()); resetPaging(); }} placeholder={`Search archived ${table}`} />
+      <ColumnSelector
+        options={columnOptions}
+        visible={visibleColumns}
+        onChange={(columns) => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, preferenceTable, columns) })}
+        onRestore={() => saveSettings.mutate({ table_column_preferences: saveVisibleColumns(settings.data?.table_column_preferences, preferenceTable, null) })}
+      />
+      {(search || searchDraft) && <button className="btn-secondary" type="button" onClick={clearSearch}>Clear search</button>}
+      <span className="text-xs text-slate-500">Use Columns just like the live ledger. Archived rows stay read-only.</span>
+    </div>
     {api.records.error && <ErrorState error={api.records.error} />}
-    {api.records.isLoading || !result ? <Spinner label={`Loading archived ${table}…`} /> : <ArchivedRecordTable table={table} rows={result.rows} archivedAt={result.archived_at} progress={result.progress} hasPrevious={cursorHistory.length > 0} hasNext={!!result.cursor} loading={api.records.isFetching} onPrevious={previousPage} onNext={nextPage} onEdit={(row) => setEditing(row as typeof editing)} />}
+    {api.records.isLoading || !result ? <Spinner label={`Loading archived ${table}…`} /> : <ArchivedRecordTable table={table} rows={result.rows} columnOptions={columnOptions} visibleColumns={visibleColumns} archivedAt={result.archived_at} progress={result.progress} page={cursorHistory.length} hasPrevious={cursorHistory.length > 0} hasNext={!!result.cursor} loading={api.records.isFetching} onPrevious={previousPage} onNext={nextPage} onEdit={(row) => setEditing(row as typeof editing)} />}
     {editing && <ArchivedEditWarning recordLabel={String(editing.name_clean ?? editing.deal_name_raw ?? editing.full_name ?? editing.id)} pending={api.restore.isPending} onCancel={() => setEditing(null)} onRestore={async () => api.restore.mutateAsync({ id: editing.id, _archive_cursor: editing._archive_cursor })} />}
   </div>;
 }

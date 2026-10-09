@@ -51,6 +51,8 @@ vi.mock('../lib/functions', () => ({
   functions: { msAuthStart: vi.fn() },
 }));
 
+vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: vi.fn() }));
+
 function renderSettings() {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={['/w/sales-id/sales/settings']}>
@@ -91,11 +93,18 @@ describe('Sales CRM settings', () => {
     const html = renderSettings();
 
     expect(html).toContain('Settings sections');
-    expect(html).toContain('Save delivery &amp; session settings');
-    expect(html).toContain('does not change your password');
+    expect(html).toContain('Save changes');
+    expect(html).not.toContain('does not change your password');
     expect(html).toContain('crm-settings-layout');
     expect(html).not.toContain('<main class="crm-settings-content"');
     expect(html).toContain('aria-live="polite"');
+  });
+
+  it('uses compact feedback instead of nesting the global error panel', () => {
+    const html = renderSettings();
+
+    expect(html).toContain('crm-settings-feedback');
+    expect(html).not.toContain('rounded-lg border border-red-200');
   });
 
   it('explains password confirmation beside the dedicated action', () => {

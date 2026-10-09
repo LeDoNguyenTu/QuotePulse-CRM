@@ -35,6 +35,8 @@ vi.mock('../../hooks/crm/useCrmCompanies', () => ({
   useCrmIndustryOptions: () => ({ data: ['Technology'] }),
 }));
 
+vi.mock('../../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: vi.fn() }));
+
 describe('CRM email campaign composer', () => {
   it('separates message editing from audience and delivery controls', () => {
     const html = renderToStaticMarkup(<CrmEmailCampaigns />);

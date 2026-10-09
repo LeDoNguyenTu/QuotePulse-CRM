@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CrmPageHeader } from '../../components/crm/CrmPageChrome';
-import { ErrorState, Spinner } from '../../components/ui';
+import { Spinner } from '../../components/ui';
 import { useAuth } from '../../hooks/useAuth';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { useDisconnectMicrosoft, useSaveSettings, useSettings } from '../../hooks/useSettings';
 import { functions } from '../../lib/functions';
@@ -50,7 +51,22 @@ export function CrmSalesSettings() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [savedDeliveryDraft, setSavedDeliveryDraft] = useState<string | null>(null);
   const passwordPreparation = preparePasswordChange(currentPassword, newPassword, confirmPassword);
+  const deliveryDraft = useMemo(() => ({
+    provider,
+    dailyLimit,
+    sessionMinutes,
+    senderEmail,
+    senderName,
+    brevoKey,
+    clearBrevoKey,
+  }), [brevoKey, clearBrevoKey, dailyLimit, provider, senderEmail, senderName, sessionMinutes]);
+  const deliveryDirty = savedDeliveryDraft !== null && JSON.stringify(deliveryDraft) !== savedDeliveryDraft;
+  const accountDirty = Boolean(newEmail || currentPassword || newPassword || confirmPassword);
+  const validationError = validateSalesSettingsDraft(dailyLimit, sessionMinutes);
+
+  useUnsavedChanges({ dirty: deliveryDirty || accountDirty });
 
   useEffect(() => {
     if (!data) return;
@@ -59,6 +75,15 @@ export function CrmSalesSettings() {
     setSessionMinutes(normalizeSessionTimeoutMinutes(data.session_timeout_minutes));
     setSenderEmail(data.brevo_sender_email ?? '');
     setSenderName(data.brevo_sender_name ?? '');
+    setSavedDeliveryDraft(JSON.stringify({
+      provider: data.email_provider ?? 'microsoft_graph',
+      dailyLimit: data.daily_send_limit ?? 50,
+      sessionMinutes: normalizeSessionTimeoutMinutes(data.session_timeout_minutes),
+      senderEmail: data.brevo_sender_email ?? '',
+      senderName: data.brevo_sender_name ?? '',
+      brevoKey: '',
+      clearBrevoKey: false,
+    }));
   }, [data]);
 
   const run = async (name: string, action: () => Promise<unknown>, success: string) => {
@@ -76,7 +101,6 @@ export function CrmSalesSettings() {
   };
 
   const saveDelivery = async () => {
-    const validationError = validateSalesSettingsDraft(dailyLimit, sessionMinutes);
     if (validationError) {
       setError(validationError);
       return;
@@ -93,6 +117,7 @@ export function CrmSalesSettings() {
       });
       setBrevoKey('');
       setClearBrevoKey(false);
+      setSavedDeliveryDraft(JSON.stringify({ ...deliveryDraft, brevoKey: '', clearBrevoKey: false }));
       applySessionTimeoutMinutes(normalizedTimeout);
     }, 'Settings saved.');
   };
@@ -224,10 +249,10 @@ export function CrmSalesSettings() {
             </div>
           </section>
 
-          <div aria-live="polite" aria-atomic="true">
-            {(error || message) && <div className="crm-settings-feedback">{error ? <div role="alert"><ErrorState error={error} /></div> : <p>{message}</p>}</div>}
+          <div className={`crm-settings-feedback${error ? ' crm-settings-feedback--error' : ''}`} aria-live="polite" aria-atomic="true">
+            {error ? <p role="alert">{error}</p> : message ? <p>{message}</p> : null}
           </div>
-          <div className="crm-settings-savebar"><span>Saves email delivery and automatic sign-out only; it does not change your password.</span><button type="button" className="btn-primary crm-primary-action" onClick={() => void saveDelivery()} disabled={busyAction === 'save'}>{busyAction === 'save' ? 'Saving delivery & session settings…' : 'Save delivery & session settings'}</button></div>
+          <div className="crm-settings-savebar"><button type="button" className="btn-primary crm-primary-action" onClick={() => void saveDelivery()} disabled={busyAction === 'save' || !deliveryDirty || !!validationError}>{busyAction === 'save' ? 'Saving…' : 'Save changes'}</button></div>
         </div>
       </div>
     </div>

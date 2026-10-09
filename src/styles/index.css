@@ -731,6 +731,33 @@ body {
 .crm-archive-warning p { margin-top: 0.65rem; color: #475569; font-size: 0.82rem; line-height: 1.55; }
 .crm-archive-warning > div > div { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
 
+.archive-company-ledger { position: relative; overflow-x: auto; }
+.archive-company-ledger > table > thead { border-bottom: 1px solid var(--workspace-line); background: var(--workspace-surface-muted); color: var(--workspace-muted); font-size: 0.72rem; letter-spacing: 0.045em; text-align: left; text-transform: uppercase; }
+.archive-company-ledger th { padding: 0.7rem 0.8rem; white-space: nowrap; }
+.archive-company-row { border-bottom: 1px solid var(--workspace-border-soft); transition: background-color 140ms ease; }
+.archive-company-row:hover { background: color-mix(in srgb, var(--workspace-blue) 4%, var(--workspace-surface)); }
+.archive-company-row td { max-width: 18rem; padding: 0.72rem 0.8rem; color: var(--workspace-copy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.archive-company-disclosure { display: inline-flex; min-height: 2.15rem; align-items: center; justify-content: space-between; gap: 0.65rem; border: 1px solid color-mix(in srgb, var(--workspace-blue) 30%, var(--workspace-line)); border-radius: 0.6rem; background: color-mix(in srgb, var(--workspace-blue) 7%, var(--workspace-surface)); padding: 0.35rem 0.65rem; color: var(--workspace-blue-dark); font-size: 0.75rem; font-weight: 750; white-space: nowrap; }
+.archive-company-disclosure:hover { border-color: var(--workspace-blue); background: color-mix(in srgb, var(--workspace-blue) 11%, var(--workspace-surface)); }
+.archive-company-disclosure:focus-visible { outline: 3px solid color-mix(in srgb, var(--workspace-blue) 28%, transparent); outline-offset: 2px; }
+.archive-company-disclosure > span:last-child { display: grid; width: 1.2rem; height: 1.2rem; place-items: center; border-radius: 999px; background: var(--workspace-surface); font-size: 0.95rem; line-height: 1; }
+.archive-company-related-row > td { padding: 0; background: var(--workspace-surface-inset); }
+.archive-related-grid { display: grid; gap: 1rem; border-left: 3px solid var(--workspace-blue); padding: 1rem 1.1rem 1.15rem; }
+.archive-related-section { min-width: 0; }
+.archive-related-section > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.55rem; }
+.archive-related-section h3 { color: var(--workspace-ink); font-size: 0.82rem; font-weight: 800; }
+.archive-related-section header span { display: inline-grid; min-width: 1.55rem; height: 1.55rem; place-items: center; border-radius: 999px; background: var(--workspace-accent-soft); padding: 0 0.35rem; color: var(--workspace-accent-text); font-size: 0.7rem; font-weight: 800; }
+.archive-related-table-wrap { overflow-x: auto; border: 1px solid var(--workspace-line); border-radius: 0.7rem; background: var(--workspace-surface); }
+.archive-related-table-wrap table { width: 100%; min-width: 46rem; border-collapse: collapse; font-size: 0.76rem; }
+.archive-related-table-wrap th { background: var(--workspace-surface-muted); color: var(--workspace-muted); font-size: 0.67rem; letter-spacing: 0.04em; text-align: left; text-transform: uppercase; }
+.archive-related-table-wrap th, .archive-related-table-wrap td { border-bottom: 1px solid var(--workspace-border-soft); padding: 0.55rem 0.65rem; color: var(--workspace-copy); }
+.archive-related-table-wrap tr:last-child td { border-bottom: 0; }
+.archive-related-status, .archive-related-empty { display: grid; gap: 0.45rem; margin: 0; padding: 1rem 1.15rem; color: var(--workspace-muted); font-size: 0.78rem; }
+.archive-related-status strong { color: var(--workspace-ink); }
+.archive-related-status progress { width: min(28rem, 100%); accent-color: var(--workspace-blue); }
+.archive-related-status--error { color: #dc2626; }
+.archive-company-loading { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--workspace-surface) 78%, transparent); color: var(--workspace-ink); font-size: 0.8rem; font-weight: 750; }
+
 .crm-settings-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: 1.25rem; align-items: start; }
 .crm-settings-nav { position: sticky; top: 1rem; display: grid; gap: 0.3rem; border: 1px solid var(--workspace-line); border-radius: 0.9rem; background: var(--workspace-surface); padding: 0.8rem; box-shadow: 0 10px 25px rgba(6, 15, 29, 0.08); }
 .crm-settings-nav > p { padding: 0.45rem 0.55rem 0.65rem; color: var(--workspace-muted); font-size: 0.72rem; font-weight: 700; }

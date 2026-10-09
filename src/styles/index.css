@@ -509,6 +509,22 @@ body {
 .contact-lifecycle-actions button:hover { border-color: #93c5fd; background: #dbeafe; }
 .contact-lifecycle-actions button:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.22); outline-offset: 2px; }
 .contact-lifecycle-actions button:disabled { cursor: wait; opacity: 0.5; }
+.contact-row-actions { position: relative; display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.45rem; white-space: nowrap; }
+.contact-row-actions__primary { min-width: 3.4rem; }
+.contact-row-actions__menu { position: relative; }
+.contact-row-actions__menu > summary { display: inline-flex; min-height: 2rem; align-items: center; gap: 0.4rem; border: 1px solid var(--workspace-border-soft); border-radius: 0.45rem; background: var(--workspace-surface); padding: 0.3rem 0.6rem; color: var(--workspace-copy); font-size: 0.75rem; font-weight: 750; line-height: 1; cursor: pointer; list-style: none; }
+.contact-row-actions__menu > summary::-webkit-details-marker { display: none; }
+.contact-row-actions__menu > summary:hover,
+.contact-row-actions__menu[open] > summary { border-color: var(--workspace-blue); background: var(--workspace-accent-soft); color: var(--workspace-accent-text); }
+.contact-row-actions__menu > summary:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.22); outline-offset: 2px; }
+.contact-row-actions__menu > summary svg { width: 0.9rem; height: 0.9rem; fill: currentColor; }
+.contact-row-actions__panel { position: absolute; z-index: 30; top: calc(100% + 0.4rem); right: 0; display: grid; min-width: 10rem; overflow: hidden; border: 1px solid var(--workspace-border); border-radius: 0.7rem; background: var(--workspace-surface); padding: 0.35rem; box-shadow: 0 16px 35px rgba(15, 23, 42, 0.18); }
+.contact-row-actions__panel button { width: 100%; border: 0; border-radius: 0.42rem; background: transparent; padding: 0.58rem 0.68rem; color: var(--workspace-copy); font-size: 0.75rem; font-weight: 700; text-align: left; }
+.contact-row-actions__panel button:hover { background: var(--workspace-surface-muted); color: var(--workspace-text); }
+.contact-row-actions__panel button:focus-visible { outline: 2px solid var(--workspace-blue); outline-offset: -2px; }
+.contact-row-actions__panel button:disabled { cursor: wait; opacity: 0.5; }
+.contact-row-actions__panel .contact-row-actions__danger { margin-top: 0.3rem; border-top: 1px solid var(--workspace-border-soft); border-radius: 0 0 0.42rem 0.42rem; padding-top: 0.75rem; color: #dc2626; }
+.contact-row-actions__panel .contact-row-actions__danger:hover { background: color-mix(in srgb, #dc2626 10%, var(--workspace-surface)); }
 .crm-record-link { color: #0f4c81; text-decoration: none; text-underline-offset: 0.18rem; }
 .crm-record-link:hover { text-decoration: underline; }
 .crm-record-link:focus-visible { border-radius: 0.2rem; outline: 3px solid rgba(37, 99, 235, 0.3); outline-offset: 2px; }

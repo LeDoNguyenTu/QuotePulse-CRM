@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Modal } from '../../components/Modal';
 import { ContactEditor } from '../../components/crm/ContactEditor';
 import {
-  ContactLifecycleActions,
+  ContactRowActions,
   ContactStateBadges,
   type ContactLifecycleChange,
 } from '../../components/crm/ContactLifecycleControls';
@@ -15,7 +15,6 @@ import {
   CrmFilterBar,
   CrmPageHeader,
   CrmResourceState,
-  CrmRowActions,
 } from '../../components/crm/CrmPageChrome';
 import { CrmSourceBadge } from '../../components/crm/CrmSourceBadge';
 import { ErrorState } from '../../components/ui';
@@ -266,10 +265,13 @@ export function CrmContacts() {
                   {shows('task_count') && <td data-label="Tasks">{row.task_count ?? '—'}</td>}
                   {sourceHeaders.map((header) => <td data-label={header} key={header}>{displayText(sourceRows.data?.get(row.source_row_number ?? -1)?.[header])}</td>)}
                   <td data-label="Actions">
-                    <div className="space-y-2">
-                      <ContactLifecycleActions contact={row} pending={lifecycle.update.isPending} onChange={(changes) => updateLifecycle(row, changes)} />
-                      <CrmRowActions onEdit={() => setEditing(row)} onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined} />
-                    </div>
+                    <ContactRowActions
+                      contact={row}
+                      pending={lifecycle.update.isPending}
+                      onChange={(changes) => updateLifecycle(row, changes)}
+                      onEdit={() => setEditing(row)}
+                      onDelete={canDeleteCrmRecords(workspace.role) ? () => remove(row) : undefined}
+                    />
                   </td>
                 </tr>
               ))}

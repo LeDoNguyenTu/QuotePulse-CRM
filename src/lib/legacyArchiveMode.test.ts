@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveLegacyDataMode } from './legacyArchiveMode';
+import { resetArchivedTableView, resolveLegacyDataMode } from './legacyArchiveMode';
 
 describe('resolveLegacyDataMode', () => {
   it('opens the verified R2 archive when the Supabase copy was deleted', () => {
@@ -40,5 +40,14 @@ describe('resolveLegacyDataMode', () => {
       liveCountResolved: true,
       archiveStatus: 'verified',
     })).toBe('live');
+  });
+
+  it('clears table-specific search and paging when archive tabs change', () => {
+    expect(resetArchivedTableView('contacts')).toEqual({
+      table: 'contacts',
+      search: '',
+      cursor: undefined,
+      cursorHistory: [],
+    });
   });
 });

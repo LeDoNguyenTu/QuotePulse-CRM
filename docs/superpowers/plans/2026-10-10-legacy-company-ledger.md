@@ -39,10 +39,10 @@
 **Interfaces:**
 - Produces: `createCompanyBloom(rows)`, `companyBloomMayContain(value, companyId)`.
 
-- [ ] Write failing tests for deterministic membership, safe invalid-data fallback, and migration constraints.
-- [ ] Run the focused tests and confirm failure because the helper/schema does not exist.
-- [ ] Implement the fixed-size versioned Bloom encoding and nullable metadata column.
-- [ ] Run focused tests and typecheck.
+- [x] Write failing tests for deterministic membership, safe invalid-data fallback, and migration constraints.
+- [x] Run the focused tests and confirm failure because the helper/schema does not exist.
+- [x] Implement the fixed-size versioned Bloom encoding and nullable metadata column.
+- [x] Run focused tests and typecheck.
 
 ### Task 2: Bounded R2 relationship API
 
@@ -56,11 +56,11 @@
 - Consumes: Bloom helpers from Task 1.
 - Produces: `prepare_relationships` and `company_bundle` responses with exact projected child rows and signed cursors.
 
-- [ ] Write failing tests for bounded indexing, exact company matching, corrupt-index fallback, and child cursor identity.
-- [ ] Run tests and confirm the missing behavior fails.
-- [ ] Store Bloom metadata for new archive objects and resumably backfill verified existing objects.
-- [ ] Add owner-scoped company bundle lookup and browser types.
-- [ ] Run Edge and function-client tests.
+- [x] Write failing tests for bounded indexing, exact company matching, corrupt-index fallback, and child cursor identity.
+- [x] Run tests and confirm the missing behavior fails.
+- [x] Store Bloom metadata for new archive objects and resumably backfill verified existing objects.
+- [x] Add owner-scoped company bundle lookup and browser types.
+- [x] Run Edge and function-client tests.
 
 ### Task 3: One expandable Legacy sheet
 
@@ -76,10 +76,10 @@
 - Consumes: company bundle endpoint from Task 2.
 - Produces: company parent rows with inline contact/deal sections and per-record restore actions.
 
-- [ ] Write failing component tests for the single-sheet layout, disclosure, progress, related rows, empty states, and child restore action.
-- [ ] Run focused tests and confirm failure because the ledger does not exist.
-- [ ] Implement the query hook, company ledger, Legacy-only dashboard wiring, and restrained responsive styles.
-- [ ] Run focused tests, interaction tests, typecheck, lint, and build.
+- [x] Write failing component tests for the single-sheet layout, disclosure, progress, related rows, empty states, and child restore action.
+- [x] Run focused tests and confirm failure because the ledger does not exist.
+- [x] Implement the query hook, company ledger, Legacy-only dashboard wiring, and restrained responsive styles.
+- [x] Run focused tests, interaction tests, typecheck, lint, and build.
 
 ### Task 4: Release and evidence
 
@@ -90,7 +90,7 @@
 - Consumes: verified implementation from Tasks 1-3.
 - Produces: durable branch, PR, exact SHA, workflow, deployment, and authenticated smoke evidence.
 
-- [ ] Run the full Vitest suite, typecheck, lint, build, migration checks, and GitNexus change detection.
-- [ ] Perform a whole-branch review and address Critical/Important findings with RED-GREEN tests.
+- [x] Run the full Vitest suite, typecheck, lint, build, migration checks, and GitNexus change detection.
+- [x] Perform a whole-branch review and address Critical/Important findings with RED-GREEN tests.
 - [ ] Commit, push, merge the PR, and wait for exact-SHA Supabase and Vercel success.
 - [ ] In production, verify one company expands to its own contacts and deals, unrelated rows never appear, read-only warnings remain, and leave Sales Contacts open.

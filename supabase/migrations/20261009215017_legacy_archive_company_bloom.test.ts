@@ -10,8 +10,10 @@ describe('legacy archive company relationship metadata migration', () => {
     expect(sql).toMatch(/length\(company_bloom\) between 1000 and 2000/i);
   });
 
-  it('keeps the internal archive metadata inaccessible to browser roles', () => {
+  it('keeps browser progress reads while denying browser mutation rights', () => {
     expect(sql).toMatch(/revoke all on table public\.workspace_archive_objects from anon, authenticated/i);
+    expect(sql).toMatch(/grant select on table public\.workspace_archive_objects to authenticated/i);
+    expect(sql).not.toMatch(/grant (insert|update|delete|all)[^;]+to authenticated/i);
     expect(sql).toMatch(/grant all on table public\.workspace_archive_objects to service_role/i);
   });
 });

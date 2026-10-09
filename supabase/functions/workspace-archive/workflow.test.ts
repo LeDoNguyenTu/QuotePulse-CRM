@@ -4,12 +4,13 @@ describe('workspace archive workflow',()=>{it('supports bounded leased keyset ar
     expect(relationshipSource).toMatch(/RELATIONSHIP_INDEX_BATCH/);
     expect(relationshipSource).toMatch(/prepareRelationshipIndex/);
     expect(relationshipSource).toMatch(/companyArchiveBundle/);
-    expect(source).toMatch(/const companyBloom=.*createCompanyBloom\(rows\)/);
+    expect(source).toMatch(/const companyBloom=.*await createCompanyBloom\(rows,[^)]*cursorSecret\(\)/);
     expect(source).toMatch(/company_bloom:companyBloom/);
     expect(source).toMatch(/action==='prepare_relationships'/);
     expect(source).toMatch(/action==='company_bundle'/);
     expect(relationshipSource).toMatch(/\.eq\('workspace_id',\s*archive\.workspace_id\)/);
     expect(relationshipSource).toMatch(/verifyArchivePayload/);
+    expect(relationshipSource).toMatch(/bloomContext/);
     expect(relationshipSource).toMatch(/createArchiveCursor/);
   });
 });

@@ -29,13 +29,17 @@ async function relationshipObjectTotal(admin: ReturnType<typeof getAdminClient>,
   return (state.data ?? []).reduce((sum, row) => sum + Number(row.object_count ?? 0), 0);
 }
 
-export async function prepareRelationshipIndex(admin: ReturnType<typeof getAdminClient>, archive: ArchiveRow, userId: string) {
+function bloomContext(object: ObjectRow, archive: ArchiveRow, userId: string) {
+  return { archiveId: archive.id, workspaceId: archive.workspace_id, ownerId: userId, table: object.table_name, sequence: object.sequence, checksum: object.r2_sha256 };
+}
+
+export async function prepareRelationshipIndex(admin: ReturnType<typeof getAdminClient>, archive: ArchiveRow, userId: string, cursorSecret: string) {
   assertBrowsableArchive(archive);
   const pending = await admin.from('workspace_archive_objects').select('id,table_name,sequence,r2_key,r2_sha256,row_count,status,company_bloom').eq('archive_id', archive.id).eq('workspace_id', archive.workspace_id).in('table_name', [...RELATIONSHIP_TABLES]).eq('status', 'verified').is('company_bloom', null).order('table_name').order('sequence').limit(RELATIONSHIP_INDEX_BATCH);
   if (pending.error) throw pending.error;
   for (const object of (pending.data ?? []) as ObjectRow[]) {
     const payload = await loadVerifiedObject(object, archive, userId);
-    const updated = await admin.from('workspace_archive_objects').update({ company_bloom: createCompanyBloom(payload.rows) }).eq('id', object.id).eq('archive_id', archive.id).eq('workspace_id', archive.workspace_id).eq('r2_sha256', object.r2_sha256).is('company_bloom', null);
+    const updated = await admin.from('workspace_archive_objects').update({ company_bloom: await createCompanyBloom(payload.rows, cursorSecret, bloomContext(object, archive, userId)) }).eq('id', object.id).eq('archive_id', archive.id).eq('workspace_id', archive.workspace_id).eq('r2_sha256', object.r2_sha256).is('company_bloom', null);
     if (updated.error) throw updated.error;
   }
   const remaining = await admin.from('workspace_archive_objects').select('id', { count: 'exact', head: true }).eq('archive_id', archive.id).eq('workspace_id', archive.workspace_id).in('table_name', [...RELATIONSHIP_TABLES]).eq('status', 'verified').is('company_bloom', null);
@@ -64,10 +68,14 @@ export async function companyArchiveBundle(
   cursorSecret: string,
 ) {
   if (!companyId || !uuid.test(companyId)) throw new Error('valid company_id is required');
-  const prepared = await prepareRelationshipIndex(admin, archive, userId);
+  const prepared = await prepareRelationshipIndex(admin, archive, userId, cursorSecret);
   if (!prepared.ready) return { ok: true, archive_id: archive.id, company_id: companyId, status: 'building' as const, progress: prepared.progress, read_only: true as const };
   const objects = await allRelationshipObjects(admin, archive);
-  const candidates = objects.filter((object) => companyBloomMayContain(object.company_bloom, companyId));
+  const candidates: ObjectRow[] = [];
+  for (const object of objects) {
+    const context = bloomContext(object, archive, userId);
+    if (await companyBloomMayContain(object.company_bloom, companyId, cursorSecret, context)) candidates.push(object);
+  }
   const contacts: Record<string, unknown>[] = [];
   const deals: Record<string, unknown>[] = [];
   for (const object of candidates) {

@@ -1,7 +1,9 @@
 # UI Safety and Archive Parity Handoff
 
-Date: 2026-10-09  
-Branch: `feat/contact-action-menu`  
+Date: 2026-10-09
+
+Branch: `feat/contact-action-menu`
+
 Base: `main` at `6acae6400b1279e1ecc88ab0590e72d7b0d758ff`
 
 ## Delivered

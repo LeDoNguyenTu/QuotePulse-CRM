@@ -4,6 +4,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   useCompanies,
   useCreateCompany,
+  useLegacyLiveCompanyCount,
   useSoftDeleteCompanies,
   type CompanyFilters,
 } from '../hooks/useCompanies';
@@ -92,6 +93,7 @@ export function Dashboard() {
   );
   const softDelete = useSoftDeleteCompanies();
   const { data, isLoading, isFetching, isPlaceholderData, pageQuery, countQuery } = useCompanies(filters);
+  const liveCompanyCount = useLegacyLiveCompanyCount();
   const rows = data?.rows ?? [];
   const total = data?.count ?? 0;
   const page = filters.page ?? 0;
@@ -102,11 +104,11 @@ export function Dashboard() {
     setDataMode((current) => resolveLegacyDataMode({
       current,
       userSelected: dataModeChosen,
-      liveCount: total,
-      liveCountResolved: countQuery.isSuccess,
+      liveCount: liveCompanyCount.data ?? 0,
+      liveCountResolved: liveCompanyCount.isSuccess,
       archiveStatus: archive.browsable.data?.status,
     }));
-  }, [archive.browsable.data?.status, countQuery.isSuccess, dataModeChosen, total]);
+  }, [archive.browsable.data?.status, dataModeChosen, liveCompanyCount.data, liveCompanyCount.isSuccess]);
 
   useEffect(() => {
     if (shouldStopImportForRecovery(importing, !!importState?.stopRequested, importLock.locked)) {
@@ -557,6 +559,11 @@ function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; arch
     setCursorHistory((history) => [...history, cursor]);
     setCursor(result.cursor);
   };
+  useEffect(() => {
+    setCursor(undefined);
+    setCursorHistory([]);
+    setEditing(null);
+  }, [archiveId]);
   if (archive.browsable.isLoading) return <Spinner label="Loading archive…" />;
   if (archive.browsable.error) return <ErrorState error={archive.browsable.error} />;
   if (!archiveId) return <div className="card p-5"><p>No verified legacy archive is available yet.</p></div>;

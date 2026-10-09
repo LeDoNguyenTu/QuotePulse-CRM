@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createArchiveCursor, decodeArchiveCursor, pageArchiveRows, projectArchiveRow } from './archiveBrowse';
+import { archiveObjectsScanned, createArchiveCursor, decodeArchiveCursor, pageArchiveRows, projectArchiveRow } from './archiveBrowse';
 
 describe('archive browse primitives', () => {
   it('signs cursor scope and rejects tampering or cross-owner reuse', async () => {
@@ -22,5 +22,11 @@ describe('archive browse primitives', () => {
     expect(projectArchiveRow('deals', { id: '2', deal_name_raw: 'Renewal', deal_stage: 'won', owner_id: 'u' })).toEqual({ id: '2', deal_name_raw: 'Renewal', deal_stage: 'won' });
     expect(projectArchiveRow('contacts', { id: '3', full_name: 'Avery', role_title: 'Director', hubspot_contact_id: 'hs-3', owner_id: 'u' })).toEqual({ id: '3', full_name: 'Avery', role_title: 'Director', hubspot_contact_id: 'hs-3' });
     expect(() => projectArchiveRow('user_settings', { id: '1' })).toThrow(/allow-listed/);
+  });
+
+  it('reports cumulative archive objects scanned across bounded requests', () => {
+    expect(archiveObjectsScanned(2, 0, 20)).toBe(2);
+    expect(archiveObjectsScanned(2, 4, 20)).toBe(3);
+    expect(archiveObjectsScanned(30, 0, 20)).toBe(20);
   });
 });

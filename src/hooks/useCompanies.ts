@@ -64,6 +64,23 @@ export function useCompanies(filters: CompanyFilters) {
   };
 }
 
+export function useLegacyLiveCompanyCount() {
+  const { user } = useAuth();
+  return useQuery<number>({
+    queryKey: accountQueryKey(user?.id, ['legacy-live-company-count']),
+    enabled: !!user,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('companies')
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null);
+      if (error) throw error;
+      return Number(count ?? 0);
+    },
+  });
+}
+
 export function useCreateCompany() {
   const qc = useQueryClient();
   const { user } = useAuth();

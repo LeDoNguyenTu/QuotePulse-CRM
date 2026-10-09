@@ -8,7 +8,7 @@ describe('ArchivedRecordTable', () => {
     const onEdit = vi.fn();
     let renderer: ReturnType<typeof create>;
     const onPrevious = vi.fn();
-    act(() => { renderer = create(<ArchivedRecordTable table="companies" rows={[{ id: '1', name_clean: 'Northstar', _archive_cursor: 'signed' }]} archivedAt="2026-10-01T00:00:00Z" progress={{ objects_read: 2, total_objects: 20, total_rows: 400 }} hasPrevious hasNext onPrevious={onPrevious} onNext={onNext} onEdit={onEdit} />); });
+    act(() => { renderer = create(<ArchivedRecordTable table="companies" rows={[{ id: '1', name_clean: 'Northstar', _archive_cursor: 'signed' }]} archivedAt="2026-10-01T00:00:00Z" progress={{ objects_read: 2, total_objects: 20, total_rows: 400 }} hasPrevious hasNext loading={false} onPrevious={onPrevious} onNext={onNext} onEdit={onEdit} />); });
     const text = JSON.stringify(renderer!.toJSON());
     expect(text).toContain('Read-only R2 archive');
     expect(text).toContain('Northstar');
@@ -20,5 +20,11 @@ describe('ArchivedRecordTable', () => {
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }));
     expect(onPrevious).toHaveBeenCalledOnce();
     expect(onNext).toHaveBeenCalledOnce();
+  });
+
+  it('disables restore while a new archive page is loading', () => {
+    let renderer: ReturnType<typeof create>;
+    act(() => { renderer = create(<ArchivedRecordTable table="contacts" rows={[{ id: '1', full_name: 'Ada', _archive_cursor: 'signed' }]} archivedAt={null} progress={{ objects_read: 1, total_objects: 2, total_rows: 3 }} hasPrevious={false} hasNext loading onPrevious={vi.fn()} onNext={vi.fn()} onEdit={vi.fn()} />); });
+    expect(renderer!.root.findAllByType('button').find((button) => button.props.children === 'Restore to edit')!.props.disabled).toBe(true);
   });
 });

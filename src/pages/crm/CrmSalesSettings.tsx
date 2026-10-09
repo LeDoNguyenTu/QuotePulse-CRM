@@ -65,6 +65,7 @@ export function CrmSalesSettings() {
   const deliveryDirty = savedDeliveryDraft !== null && JSON.stringify(deliveryDraft) !== savedDeliveryDraft;
   const accountDirty = Boolean(newEmail || currentPassword || newPassword || confirmPassword);
   const validationError = validateSalesSettingsDraft(dailyLimit, sessionMinutes);
+  const feedbackError = error ?? validationError;
 
   useUnsavedChanges({ dirty: deliveryDirty || accountDirty });
 
@@ -249,8 +250,8 @@ export function CrmSalesSettings() {
             </div>
           </section>
 
-          <div className={`crm-settings-feedback${error ? ' crm-settings-feedback--error' : ''}`} aria-live="polite" aria-atomic="true">
-            {error ? <p role="alert">{error}</p> : message ? <p>{message}</p> : null}
+          <div className={`crm-settings-feedback${feedbackError ? ' crm-settings-feedback--error' : ''}`} aria-live="polite" aria-atomic="true">
+            {feedbackError ? <p role="alert">{feedbackError}</p> : message ? <p>{message}</p> : null}
           </div>
           <div className="crm-settings-savebar"><button type="button" className="btn-primary crm-primary-action" onClick={() => void saveDelivery()} disabled={busyAction === 'save' || !deliveryDirty || !!validationError}>{busyAction === 'save' ? 'Saving…' : 'Save changes'}</button></div>
         </div>

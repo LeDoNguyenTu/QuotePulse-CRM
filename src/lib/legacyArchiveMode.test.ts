@@ -31,4 +31,14 @@ describe('resolveLegacyDataMode', () => {
       archiveStatus: 'deleted',
     })).toBe('live');
   });
+
+  it('stays live when the independent unfiltered count still has records', () => {
+    expect(resolveLegacyDataMode({
+      current: 'live',
+      userSelected: false,
+      liveCount: 12,
+      liveCountResolved: true,
+      archiveStatus: 'verified',
+    })).toBe('live');
+  });
 });

@@ -60,7 +60,6 @@ describe('contact lifecycle controls', () => {
 
   it('closes More after a lifecycle action is chosen', () => {
     const onChange = vi.fn();
-    const details = { open: true };
     let renderer: ReturnType<typeof create>;
     act(() => {
       renderer = create(
@@ -73,11 +72,15 @@ describe('contact lifecycle controls', () => {
         />,
       );
     });
+    const details = renderer!.root.findByType('details');
+    const summary = renderer!.root.findByType('summary');
+    act(() => summary.props.onClick({ preventDefault: vi.fn() }));
+    expect(details.props.open).toBe(true);
     const verify = renderer!.root.findAllByType('button').find((button) => button.children.join('') === 'Verify');
 
-    act(() => verify!.props.onClick({ currentTarget: { closest: () => details } }));
+    act(() => verify!.props.onClick());
 
     expect(onChange).toHaveBeenCalledWith({ record_state: 'verified', duplicate_review_of: null });
-    expect(details.open).toBe(false);
+    expect(details.props.open).toBe(false);
   });
 });

@@ -49,7 +49,7 @@ export function ArchivedRecordTable({ table, rows, archivedAt, progress, hasPrev
   return <section className="crm-archive-browser">
     <header><div><span className="crm-archive-badge">Read-only R2 archive</span><h2>{table}</h2><p>{archivedAt ? `Archived ${new Date(archivedAt).toLocaleString()}` : 'Verified archive'}</p></div><span>{progress.total_rows.toLocaleString()} total rows</span></header>
     <div className="overflow-x-auto"><table className="crm-table"><thead><tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}<th>Actions</th></tr></thead><tbody>
-      {rows.map((row) => <tr key={String(row.id)}>{columns.map((column) => <td key={column.key} data-label={column.label}>{display(row[column.key])}</td>)}<td><button className="btn-secondary" type="button" onClick={() => onEdit(row)}>Restore to edit</button></td></tr>)}
+      {rows.map((row) => <tr key={String(row.id)}>{columns.map((column) => <td key={column.key} data-label={column.label}>{display(row[column.key])}</td>)}<td><button className="btn-secondary" type="button" disabled={loading} onClick={() => onEdit(row)}>Restore to edit</button></td></tr>)}
       {!rows.length && <tr><td colSpan={columns.length + 1}>No archived records found in this bounded search page.</td></tr>}
     </tbody></table></div>
     <footer><span>{progress.objects_read.toLocaleString()} of {progress.total_objects.toLocaleString()} archive objects searched</span><div><button className="btn-secondary" type="button" disabled={!hasPrevious || loading} onClick={onPrevious}>Previous</button><button className="btn-secondary" type="button" disabled={!hasNext || loading} onClick={onNext}>{loading ? 'Loading…' : 'Next'}</button></div></footer>

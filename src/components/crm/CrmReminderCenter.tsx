@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useCrmTasks } from '../../hooks/crm/useCrmTasks';
 import { selectPopupReminder } from '../../lib/crm/tasks';
 import { crmRecordPath } from '../../lib/crm/salesRoutes';
@@ -27,6 +27,8 @@ function notificationPath(workspaceId: string, notification: CrmNotification): s
 
 export function CrmReminderCenter({ workspaceId }: { workspaceId: string }) {
   const api = useCrmTasks(workspaceId, { includeTasks: false });
+  const location = useLocation();
+  const centerRef = useRef<HTMLDivElement>(null);
   const notifications = api.notifications.data ?? [];
   const seenKey = `crm-reminders-seen:${workspaceId}`;
   const snoozeKey = `crm-reminders-snoozed:${workspaceId}`;
@@ -78,19 +80,39 @@ export function CrmReminderCenter({ workspaceId }: { workspaceId: string }) {
     setClock(Date.now());
   };
   const dismiss = (notification: CrmNotification) => {
+    setPanelOpen(false);
     setPopupId(null);
     api.dismissNotification.mutate(notification.id);
   };
 
-  return <CrmReminderCenterView
-    workspaceId={workspaceId}
-    notifications={notifications}
-    popup={popup}
-    panelOpen={panelOpen}
-    onTogglePanel={() => setPanelOpen((open) => !open)}
-    onSnooze={snooze}
-    onDismiss={dismiss}
-  />;
+  useEffect(() => setPanelOpen(false), [location.pathname]);
+
+  useEffect(() => {
+    if (!panelOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!centerRef.current?.contains(event.target as Node)) setPanelOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPanelOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [panelOpen]);
+
+  return <div ref={centerRef}><CrmReminderCenterView
+      workspaceId={workspaceId}
+      notifications={notifications}
+      popup={popup}
+      panelOpen={panelOpen}
+      onTogglePanel={() => setPanelOpen((open) => !open)}
+      onClosePanel={() => setPanelOpen(false)}
+      onSnooze={(notification) => { setPanelOpen(false); snooze(notification); }}
+      onDismiss={dismiss}
+    /></div>;
 }
 
 export function CrmReminderCenterView({
@@ -99,6 +121,7 @@ export function CrmReminderCenterView({
   popup,
   panelOpen,
   onTogglePanel,
+  onClosePanel,
   onSnooze,
   onDismiss,
 }: {
@@ -107,6 +130,7 @@ export function CrmReminderCenterView({
   popup: CrmNotification | null;
   panelOpen: boolean;
   onTogglePanel: () => void;
+  onClosePanel: () => void;
   onSnooze: (notification: CrmNotification) => void;
   onDismiss: (notification: CrmNotification) => void;
 }) {
@@ -120,7 +144,7 @@ export function CrmReminderCenterView({
           <h2 className="mb-2 font-semibold">Task reminders</h2>
           {notifications.length === 0 ? <p className="text-sm text-slate-500">No unread reminders.</p> : (
             <div className="max-h-80 space-y-2 overflow-y-auto">
-              {notifications.map((notification) => <ReminderCard key={notification.id} workspaceId={workspaceId} notification={notification} onSnooze={onSnooze} onDismiss={onDismiss} />)}
+              {notifications.map((notification) => <ReminderCard key={notification.id} workspaceId={workspaceId} notification={notification} onOpenRecord={onClosePanel} onSnooze={onSnooze} onDismiss={onDismiss} />)}
             </div>
           )}
         </section>
@@ -128,16 +152,17 @@ export function CrmReminderCenterView({
       {popup && (
         <aside className="fixed bottom-4 right-4 z-50 w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-amber-300 bg-amber-50 p-4 text-slate-900 shadow-2xl" aria-live="polite" aria-label="Task due soon">
           <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Task due soon</p>
-          <ReminderCard workspaceId={workspaceId} notification={popup} onSnooze={onSnooze} onDismiss={onDismiss} />
+          <ReminderCard workspaceId={workspaceId} notification={popup} onOpenRecord={onClosePanel} onSnooze={onSnooze} onDismiss={onDismiss} />
         </aside>
       )}
     </div>
   );
 }
 
-function ReminderCard({ workspaceId, notification, onSnooze, onDismiss }: {
+function ReminderCard({ workspaceId, notification, onOpenRecord, onSnooze, onDismiss }: {
   workspaceId: string;
   notification: CrmNotification;
+  onOpenRecord: () => void;
   onSnooze: (notification: CrmNotification) => void;
   onDismiss: (notification: CrmNotification) => void;
 }) {
@@ -146,7 +171,7 @@ function ReminderCard({ workspaceId, notification, onSnooze, onDismiss }: {
       <strong className="block text-sm">{notification.title}</strong>
       {notification.due_at && <time className="mt-1 block text-xs text-slate-600">Due {new Date(notification.due_at).toLocaleString('en-SG')}</time>}
       <div className="mt-3 flex flex-wrap gap-2">
-        <Link className="btn-primary" to={notificationPath(workspaceId, notification)}>Open record</Link>
+        <Link className="btn-primary" to={notificationPath(workspaceId, notification)} onClick={onOpenRecord}>Open record</Link>
         <button type="button" className="btn-secondary" onClick={() => onSnooze(notification)}>Snooze 15 min</button>
         <button type="button" className="btn-secondary" onClick={() => onDismiss(notification)}>Dismiss</button>
       </div>

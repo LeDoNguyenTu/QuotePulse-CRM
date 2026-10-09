@@ -1,6 +1,7 @@
 export type ConfigurableTable = 'companies' | 'deals' | 'contacts';
+export type ArchiveConfigurableTable = 'archive_companies' | 'archive_deals' | 'archive_contacts';
 export type CrmConfigurableTable = 'crm_companies' | 'crm_deals' | 'crm_contacts';
-export type TablePreferenceKey = ConfigurableTable | CrmConfigurableTable;
+export type TablePreferenceKey = ConfigurableTable | ArchiveConfigurableTable | CrmConfigurableTable;
 type LegacyTableColumnPreferences = Partial<Record<TablePreferenceKey, string[]>>;
 
 export interface VersionedTableColumnPreferences {
@@ -24,6 +25,9 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<TablePreferenceKey, string[]> = {
     'hubspot_modified_at', 'is_archived',
   ],
   contacts: ['full_name', 'email', 'phone', 'role_title', 'is_primary_contact', 'source'],
+  archive_companies: ['name_clean', 'industry', 'website', 'source_priority', 'last_hubspot_created_at', 'last_hubspot_modified_at'],
+  archive_deals: ['product', 'deal_name_raw', 'deal_stage', 'pipeline', 'amount', 'hubspot_created_at', 'hubspot_modified_at', 'is_archived'],
+  archive_contacts: ['full_name', 'email', 'phone', 'role_title', 'is_primary_contact', 'source'],
   crm_companies: ['name', 'customer_status', 'industry', 'location', 'phone', 'latest_activity', 'source', 'contact_count'],
   crm_contacts: ['full_name', 'company', 'job_title', 'email', 'phone', 'record_state', 'source'],
   crm_deals: ['name', 'company', 'stage', 'status', 'amount', 'follow_up_at', 'source'],

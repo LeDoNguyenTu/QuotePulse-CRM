@@ -15,6 +15,8 @@ import { validateCrmCampaignInput, type CrmCampaignInput } from '../../lib/crm/c
 import { addRecipients, clearRecipients, removeRecipient, type CampaignRecipient } from '../../lib/crm/campaignRecipients';
 import { findUnresolvedCampaignTokens, renderCampaignPreview, type CampaignContent } from '../../lib/emailCampaignPreview';
 import { campaignOutcomeLabel } from '../../lib/crm/emailDelivery';
+import { brevoQueueBlockReason } from '../../lib/crm/providerUsage';
+import { functions } from '../../lib/functions';
 
 const statusOrder = ['queued', 'scheduled', 'sending', 'retrying', 'sent', 'deferred', 'blocked', 'failed'];
 
@@ -92,6 +94,15 @@ export function CrmEmailCampaigns() {
     const invalid = validateCrmCampaignInput(input);
     if (invalid) { setError(invalid); return; }
     try {
+      if (provider === 'brevo') {
+        try {
+          const providerStatus = await functions.providerStatus(workspace.id);
+          const blocked = brevoQueueBlockReason({ ...providerStatus.brevo, checkedAt: providerStatus.checkedAt });
+          if (blocked) { setError(blocked); return; }
+        } catch {
+          // An unavailable health check is unknown, not proof that delivery is unhealthy.
+        }
+      }
       const queued = await api.queue.mutateAsync(input);
       setResult(`${queued.queued} queued, ${queued.blocked} blocked`);
       setError(null); setConsent(false); setSelected([]);

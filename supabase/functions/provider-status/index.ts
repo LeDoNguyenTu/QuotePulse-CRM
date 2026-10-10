@@ -20,13 +20,15 @@ Deno.serve(async (request) => {
 
     const settings = await getUserSettings(admin, userId);
     const since = new Date(Date.now() - 86_400_000).toISOString();
-    const [{ count: microsoftUsed, error: sendError }, { data: events, error: usageError }, { data: globalNvidiaEvents, error: globalNvidiaError }, { data: budgets, error: budgetError }] = await Promise.all([
+    const [{ count: microsoftUsed, error: sendError }, { data: deliveryRows, error: deliveryError }, { data: events, error: usageError }, { data: globalNvidiaEvents, error: globalNvidiaError }, { data: budgets, error: budgetError }] = await Promise.all([
       admin.from('email_sends').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId).eq('created_by', userId).eq('status', 'sent').gte('sent_at', since),
+      admin.from('email_sends').select('status,created_at').eq('workspace_id', workspaceId).eq('created_by', userId).in('status', ['queued','scheduled','sending','retrying','failed','blocked']).order('created_at', { ascending: true }).limit(1000),
       admin.from('provider_usage_events').select('provider,units,succeeded,error_category,provider_limit,provider_remaining,provider_reset_at,observed_at').eq('workspace_id', workspaceId).eq('owner_id', userId).order('observed_at', { ascending: false }).limit(1000),
       admin.from('provider_usage_events').select('provider,units,succeeded,error_category,observed_at').is('workspace_id', null).eq('owner_id', userId).eq('provider', 'nvidia').order('observed_at', { ascending: false }).limit(1000),
       admin.from('provider_budget_settings').select('provider,budget_units,reset_at').eq('workspace_id', workspaceId).eq('owner_id', userId),
     ]);
     if (sendError) throw sendError;
+    if (deliveryError) throw deliveryError;
     if (usageError) throw usageError;
     if (globalNvidiaError) throw globalNvidiaError;
     if (budgetError) throw budgetError;
@@ -59,8 +61,11 @@ Deno.serve(async (request) => {
       }
     }
 
+    const queuedRows = (deliveryRows ?? []).filter((row) => ['queued','scheduled','sending','retrying'].includes(row.status));
+    const failedRows = (deliveryRows ?? []).filter((row) => ['failed','blocked'].includes(row.status));
     return json({
       checkedAt: new Date().toISOString(),
+      delivery: { queued: queuedRows.length, failed: failedRows.length, oldestQueuedAt: queuedRows[0]?.created_at ?? null },
       brevo,
       microsoft: { source: 'crm_tracked', used: microsoftUsed ?? 0, limit: settings?.daily_send_limit ?? 50, resetAt: null },
       serper: tracked('serper'),

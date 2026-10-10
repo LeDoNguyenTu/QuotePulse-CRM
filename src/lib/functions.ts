@@ -4,6 +4,7 @@
 import { supabase } from './supabase';
 import type { CrmExportRequest } from './crm/exportSelection';
 import type { ExportScope } from './exportScope';
+import type { ProviderStatusResult } from './crm/providerUsage';
 
 async function invoke<T>(name: string, body?: unknown): Promise<T> {
   // On a cold page load (notably the OAuth redirect landing on /ms-auth-callback)
@@ -223,6 +224,16 @@ async function getStorageStatus(): Promise<StorageStatusResult> {
   return response.json() as Promise<StorageStatusResult>;
 }
 
+async function getProviderStatus(workspaceId: string): Promise<ProviderStatusResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/provider-status`);
+  url.searchParams.set('workspace_id', workspaceId);
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${session.access_token}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string } });
+  if (!response.ok) throw new Error(`provider-status failed: ${await response.text()}`);
+  return response.json() as Promise<ProviderStatusResult>;
+}
+
 export const functions = {
   hubspotIngest: (opts?: { company_id?: string }) =>
     invoke<IngestResult>('hubspot-ingest', opts ?? {}),
@@ -248,6 +259,7 @@ export const functions = {
     (await invoke<DealArchivePropertiesResult>('deal-archive-properties', { deal_ids })).properties,
 
   storageStatus: getStorageStatus,
+  providerStatus: getProviderStatus,
 
   msAuthStart: () =>
     invoke<MsAuthStartResult>('ms-auth-start', {

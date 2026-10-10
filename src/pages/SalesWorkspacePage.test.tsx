@@ -18,6 +18,7 @@ vi.mock('./crm/CrmTasks', () => ({ CrmTasks: () => <div /> }));
 vi.mock('./crm/CrmEmailCampaigns', () => ({ CrmEmailCampaigns: () => <div /> }));
 vi.mock('./crm/CrmPstExtractor', () => ({ CrmPstExtractor: () => <div /> }));
 vi.mock('./crm/CrmRecycleBin', () => ({ CrmRecycleBin: () => <div /> }));
+vi.mock('./crm/CrmOperations', () => ({ CrmOperations: () => <div>Operations center</div> }));
 vi.mock('./Templates', () => ({ Templates: () => <div>Rich HTML email templates</div> }));
 
 vi.mock('../hooks/useWorkspaces', () => ({
@@ -54,7 +55,7 @@ const defaultSettings = {
 };
 
 vi.mock('../lib/functions', () => ({
-  functions: { msAuthStart: vi.fn() },
+  functions: { msAuthStart: vi.fn(), providerStatus: vi.fn() },
 }));
 
 vi.mock('../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: useUnsavedChangesMock }));

@@ -176,7 +176,7 @@ grant execute on function public.crm_retry_failed_email_send(uuid,uuid) to authe
 create table public.provider_usage_events (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid references public.workspaces(id) on delete cascade,
-  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   provider text not null check (provider in ('brevo','microsoft_graph','serper','nvidia')),
   operation text not null,
   units integer not null default 1 check (units >= 0),
@@ -193,7 +193,7 @@ create index provider_usage_owner_provider_time_idx on public.provider_usage_eve
 
 create table public.provider_budget_settings (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   provider text not null check (provider in ('serper','nvidia')),
   budget_units integer check (budget_units is null or budget_units > 0),
   reset_at timestamptz,

@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { CrmPageHeader } from '../../components/crm/CrmPageChrome';
-import { StorageStatusPanel } from '../../components/StorageStatusPanel';
 
 const MODULES = [
   { path: 'companies', label: 'Companies', code: '01', description: 'Build the account directory that anchors contacts and pipeline.' },
@@ -20,7 +19,6 @@ export function CrmDashboard() {
         <h2 className="mt-2 max-w-2xl text-xl font-semibold text-slate-950">Start with a company, connect the people, then move the deal.</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Every record stays inside this workspace. Owners and admins can remove records; members can create and update them.</p>
       </section>
-      <StorageStatusPanel />
       <div className="crm-module-grid">
         {MODULES.map((module) => (
           <Link key={module.path} to={`${basePath}/${module.path}`} className="crm-module-link">

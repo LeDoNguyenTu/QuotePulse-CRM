@@ -41,6 +41,7 @@ vi.mock('../../hooks/crm/useCrmCompanies', () => ({
 }));
 
 vi.mock('../../hooks/useUnsavedChanges', () => ({ useUnsavedChanges: useUnsavedChangesMock }));
+vi.mock('../../lib/functions', () => ({ functions: { providerStatus: vi.fn() } }));
 
 describe('CRM email campaign composer', () => {
   it('separates message editing from audience and delivery controls', () => {

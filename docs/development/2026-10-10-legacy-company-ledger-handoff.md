@@ -38,9 +38,14 @@ Review fixes retained RLS-scoped authenticated metadata reads needed by archive 
 
 ## Release
 
-- Branch: `feat/legacy-company-ledger`
-- Commits: `319853d`, `5a0bcdf`, `09c2c2c`
-- PR / merge SHA / Supabase workflow / Vercel deployment / production smoke: pending.
+- Feature branch: `feat/legacy-company-ledger` (merged and remote branch deleted)
+- Commits: `319853d`, `5a0bcdf`, `09c2c2c`, `2959e1f`
+- PR: `#58` — merged
+- Merge SHA: `8413dfaf1573ecddb80cf9ab3f75751ea56389df`
+- Supabase workflow: run `37998299763` passed for the exact merge SHA, including quality checks, migration apply, Edge Function deployment, transactional database security/performance tests, recovery controller, and archive schedule verification.
+- Vercel production: deployment `dpl_GMx9XNQKgZerpAvoMSjh1ogxJh2r` is `READY` and aliased to `https://quote-pulse-crm.vercel.app`; GitHub's Vercel status for the exact merge SHA points to this deployment.
+- Public production probe: HTTP 200, and the deployed bundle contains the company-ledger copy, `View linked records`, and `Restore to edit` controls.
+- Authenticated production smoke: pending because the retained Chrome session expired to `/login`. Do not claim the relationship index or rendered child rows are production-verified until the user signs in again.
 
 The first full-suite attempt exposed an incomplete `node_modules` directory in the feature worktree (the declared PST parser package was absent). `npm install` restored the lockfile-defined dependency and applied the existing compatibility patch; the unchanged suite then passed completely.
 
@@ -55,3 +60,5 @@ After deployment, open the Legacy workspace R2 archive and confirm:
 5. Search, columns, paging, light theme, and dark theme remain usable.
 
 Operational smoke should include a relationship-heavy company because child projections preserve archived HubSpot properties for fidelity and can therefore be larger than ordinary rows.
+
+Current continuation point: sign in to QuotePulse in Chrome, open the Legacy workspace archive, complete the five acceptance checks above, then leave Sales Contacts open. No code or deployment work is otherwise pending.

@@ -172,3 +172,45 @@ $$;
 
 revoke all on function public.crm_retry_failed_email_send(uuid,uuid) from public, anon;
 grant execute on function public.crm_retry_failed_email_send(uuid,uuid) to authenticated;
+
+create table public.provider_usage_events (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references public.workspaces(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null check (provider in ('brevo','microsoft_graph','serper','nvidia')),
+  operation text not null,
+  units integer not null default 1 check (units >= 0),
+  succeeded boolean not null,
+  error_category text,
+  provider_limit bigint,
+  provider_remaining bigint,
+  provider_reset_at timestamptz,
+  observed_at timestamptz not null default now()
+);
+
+create index provider_usage_workspace_time_idx on public.provider_usage_events(workspace_id, observed_at desc);
+create index provider_usage_owner_provider_time_idx on public.provider_usage_events(owner_id, provider, observed_at desc);
+
+create table public.provider_budget_settings (
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null check (provider in ('serper','nvidia')),
+  budget_units integer check (budget_units is null or budget_units > 0),
+  reset_at timestamptz,
+  updated_at timestamptz not null default now(),
+  primary key (workspace_id, owner_id, provider)
+);
+
+alter table public.provider_usage_events enable row level security;
+alter table public.provider_budget_settings enable row level security;
+revoke all on public.provider_usage_events, public.provider_budget_settings from public, anon, authenticated;
+grant select on public.provider_usage_events to authenticated;
+grant select, insert, update, delete on public.provider_budget_settings to authenticated;
+grant all on public.provider_usage_events, public.provider_budget_settings to service_role;
+
+create policy provider_usage_member_select on public.provider_usage_events for select to authenticated
+using (owner_id = auth.uid() and (workspace_id is null or exists (select 1 from public.workspace_members m where m.workspace_id = provider_usage_events.workspace_id and m.user_id = auth.uid())));
+
+create policy provider_budget_owner_all on public.provider_budget_settings for all to authenticated
+using (owner_id = auth.uid() and exists (select 1 from public.workspace_members m where m.workspace_id = provider_budget_settings.workspace_id and m.user_id = auth.uid()))
+with check (owner_id = auth.uid() and exists (select 1 from public.workspace_members m where m.workspace_id = provider_budget_settings.workspace_id and m.user_id = auth.uid()));

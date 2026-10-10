@@ -1,0 +1,32 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import { rateLimitFromHeaders, recordProviderUsage } from '../supabase/functions/_shared/providerTelemetry';
+
+const migration = readFileSync(new URL('../supabase/migrations/20261011120000_email_delivery_operations.sql', import.meta.url), 'utf8');
+const statusSource = readFileSync(new URL('../supabase/functions/provider-status/index.ts', import.meta.url), 'utf8');
+const queueSource = readFileSync(new URL('../supabase/functions/process-email-queue/index.ts', import.meta.url), 'utf8');
+const quoteSource = readFileSync(new URL('../supabase/functions/parse-quote/index.ts', import.meta.url), 'utf8');
+
+describe('provider telemetry', () => {
+  it('parses provider rate windows and treats missing values as unknown', () => {
+    expect(rateLimitFromHeaders(new Headers({ 'x-sib-ratelimit-limit': '100', 'x-sib-ratelimit-remaining': '12', 'x-sib-ratelimit-reset': '30' })))
+      .toEqual({ limit: 100, remaining: 12, resetSeconds: 30 });
+    expect(rateLimitFromHeaders(new Headers())).toBeNull();
+  });
+
+  it('never throws when telemetry persistence fails', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: new Error('metrics unavailable') });
+    const admin = { from: vi.fn(() => ({ insert })) } as never;
+    await expect(recordProviderUsage(admin, { ownerId: 'owner', workspaceId: 'workspace', provider: 'brevo', operation: 'email_send', units: 1, succeeded: true })).resolves.toBeUndefined();
+  });
+
+  it('defines workspace RLS, budgets, and explicit service-role scoping', () => {
+    expect(migration).toMatch(/create table public\.provider_usage_events/i);
+    expect(migration).toMatch(/create table public\.provider_budget_settings/i);
+    expect(migration).toMatch(/workspace_members[\s\S]+auth\.uid\(\)/i);
+    expect(statusSource).toMatch(/\.eq\('workspace_id', workspaceId\)/);
+    expect(statusSource).toMatch(/\.eq\('owner_id', userId\)/);
+    expect(queueSource).toMatch(/recordProviderUsage[\s\S]+workspaceId: row\.workspace_id[\s\S]+ownerId/i);
+    expect(quoteSource).toMatch(/recordProviderUsage[\s\S]+workspaceId: null[\s\S]+provider: 'nvidia'/i);
+  });
+});

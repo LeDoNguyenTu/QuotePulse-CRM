@@ -5,6 +5,7 @@ import { refreshAccessToken } from '../_shared/ms.ts';
 import { safeErrorMessage } from '../_shared/errors.ts';
 import { sendBrevo, sendMicrosoftGraph, type EmailProvider } from '../_shared/emailProviders.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { recordProviderUsage } from '../_shared/providerTelemetry.ts';
 
 const BATCH_SIZE = 20;
 const MAX_ATTEMPTS = 5;
@@ -78,6 +79,16 @@ Deno.serve(async (request) => {
       const providerResult = await sendWithProvider(provider, settings, tokenByOwner, ownerId, {
         toEmail: row.to_email, subject, bodyText, bodyHtml, senderEmail: settings.brevo_sender_email,
         senderName: settings.brevo_sender_name,
+      });
+      if (row.workspace_id) await recordProviderUsage(admin, {
+        workspaceId: row.workspace_id as string,
+        ownerId,
+        provider,
+        operation: 'email_send',
+        units: 1,
+        succeeded: providerResult.ok,
+        errorCategory: providerResult.errorCode ?? null,
+        rateLimit: providerResult.rateLimit ?? null,
       });
       if (providerResult.ok) {
         await finish(admin, row, { status: 'sent', subject, body_rendered: bodyText, body_html_rendered: bodyHtml, sent_at: new Date().toISOString(),

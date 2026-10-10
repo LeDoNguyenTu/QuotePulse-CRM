@@ -6,6 +6,7 @@ import { safeErrorMessage } from '../_shared/errors.ts';
 import { sendBrevo, sendMicrosoftGraph, type EmailProvider } from '../_shared/emailProviders.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { recordProviderUsage } from '../_shared/providerTelemetry.ts';
+import { appendHtmlUnsubscribe } from '../_shared/emailContent.ts';
 
 const BATCH_SIZE = 20;
 const MAX_ATTEMPTS = 5;
@@ -27,12 +28,6 @@ function retryAt(attempt: number, retryAfterSeconds?: number) {
 
 function renderTemplate(text: string, vars: Record<string, string | null>) {
   return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) => vars[key] || `{{${key}}}`);
-}
-
-function appendHtmlUnsubscribe(html: string, unsubscribeUrl: string | null) {
-  if (!unsubscribeUrl) return html;
-  const safeUrl = unsubscribeUrl.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-  return `${html}<p style="font-size:12px;color:#64748b">To stop receiving these messages, <a href="${safeUrl}">unsubscribe</a>.</p>`;
 }
 
 Deno.serve(async (request) => {

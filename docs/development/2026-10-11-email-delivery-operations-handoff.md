@@ -13,6 +13,8 @@ QuotePulse now keeps an auditable email trail from both campaigns and contacts, 
 - Brevo health is fetched server-side; provider credentials and raw secret-bearing responses never reach the browser.
 - Telemetry writes are best effort. Email, KYC, and OCR results remain authoritative if telemetry storage is unavailable.
 - HTML email content is displayed in sandboxed frames.
+- Automatic retries reuse the stored payload without duplicating the QuotePulse unsubscribe footer.
+- Brevo status cache entries are keyed by a one-way credential fingerprint; replacing an API key forces a fresh provider check without storing the credential.
 
 ## User experience
 
@@ -33,12 +35,12 @@ QuotePulse now keeps an auditable email trail from both campaigns and contacts, 
 
 ## Verification
 
-- Full Vitest: 190 files passed, 1 skipped; 686 tests passed, 9 skipped.
+- Full Vitest: 192 files passed, 1 skipped; 689 tests passed, 9 skipped.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - `npm run build`: passed with existing non-blocking Vite advisories only.
 - GitNexus pre-edit impact checks were low for Task 5 symbols. Worktree change detection covered the expected workspace navigation/rendering, campaign submit, and settings flows.
-- Pull-request CI starts a local Supabase stack and executes the retry/history SQL transaction before production deployment is eligible.
+- Pull-request CI starts a local Supabase stack, executes the retry/history and cross-user isolation transaction, and runs two simultaneous retry sessions before production deployment is eligible.
 
 Detailed reproducible acceptance steps are in `docs/testing/2026-10-11-email-delivery-operations-acceptance.md`.
 
@@ -51,4 +53,4 @@ Detailed reproducible acceptance steps are in `docs/testing/2026-10-11-email-del
 
 ## Continuation point
 
-The implementation is ready for independent review and release. After merge, update the acceptance record with the exact merge SHA, GitHub Actions/Supabase result, Vercel deployment ID/URL, and authenticated production observations.
+The implementation is ready for final independent review and release. After merge, update the acceptance record with the exact merge SHA, GitHub Actions/Supabase result, Vercel deployment ID/URL, and authenticated production observations.

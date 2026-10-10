@@ -44,6 +44,8 @@ describe('provider telemetry', () => {
     expect(statusSource).toMatch(/oldestQueued/i);
     expect(statusSource).toMatch(/recentFailures/i);
     expect(statusSource).toMatch(/provider_status_cache/i);
+    expect(statusSource).toMatch(/credentialFingerprint/i);
+    expect(statusSource).toMatch(/credential_fingerprint/);
     expect(statusSource).toMatch(/loadUsageEvents/i);
     expect(statusSource).not.toMatch(/\.limit\(1000\)/);
     expect(statusSource).toMatch(/eq\('created_by', userId\)\.eq\('status', 'sent'\)/);
@@ -55,5 +57,6 @@ describe('provider telemetry', () => {
     expect(queueSource).toMatch(/attempted_at/);
     expect(queueSource).toMatch(/failed_at/);
     expect(queueSource).toMatch(/blocked_at/);
+    expect(queueSource).toMatch(/from '\.\.\/_shared\/emailContent\.ts'/);
   });
 });

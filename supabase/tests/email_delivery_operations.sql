@@ -8,6 +8,11 @@ insert into auth.users (
   '00000000-0000-0000-0000-000000000000',
   'authenticated', 'authenticated', 'email-operations@example.test', '',
   '{}'::jsonb, '{}'::jsonb, now(), now()
+), (
+  'ea000000-0000-0000-0000-000000000002',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated', 'authenticated', 'email-operations-other@example.test', '',
+  '{}'::jsonb, '{}'::jsonb, now(), now()
 );
 
 set local role service_role;
@@ -44,6 +49,43 @@ begin
     workspace_id, 'ea100000-0000-0000-0000-000000000001', 'person@example.test', 'Test person',
     'failed', 'ea200000-0000-0000-0000-000000000001', 'ea000000-0000-0000-0000-000000000001'
   );
+end;
+$$;
+
+reset role;
+select set_config('request.jwt.claim.sub', 'ea000000-0000-0000-0000-000000000002', true);
+set local role authenticated;
+
+do $$
+begin
+  perform public.crm_retry_failed_email_send(
+    current_setting('test.email_operations_workspace')::uuid,
+    'ea200000-0000-0000-0000-000000000001'
+  );
+  raise exception 'non-member retry unexpectedly succeeded';
+exception when sqlstate '42501' then null;
+end;
+$$;
+
+reset role;
+set local role service_role;
+insert into public.workspace_members (workspace_id, user_id, role)
+values (
+  current_setting('test.email_operations_workspace')::uuid,
+  'ea000000-0000-0000-0000-000000000002',
+  'member'
+);
+reset role;
+set local role authenticated;
+
+do $$
+begin
+  perform public.crm_retry_failed_email_send(
+    current_setting('test.email_operations_workspace')::uuid,
+    'ea200000-0000-0000-0000-000000000001'
+  );
+  raise exception 'non-owner retry unexpectedly succeeded';
+exception when sqlstate '42501' then null;
 end;
 $$;
 

@@ -9,14 +9,14 @@ The Legacy workspace archive and storage experience is intentionally unchanged.
 ## Local acceptance evidence
 
 - Branch: `feat/email-delivery-operations`
-- Implementation commits: `38a2610`, `6091596`, `574d125`, `e2276ed`, `235022d`
-- Full Vitest suite: 190 files passed, 1 fixture-dependent file skipped; 686 tests passed, 9 skipped.
+- Implementation commits: `38a2610`, `6091596`, `574d125`, `e2276ed`, `235022d`, `1eadf17`
+- Full Vitest suite: 192 files passed, 1 fixture-dependent file skipped; 689 tests passed, 9 skipped.
 - TypeScript: `npm run typecheck` passed.
 - ESLint: `npm run lint` passed.
 - Production bundle: `npm run build` passed. Vite reported only the existing dependency externalisation and large-chunk advisories.
 - Focused Operations/navigation/settings/campaign suite: 34 tests passed.
 - Provider workflow contract: verifies that `provider-status` is deployed by the production Supabase workflow.
-- Transactional SQL contract: `supabase/tests/email_delivery_operations.sql` is executed against a local Supabase stack in pull-request CI before merge; local execution requires Docker/Podman and is therefore delegated to the Linux runner.
+- Transactional SQL contracts: pull-request CI executes the retry/history transaction plus a two-session retry race against a local Supabase stack before merge. The transaction checks non-member and non-owner denial; the race proves concurrent clicks create exactly one child attempt. Local execution requires Docker/Podman and is therefore delegated to the Linux runner.
 
 ## Behaviour accepted by automated tests
 
@@ -29,6 +29,7 @@ The Legacy workspace archive and storage experience is intentionally unchanged.
 7. Brevo account and rate-window values are labelled provider reported; Microsoft, Serper, and NVIDIA values are labelled CRM tracked. Missing data is Unknown, never zero.
 8. A fresh definitive unhealthy Brevo check blocks campaign queueing with remediation. Stale or unavailable telemetry does not create a false block.
 9. Sales CRM storage capacity is rendered in Operations and removed from the Sales dashboard only. Legacy dashboard storage remains unchanged.
+10. Retrying stored HTML does not append a second unsubscribe footer, and provider-health cache entries are bound to a one-way credential fingerprint so replacing a Brevo key cannot reuse the old key's result.
 
 ## Production acceptance checklist
 

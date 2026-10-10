@@ -3,6 +3,7 @@ import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseA
 import { classifyBrevoError } from '../_shared/emailProviders.ts';
 import { rateLimitFromHeaders, recordProviderUsage } from '../_shared/providerTelemetry.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { credentialFingerprint, isMatchingFreshCache } from '../_shared/providerStatus.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACTIVE_DELIVERY = ['queued', 'scheduled', 'sending', 'retrying'];
@@ -71,7 +72,7 @@ Deno.serve(async (request) => {
       admin.from('email_sends').select('created_at').eq('workspace_id', workspaceId).eq('created_by', userId).in('status', ACTIVE_DELIVERY).order('created_at', { ascending: true }).limit(1).maybeSingle(),
       admin.from('email_sends').select('id,campaign_id,to_email,status,last_error_code,error_message,failed_at,blocked_at,updated_at').eq('workspace_id', workspaceId).eq('created_by', userId).in('status', FAILED_DELIVERY).order('updated_at', { ascending: false }).limit(10),
       admin.from('provider_budget_settings').select('provider,budget_units,reset_at').eq('workspace_id', workspaceId).eq('owner_id', userId),
-      admin.from('provider_status_cache').select('status_payload,checked_at,expires_at').eq('workspace_id', workspaceId).eq('owner_id', userId).eq('provider', 'brevo').maybeSingle(),
+      admin.from('provider_status_cache').select('status_payload,checked_at,expires_at,credential_fingerprint').eq('workspace_id', workspaceId).eq('owner_id', userId).eq('provider', 'brevo').maybeSingle(),
     ]);
     if (sendError) throw sendError;
     if (queuedError) throw queuedError;
@@ -116,7 +117,8 @@ Deno.serve(async (request) => {
 
     let checkedAt = new Date().toISOString();
     let brevo: BrevoCard = { source: 'provider_reported', status: settings?.brevo_api_key ? 'unknown' : 'not_configured', credits: [], rateLimit: null };
-    const cacheIsFresh = cachedBrevo && new Date(cachedBrevo.expires_at).getTime() > Date.now();
+    const brevoFingerprint = settings?.brevo_api_key ? await credentialFingerprint(settings.brevo_api_key) : null;
+    const cacheIsFresh = brevoFingerprint ? isMatchingFreshCache(cachedBrevo, brevoFingerprint) : false;
     if (settings?.brevo_api_key && cacheIsFresh) {
       brevo = cachedBrevo.status_payload as BrevoCard;
       checkedAt = cachedBrevo.checked_at;
@@ -139,7 +141,7 @@ Deno.serve(async (request) => {
         }
         checkedAt = new Date().toISOString();
         await admin.from('provider_status_cache').upsert({
-          workspace_id: workspaceId, owner_id: userId, provider: 'brevo', status_payload: brevo,
+          workspace_id: workspaceId, owner_id: userId, provider: 'brevo', credential_fingerprint: brevoFingerprint, status_payload: brevo,
           checked_at: checkedAt, expires_at: new Date(Date.now() + BREVO_CACHE_MS).toISOString(),
         }, { onConflict: 'workspace_id,owner_id,provider' });
         await recordProviderUsage(admin, { ownerId: userId, workspaceId, provider: 'brevo', operation: 'account_check', units: 0, succeeded: response.ok, errorCategory: response.ok ? null : String(response.status), rateLimit });

@@ -175,3 +175,15 @@ jobs:
         run: supabase start
       - name: Verify email delivery retry and history invariants
         run: supabase db query --local --file supabase/tests/email_delivery_operations.sql
+      - name: Verify concurrent retry serialization
+        run: |
+          set -euo pipefail
+          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_setup.sql
+          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_a.sql > /tmp/retry-a.log &
+          retry_a_pid=$!
+          sleep 1
+          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_b.sql > /tmp/retry-b.log
+          wait "$retry_a_pid"
+          cat /tmp/retry-a.log
+          cat /tmp/retry-b.log
+          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_verify.sql

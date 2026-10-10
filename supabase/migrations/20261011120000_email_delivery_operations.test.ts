@@ -54,4 +54,8 @@ describe('email delivery operations migration', () => {
     expect(sql).toMatch(/add column if not exists blocked_at timestamptz/i);
     expect(sql).toMatch(/send\.attempted_at/i);
   });
+
+  it('binds cached provider health to a non-reversible credential fingerprint', () => {
+    expect(sql).toMatch(/credential_fingerprint text not null/i);
+  });
 });

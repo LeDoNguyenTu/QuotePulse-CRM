@@ -231,6 +231,7 @@ create table public.provider_status_cache (
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
   owner_id uuid not null references auth.users(id) on delete cascade,
   provider text not null check (provider = 'brevo'),
+  credential_fingerprint text not null,
   status_payload jsonb not null,
   checked_at timestamptz not null,
   expires_at timestamptz not null,

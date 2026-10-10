@@ -181,16 +181,23 @@ jobs:
           supabase start
           rm supabase/migrations/20260828154833_ci_storage_archive_cron_fixture.sql
       - name: Verify email delivery retry and history invariants
-        run: supabase db query --local --file supabase/tests/email_delivery_operations.sql
+        run: |
+          docker exec -i supabase_db_sales-outreach-tool \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/tests/email_delivery_operations.sql
       - name: Verify concurrent retry serialization
         run: |
           set -euo pipefail
-          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_setup.sql
-          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_a.sql > /tmp/retry-a.log &
+          run_sql() {
+            docker exec -i supabase_db_sales-outreach-tool \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+          }
+          run_sql < supabase/tests/email_delivery_retry_concurrency_setup.sql
+          run_sql < supabase/tests/email_delivery_retry_concurrency_a.sql > /tmp/retry-a.log &
           retry_a_pid=$!
           sleep 1
-          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_b.sql > /tmp/retry-b.log
+          run_sql < supabase/tests/email_delivery_retry_concurrency_b.sql > /tmp/retry-b.log
           wait "$retry_a_pid"
           cat /tmp/retry-a.log
           cat /tmp/retry-b.log
-          supabase db query --local --file supabase/tests/email_delivery_retry_concurrency_verify.sql
+          run_sql < supabase/tests/email_delivery_retry_concurrency_verify.sql

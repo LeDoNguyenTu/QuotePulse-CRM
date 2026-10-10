@@ -1,6 +1,7 @@
 export interface PreparedEmailHtml {
   html: string;
   text: string;
+  subject: string;
   imageReferences: string[];
   unresolvedImages: string[];
 }
@@ -14,6 +15,35 @@ function basename(value: string): string {
   return clean.slice(clean.lastIndexOf('/') + 1).toLocaleLowerCase();
 }
 
+export function sanitizeImportedSubject(value: string): string {
+  return decodeEntities(value)
+    .replace(/(?:\uFFFD|ï¿½)+/g, ' ')
+    .replace(/\?{2,}/g, ' ')
+    .replace(/^\s*subject\s*:\s*/i, '')
+    .replace(/[\u00a0\s]+/g, ' ')
+    .trim();
+}
+
+function stripOutlookHeaderParagraphs(source: string): { html: string; subject: string } {
+  let subject = '';
+  let inLeadingHeaders = true;
+  let removeFollowingSpacer = false;
+  const html = source.replace(/<p\b[^>]*>[\s\S]*?<\/p>/gi, (paragraph) => {
+    const text = htmlToPlainText(paragraph).trim();
+    const header = inLeadingHeaders ? text.match(/^(sent|subject)\s*:\s*([\s\S]*)$/i) : null;
+    if (header) {
+      if (header[1].toLowerCase() === 'subject' && !subject) subject = sanitizeImportedSubject(header[2]);
+      removeFollowingSpacer = true;
+      return '';
+    }
+    if (removeFollowingSpacer && !text) return '';
+    if (text) inLeadingHeaders = false;
+    removeFollowingSpacer = false;
+    return paragraph;
+  });
+  return { html, subject };
+}
+
 export function prepareImportedEmailHtml(
   source: string,
   assetUrls: Record<string, string>,
@@ -21,7 +51,8 @@ export function prepareImportedEmailHtml(
   const byName = new Map(Object.entries(assetUrls).map(([name, url]) => [basename(name), url]));
   const imageReferences: string[] = [];
   const unresolvedImages: string[] = [];
-  let html = source
+  const outlookHeaders = stripOutlookHeaderParagraphs(source);
+  let html = outlookHeaders.html
     .replace(/<\s*(script|iframe|object|embed|form|svg|math)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
     .replace(/<\s*(script|iframe|object|embed|form|input|button|textarea|select|option|base|meta|link)\b[^>]*\/?\s*>/gi, '')
     .replace(/\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
@@ -47,7 +78,7 @@ export function prepareImportedEmailHtml(
       return /^(?:javascript|vbscript|data|file):/i.test(value.trim()) ? '' : ` ${name}="${escapeAttribute(value)}"`;
     });
 
-  return { html, text: htmlToPlainText(html), imageReferences, unresolvedImages };
+  return { html, text: htmlToPlainText(html), subject: outlookHeaders.subject, imageReferences, unresolvedImages };
 }
 
 export function htmlToPlainText(html: string): string {

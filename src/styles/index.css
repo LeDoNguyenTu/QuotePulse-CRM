@@ -918,3 +918,22 @@ body {
 .crm-field-source { display: block; margin-top: 0.2rem; color: #64748b; font-size: 0.72rem; font-weight: 600; }
 .company-status-cell { display: grid; justify-items: start; gap: 0.15rem; }
 .company-status-review { display: inline-flex; margin-top: 0.2rem; border-radius: 999px; background: #fee2e2; padding: 0.18rem 0.48rem; color: #991b1b; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.025em; text-transform: uppercase; }
+@media (min-width: 768px) {
+  .template-editor-modal {
+    max-width: min(96vw, 1500px);
+  }
+
+  .template-editor-layout {
+    display: grid;
+    grid-template-columns: minmax(22rem, 2fr) minmax(42rem, 3fr);
+    gap: 1.25rem;
+  }
+}
+
+.template-editor-layout {
+  align-items: start;
+}
+
+.template-editor-preview iframe {
+  min-height: min(70dvh, 760px);
+}

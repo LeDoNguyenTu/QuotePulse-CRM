@@ -163,6 +163,61 @@ export interface CrmEmailCampaign extends CrmAuditFields {
   failed_count: number;
 }
 
+export interface CrmCampaignRecipientReport {
+  id: string;
+  workspace_id: string;
+  campaign_id: string;
+  contact_id: string | null;
+  company_id: string | null;
+  email_normalized: string;
+  contact_name: string | null;
+  company_name: string | null;
+  industry: string | null;
+  status: 'queued' | 'scheduled' | 'sending' | 'retrying' | 'sent' | 'failed' | 'blocked' | 'deferred';
+  blocked_reason: string | null;
+  email_send_id: string | null;
+  campaign_name: string;
+  subject: string | null;
+  body_rendered: string | null;
+  body_html_rendered: string | null;
+  provider: 'microsoft_graph' | 'brevo' | null;
+  provider_message_id: string | null;
+  attempt_count: number | null;
+  scheduled_at: string | null;
+  next_attempt_at: string | null;
+  sent_at: string | null;
+  error_message: string | null;
+  last_error_code: string | null;
+  retry_of_id: string | null;
+  send_created_at: string | null;
+  send_updated_at: string | null;
+}
+
+export interface CrmEmailSendHistory {
+  id: string;
+  workspace_id: string;
+  campaign_id: string | null;
+  contact_id: string;
+  company_id: string | null;
+  to_email: string;
+  subject: string | null;
+  body_rendered: string | null;
+  body_html_rendered: string | null;
+  status: CrmCampaignRecipientReport['status'];
+  provider: 'microsoft_graph' | 'brevo';
+  provider_message_id: string | null;
+  attempt_count: number;
+  scheduled_at: string | null;
+  next_attempt_at: string | null;
+  sent_at: string | null;
+  error_message: string | null;
+  last_error_code: string | null;
+  retry_of_id: string | null;
+  created_at: string;
+  updated_at: string;
+  campaign_name: string | null;
+}
+
 export type CrmCompanyInput = Pick<
   CrmCompany,
   | 'name'

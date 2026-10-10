@@ -92,5 +92,5 @@
 
 - [x] Run the full Vitest suite, typecheck, lint, build, migration checks, and GitNexus change detection.
 - [x] Perform a whole-branch review and address Critical/Important findings with RED-GREEN tests.
-- [ ] Commit, push, merge the PR, and wait for exact-SHA Supabase and Vercel success.
+- [x] Commit, push, merge the PR, and wait for exact-SHA Supabase and Vercel success.
 - [ ] In production, verify one company expands to its own contacts and deals, unrelated rows never appear, read-only warnings remain, and leave Sales Contacts open.

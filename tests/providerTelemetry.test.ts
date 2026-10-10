@@ -6,6 +6,7 @@ const migration = readFileSync(new URL('../supabase/migrations/20261011120000_em
 const statusSource = readFileSync(new URL('../supabase/functions/provider-status/index.ts', import.meta.url), 'utf8');
 const queueSource = readFileSync(new URL('../supabase/functions/process-email-queue/index.ts', import.meta.url), 'utf8');
 const quoteSource = readFileSync(new URL('../supabase/functions/parse-quote/index.ts', import.meta.url), 'utf8');
+const deployWorkflow = readFileSync(new URL('../.github/workflows/supabase.yml', import.meta.url), 'utf8');
 
 describe('provider telemetry', () => {
   it('parses provider rate windows and treats missing values as unknown', () => {
@@ -28,5 +29,9 @@ describe('provider telemetry', () => {
     expect(statusSource).toMatch(/\.eq\('owner_id', userId\)/);
     expect(queueSource).toMatch(/recordProviderUsage[\s\S]+workspaceId: row\.workspace_id[\s\S]+ownerId/i);
     expect(quoteSource).toMatch(/recordProviderUsage[\s\S]+workspaceId: null[\s\S]+provider: 'nvidia'/i);
+  });
+
+  it('deploys the provider status function through the production workflow', () => {
+    expect(deployWorkflow).toMatch(/for fn in[^\n]*\bprovider-status\b/);
   });
 });

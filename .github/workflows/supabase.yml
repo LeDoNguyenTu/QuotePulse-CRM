@@ -95,7 +95,7 @@ jobs:
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc enrich-crm-company discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx export-crm-records uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status storage-maintenance workspace-archive crm-workbook-template crm-source-rows crm-mailbox-archive crm-recovery; do
+          for fn in hubspot-ingest enrich-kyc enrich-crm-company discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue provider-status unsubscribe export-xlsx export-crm-records uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status storage-maintenance workspace-archive crm-workbook-template crm-source-rows crm-mailbox-archive crm-recovery; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api
             echo "::endgroup::"

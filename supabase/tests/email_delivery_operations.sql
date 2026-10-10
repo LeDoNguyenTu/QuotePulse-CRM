@@ -15,8 +15,6 @@ insert into auth.users (
   '{}'::jsonb, '{}'::jsonb, now(), now()
 );
 
-set local role service_role;
-
 do $$
 declare
   workspace_id uuid;
@@ -68,7 +66,6 @@ end;
 $$;
 
 reset role;
-set local role service_role;
 insert into public.workspace_members (workspace_id, user_id, role)
 values (
   current_setting('test.email_operations_workspace')::uuid,
@@ -117,7 +114,6 @@ end;
 $$;
 
 reset role;
-set local role service_role;
 update public.email_sends set status = 'failed', failed_at = now()
 where id = current_setting('test.retry_b')::uuid;
 reset role;
@@ -133,7 +129,6 @@ select set_config(
 );
 
 reset role;
-set local role service_role;
 update public.email_sends set status = 'sent', sent_at = now()
 where id = current_setting('test.retry_c')::uuid;
 reset role;

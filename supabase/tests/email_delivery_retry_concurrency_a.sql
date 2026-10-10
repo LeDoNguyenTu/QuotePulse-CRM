@@ -1,5 +1,4 @@
 begin;
-set local role service_role;
 
 select 1
 from public.email_sends
@@ -8,7 +7,6 @@ for update;
 
 select pg_sleep(3);
 
-reset role;
 select set_config('request.jwt.claim.sub', 'eb000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 

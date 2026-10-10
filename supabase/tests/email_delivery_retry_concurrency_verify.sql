@@ -1,5 +1,3 @@
-set role service_role;
-
 do $$
 declare
   child_count integer;
@@ -27,5 +25,3 @@ $$;
 delete from public.email_sends where created_by = 'eb000000-0000-0000-0000-000000000001';
 delete from public.workspaces where created_by = 'eb000000-0000-0000-0000-000000000001';
 delete from auth.users where id = 'eb000000-0000-0000-0000-000000000001';
-
-reset role;

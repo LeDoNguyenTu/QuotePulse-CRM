@@ -1,6 +1,7 @@
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId } from '../_shared/supabaseAdmin.ts';
 import { classifyIndustry } from '../_shared/industry.ts';
+import { recordProviderUsage } from '../_shared/providerTelemetry.ts';
 
 export const MAX_COMPANIES = 25;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -104,6 +105,7 @@ Deno.serve(async (req) => {
     for (const company of companies) {
       try {
         const publicData = await searchCompany(company.name);
+        if (Deno.env.get('SEARCH_API_KEY')) await recordProviderUsage(admin, { ownerId: userId, workspaceId, provider: 'serper', operation: 'company_enrichment', units: 2, succeeded: true });
         const classifiedIndustry = publicData.industry ? null : classifyIndustry(company.name);
         const patch = buildBlankCompanyPatch(company, {
           ...publicData,
@@ -118,6 +120,7 @@ Deno.serve(async (req) => {
         }
         results.push({ company_id: company.id, updated_fields: updatedFields });
       } catch (cause) {
+        if (Deno.env.get('SEARCH_API_KEY')) await recordProviderUsage(admin, { ownerId: userId, workspaceId, provider: 'serper', operation: 'company_enrichment', units: 2, succeeded: false, errorCategory: 'provider_error' });
         errors.push({ company_id: company.id, error: cause instanceof Error ? cause.message : String(cause) });
       }
     }

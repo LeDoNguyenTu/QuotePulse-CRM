@@ -18,7 +18,7 @@ const legacyFallbackNavigation = [
 
 const SALES_NAV_GROUPS = [
   { label: 'Outreach', items: ['Templates', 'Email Campaigns'] },
-  { label: 'Tools', items: ['Imports', 'PST Extractor', 'Recycle bin', 'Settings'] },
+  { label: 'Tools', items: ['Imports', 'PST Extractor', 'Recycle bin', 'Operations', 'Settings'] },
 ] as const;
 
 function isNavigationItemActive(item: WorkspaceNavigationItem, pathname: string) {

@@ -6,9 +6,10 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   wide?: boolean;
+  panelClassName?: string;
 }
 
-export function Modal({ open, onClose, title, children, wide }: ModalProps) {
+export function Modal({ open, onClose, title, children, wide, panelClassName = '' }: ModalProps) {
   if (!open) return null;
   return (
     <div
@@ -16,7 +17,7 @@ export function Modal({ open, onClose, title, children, wide }: ModalProps) {
       onClick={onClose}
     >
       <div
-        className={`card w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} p-5`}
+        className={`card w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} p-5 ${panelClassName}`.trim()}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">

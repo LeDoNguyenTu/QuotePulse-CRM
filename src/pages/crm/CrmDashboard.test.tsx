@@ -29,15 +29,12 @@ vi.mock('../../hooks/useStorageStatus', () => ({
 }));
 
 describe('Sales CRM dashboard', () => {
-  it('shows database and archive capacity percentages beside the CRM modules', () => {
+  it('keeps the Sales dashboard focused on CRM modules after storage moves to Operations', () => {
     const html = renderToStaticMarkup(<MemoryRouter><CrmDashboard /></MemoryRouter>);
 
-    expect(html).toContain('Storage capacity');
-    expect(html).toContain('Supabase database');
-    expect(html).toContain('50%');
-    expect(html).toContain('Cloudflare R2');
-    expect(html).toContain('10%');
-    expect(html).toContain('Latest recorded archive work failed');
-    expect(html).toContain('Last recorded work');
+    expect(html).not.toContain('Storage capacity');
+    expect(html).toContain('Companies');
+    expect(html).toContain('Contacts');
+    expect(html).toContain('Deals');
   });
 });

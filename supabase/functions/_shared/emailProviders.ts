@@ -18,7 +18,10 @@ export interface ProviderResult {
   retryAfterSeconds?: number;
   errorCode?: string;
   errorMessage?: string;
+  rateLimit?: { limit: number; remaining: number; resetSeconds: number } | null;
 }
+
+import { rateLimitFromHeaders } from './providerTelemetry.ts';
 
 function retryAfter(response: Response) {
   const raw = response.headers.get('retry-after');
@@ -26,7 +29,14 @@ function retryAfter(response: Response) {
   return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 3_600) : undefined;
 }
 
-function failure(response: Response, body: string): ProviderResult {
+function safeProviderMessage(provider: 'Microsoft Graph' | 'Brevo', status: number): string {
+  if (status === 401 || status === 403) return `${provider} rejected the account credentials or permissions. Reconnect or review the provider settings.`;
+  if (status === 429) return `${provider} rate-limited this request. Delivery will retry after the provider cooldown.`;
+  if (status >= 500) return `${provider} is temporarily unavailable. Delivery will retry automatically.`;
+  return `${provider} rejected the request. Check the sender and message settings, then try again.`;
+}
+
+function failure(response: Response, _body: string): ProviderResult {
   const status = response.status;
   return {
     ok: false,
@@ -35,7 +45,28 @@ function failure(response: Response, body: string): ProviderResult {
     ambiguous: false,
     retryAfterSeconds: retryAfter(response),
     errorCode: String(status),
-    errorMessage: body.slice(0, 1_000),
+    errorMessage: safeProviderMessage('Microsoft Graph', status),
+  };
+}
+
+export function classifyBrevoError(status: number, body: string): ProviderResult {
+  if (status === 401 && /(?:unrecognised|unrecognized)[\s-]*ip/i.test(body)) {
+    return {
+      ok: false,
+      providerMessageId: null,
+      retryable: false,
+      ambiguous: false,
+      errorCode: 'brevo_ip_restricted',
+      errorMessage: 'Brevo blocked this sending server IP. Review the API key IP restrictions in Brevo, then retry the failed send.',
+    };
+  }
+  return {
+    ok: false,
+    providerMessageId: null,
+    retryable: status === 429 || status >= 500,
+    ambiguous: false,
+    errorCode: String(status),
+    errorMessage: safeProviderMessage('Brevo', status),
   };
 }
 
@@ -94,9 +125,10 @@ export async function sendBrevo(apiKey: string, input: ProviderEmail): Promise<P
       }),
     });
     const body = await response.text();
-    if (!response.ok) return failure(response, body);
+    const rateLimit = rateLimitFromHeaders(response.headers);
+    if (!response.ok) return { ...classifyBrevoError(response.status, body), retryAfterSeconds: retryAfter(response), rateLimit };
     const parsed = JSON.parse(body) as { messageId?: string };
-    return { ok: true, providerMessageId: parsed.messageId ?? null, retryable: false, ambiguous: false };
+    return { ok: true, providerMessageId: parsed.messageId ?? null, retryable: false, ambiguous: false, rateLimit };
   } catch {
     return { ok: false, providerMessageId: null, retryable: false, ambiguous: true, errorMessage: 'The provider response was ambiguous; retry manually to avoid a duplicate send.' };
   }

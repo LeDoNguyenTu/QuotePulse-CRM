@@ -135,6 +135,12 @@ export function CrmSalesSettings() {
     }
   };
 
+  const checkBrevo = () => run('brevo-check', async () => {
+    const status = await functions.providerStatus(workspace.id);
+    if (status.brevo.status === 'unhealthy') throw new Error(status.brevo.message || 'Brevo rejected the connection check.');
+    if (status.brevo.status !== 'healthy') throw new Error('Brevo connection status is unknown. Save a valid API key and try again.');
+  }, 'Brevo connection check passed.');
+
   if (settings.isLoading) return <Spinner label="Loading settings…" />;
 
   return (
@@ -196,6 +202,7 @@ export function CrmSalesSettings() {
                   <input aria-label="Brevo API key" className="input" type="password" autoComplete="off" value={brevoKey} onChange={(event) => { setBrevoKey(event.target.value); if (event.target.value) setClearBrevoKey(false); }} placeholder={data?.brevo_api_key ? 'API key saved — enter a value to replace it' : 'Brevo API key'} />
                   <input aria-label="Verified Brevo sender email" className="input" type="email" value={senderEmail} onChange={(event) => setSenderEmail(event.target.value)} placeholder="Verified sender email" />
                   <input aria-label="Sender display name" className="input" value={senderName} onChange={(event) => setSenderName(event.target.value)} placeholder="Sender display name" />
+                  <button type="button" className="btn-secondary self-start" disabled={busyAction === 'brevo-check' || Boolean(brevoKey.trim()) || clearBrevoKey} onClick={() => void checkBrevo()}>{busyAction === 'brevo-check' ? 'Checking...' : 'Check Brevo connection'}</button>
                   {data?.brevo_api_key ? <label className="crm-check-row"><input type="checkbox" checked={clearBrevoKey} onChange={(event) => { setClearBrevoKey(event.target.checked); if (event.target.checked) setBrevoKey(''); }} /> Remove the saved Brevo API key</label> : null}
                 </div>
               </div>

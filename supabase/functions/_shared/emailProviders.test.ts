@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sendBrevo, sendMicrosoftGraph } from './emailProviders';
+import { classifyBrevoError, sendBrevo, sendMicrosoftGraph } from './emailProviders';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -30,5 +30,28 @@ describe('email provider HTML delivery', () => {
     const payload = JSON.parse(request.body);
     expect(payload.textContent).toBe('Plain fallback');
     expect(payload.htmlContent).toBe('<strong>Hello</strong>');
+  });
+
+  it('captures Brevo rate-limit metadata without exposing the API key', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ messageId: 'brevo-1' }), {
+      status: 201,
+      headers: { 'x-sib-ratelimit-limit': '100', 'x-sib-ratelimit-remaining': '87', 'x-sib-ratelimit-reset': '42' },
+    })));
+    const result = await sendBrevo('secret-key', { toEmail: 'person@example.com', subject: 'Hello', bodyText: 'Body', senderEmail: 'sender@example.com' });
+    expect(result.rateLimit).toEqual({ limit: 100, remaining: 87, resetSeconds: 42 });
+    expect(JSON.stringify(result)).not.toContain('secret-key');
+  });
+
+  it('classifies Brevo unknown-IP responses with actionable wording', () => {
+    const failure = classifyBrevoError(401, 'Brevo detected an unrecognised IP address 2406:da18::1');
+    expect(failure.errorMessage).toContain('blocked this sending server IP');
+    expect(failure.errorCode).toBe('brevo_ip_restricted');
+    expect(failure.retryable).toBe(false);
+  });
+
+  it('does not expose arbitrary provider response bodies to the browser', () => {
+    const failure = classifyBrevoError(400, '{"message":"private provider diagnostic token=secret"}');
+    expect(failure.errorMessage).toBe('Brevo rejected the request. Check the sender and message settings, then try again.');
+    expect(failure.errorMessage).not.toContain('secret');
   });
 });

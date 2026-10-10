@@ -172,7 +172,14 @@ jobs:
         with:
           version: 2.113.0
       - name: Start local Supabase and apply migrations
-        run: supabase start
+        run: |
+          # A historical production migration expects the Vault-backed storage
+          # cron to exist. Fresh local stacks have no Vault secrets, so inject
+          # only that disposable prerequisite at the original migration point.
+          cp supabase/tests/local_storage_archive_cron_fixture.sql \
+            supabase/migrations/20260828154833_ci_storage_archive_cron_fixture.sql
+          supabase start
+          rm supabase/migrations/20260828154833_ci_storage_archive_cron_fixture.sql
       - name: Verify email delivery retry and history invariants
         run: supabase db query --local --file supabase/tests/email_delivery_operations.sql
       - name: Verify concurrent retry serialization

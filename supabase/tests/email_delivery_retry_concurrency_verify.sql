@@ -7,7 +7,7 @@ declare
 begin
   select count(*) into child_count
   from public.email_sends
-  where retry_of = 'eb200000-0000-0000-0000-000000000001';
+  where retry_of_id = 'eb200000-0000-0000-0000-000000000001';
 
   select email_send_id into current_child
   from public.crm_campaign_recipients

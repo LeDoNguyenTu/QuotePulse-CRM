@@ -3,9 +3,8 @@ select set_config('request.jwt.claim.sub', 'eb000000-0000-0000-0000-000000000001
 set local role authenticated;
 
 select 1
-from public.crm_campaign_recipients
-where campaign_id = 'eb100000-0000-0000-0000-000000000001'
-  and email_normalized = 'race@example.test'
+from public.email_sends
+where id = 'eb200000-0000-0000-0000-000000000001'
 for update;
 
 select pg_sleep(3);

@@ -1,5 +1,8 @@
 alter table public.email_sends
-  add column if not exists retry_of_id uuid references public.email_sends(id) on delete set null;
+  add column if not exists retry_of_id uuid references public.email_sends(id) on delete set null,
+  add column if not exists attempted_at timestamptz,
+  add column if not exists failed_at timestamptz,
+  add column if not exists blocked_at timestamptz;
 
 create unique index if not exists email_sends_one_direct_retry_idx
   on public.email_sends(retry_of_id)
@@ -21,7 +24,8 @@ select
   recipient.contact_name,
   recipient.company_name,
   recipient.industry,
-  recipient.status,
+  recipient.status as recipient_status,
+  coalesce(send.status, recipient.status) as status,
   recipient.blocked_reason,
   recipient.email_send_id,
   recipient.created_at,
@@ -36,7 +40,10 @@ select
   send.attempt_count,
   send.scheduled_at,
   send.next_attempt_at,
+  send.attempted_at,
   send.sent_at,
+  send.failed_at,
+  send.blocked_at,
   send.error_message,
   send.last_error_code,
   send.error_details,
@@ -73,18 +80,26 @@ select
   send.attempt_count,
   send.scheduled_at,
   send.next_attempt_at,
+  send.attempted_at,
   send.sent_at,
+  send.failed_at,
+  send.blocked_at,
   send.error_message,
   send.last_error_code,
   send.error_details,
   send.retry_of_id,
   send.created_at,
   send.updated_at,
-  campaign.name as campaign_name
+  campaign.name as campaign_name,
+  coalesce(send.id = recipient.email_send_id, false) as is_current_attempt
 from public.email_sends send
 left join public.crm_email_campaigns campaign
   on campaign.workspace_id = send.workspace_id
  and campaign.id = send.campaign_id
+left join public.crm_campaign_recipients recipient
+  on recipient.workspace_id = send.workspace_id
+ and recipient.campaign_id = send.campaign_id
+ and recipient.email_normalized = lower(btrim(send.to_email))
 where send.crm_contact_id is not null;
 
 revoke all on public.crm_contact_email_history from public, anon;
@@ -102,6 +117,8 @@ declare
   v_user uuid := auth.uid();
   v_source public.email_sends%rowtype;
   v_retry_id uuid;
+  v_retry_status text;
+  v_recipient_email_send_id uuid;
 begin
   if v_user is null then
     raise exception 'authentication required' using errcode = '28000';
@@ -124,35 +141,43 @@ begin
   if v_source.status <> 'failed' then raise exception 'only definitive failed sends can be retried' using errcode = '22023'; end if;
   if v_source.provider_message_id is not null then raise exception 'provider accepted this send; retry could duplicate delivery' using errcode = '22023'; end if;
 
-  select retry.id into v_retry_id
+  select recipient.email_send_id into v_recipient_email_send_id
+  from public.crm_campaign_recipients recipient
+  where recipient.workspace_id = p_workspace_id
+    and recipient.campaign_id = v_source.campaign_id
+    and recipient.email_normalized = lower(btrim(v_source.to_email))
+  for update of recipient;
+
+  if not found then raise exception 'campaign recipient not found' using errcode = 'P0002'; end if;
+
+  select retry.id, retry.status into v_retry_id, v_retry_status
   from public.email_sends retry
   where retry.retry_of_id = p_email_send_id
   order by retry.created_at desc
   limit 1;
 
-  if v_retry_id is null then
-    insert into public.email_sends (
-      workspace_id, campaign_id, crm_contact_id, crm_company_id,
-      company_id, contact_id, template_id, to_email, subject,
-      body_rendered, body_html_rendered, status, provider, cooldown_seconds,
-      scheduled_at, next_attempt_at, created_by, recipient_snapshot, retry_of_id
-    ) values (
-      v_source.workspace_id, v_source.campaign_id, v_source.crm_contact_id, v_source.crm_company_id,
-      v_source.company_id, v_source.contact_id, v_source.template_id, v_source.to_email, v_source.subject,
-      v_source.body_rendered, v_source.body_html_rendered, 'queued', v_source.provider, v_source.cooldown_seconds,
-      now(), now(), v_user, v_source.recipient_snapshot, p_email_send_id
-    )
-    on conflict (retry_of_id) where retry_of_id is not null do nothing
-    returning id into v_retry_id;
-
-    if v_retry_id is null then
-      select retry.id into v_retry_id
-      from public.email_sends retry
-      where retry.retry_of_id = p_email_send_id
-      order by retry.created_at desc
-      limit 1;
+  if v_retry_id is not null then
+    if v_recipient_email_send_id = v_retry_id and v_retry_status in ('queued','scheduled','sending','retrying') then
+      return jsonb_build_object('email_send_id', v_retry_id, 'status', v_retry_status);
     end if;
+    raise exception 'failed send is no longer the current attempt' using errcode = '22023';
   end if;
+
+  if v_recipient_email_send_id <> p_email_send_id then
+    raise exception 'failed send is no longer the current attempt' using errcode = '22023';
+  end if;
+
+  insert into public.email_sends (
+    workspace_id, campaign_id, crm_contact_id, crm_company_id,
+    company_id, contact_id, template_id, to_email, subject,
+    body_rendered, body_html_rendered, status, provider, cooldown_seconds,
+    scheduled_at, next_attempt_at, created_by, recipient_snapshot, retry_of_id
+  ) values (
+    v_source.workspace_id, v_source.campaign_id, v_source.crm_contact_id, v_source.crm_company_id,
+    v_source.company_id, v_source.contact_id, v_source.template_id, v_source.to_email, v_source.subject,
+    v_source.body_rendered, v_source.body_html_rendered, 'queued', v_source.provider, v_source.cooldown_seconds,
+    now(), now(), v_user, v_source.recipient_snapshot, p_email_send_id
+  ) returning id into v_retry_id;
 
   update public.crm_campaign_recipients
   set email_send_id = v_retry_id,
@@ -160,7 +185,8 @@ begin
       blocked_reason = null
   where workspace_id = p_workspace_id
     and campaign_id = v_source.campaign_id
-    and email_normalized = lower(btrim(v_source.to_email));
+    and email_normalized = lower(btrim(v_source.to_email))
+    and email_send_id = p_email_send_id;
 
   update public.crm_email_campaigns
   set status = 'active', updated_at = now(), updated_by = v_user
@@ -201,12 +227,24 @@ create table public.provider_budget_settings (
   primary key (workspace_id, owner_id, provider)
 );
 
+create table public.provider_status_cache (
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  provider text not null check (provider = 'brevo'),
+  status_payload jsonb not null,
+  checked_at timestamptz not null,
+  expires_at timestamptz not null,
+  primary key (workspace_id, owner_id, provider)
+);
+
 alter table public.provider_usage_events enable row level security;
 alter table public.provider_budget_settings enable row level security;
-revoke all on public.provider_usage_events, public.provider_budget_settings from public, anon, authenticated;
+alter table public.provider_status_cache enable row level security;
+revoke all on public.provider_usage_events, public.provider_budget_settings, public.provider_status_cache from public, anon, authenticated;
 grant select on public.provider_usage_events to authenticated;
 grant select, insert, update, delete on public.provider_budget_settings to authenticated;
 grant all on public.provider_usage_events, public.provider_budget_settings to service_role;
+grant all on public.provider_status_cache to service_role;
 
 create policy provider_usage_member_select on public.provider_usage_events for select to authenticated
 using (owner_id = auth.uid() and (workspace_id is null or exists (select 1 from public.workspace_members m where m.workspace_id = provider_usage_events.workspace_id and m.user_id = auth.uid())));

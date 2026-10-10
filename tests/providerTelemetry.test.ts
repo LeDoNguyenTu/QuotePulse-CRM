@@ -7,6 +7,7 @@ const statusSource = readFileSync(new URL('../supabase/functions/provider-status
 const queueSource = readFileSync(new URL('../supabase/functions/process-email-queue/index.ts', import.meta.url), 'utf8');
 const quoteSource = readFileSync(new URL('../supabase/functions/parse-quote/index.ts', import.meta.url), 'utf8');
 const deployWorkflow = readFileSync(new URL('../.github/workflows/supabase.yml', import.meta.url), 'utf8');
+const databaseTest = readFileSync(new URL('../supabase/tests/email_delivery_operations.sql', import.meta.url), 'utf8');
 
 describe('provider telemetry', () => {
   it('parses provider rate windows and treats missing values as unknown', () => {
@@ -33,5 +34,26 @@ describe('provider telemetry', () => {
 
   it('deploys the provider status function through the production workflow', () => {
     expect(deployWorkflow).toMatch(/for fn in[^\n]*\bprovider-status\b/);
+    expect(deployWorkflow).toContain('supabase/tests/email_delivery_operations.sql');
+    expect(databaseTest).toContain('historical attempt states were not preserved');
+    expect(databaseTest).toContain('retrying a non-current historical failure unexpectedly succeeded');
+  });
+
+  it('uses exact delivery counts, owner-global Microsoft usage, paged telemetry, a cache, and recent failures', () => {
+    expect(statusSource).toMatch(/count: 'exact', head: true/);
+    expect(statusSource).toMatch(/oldestQueued/i);
+    expect(statusSource).toMatch(/recentFailures/i);
+    expect(statusSource).toMatch(/provider_status_cache/i);
+    expect(statusSource).toMatch(/loadUsageEvents/i);
+    expect(statusSource).not.toMatch(/\.limit\(1000\)/);
+    expect(statusSource).toMatch(/eq\('created_by', userId\)\.eq\('status', 'sent'\)/);
+    expect(statusSource).not.toMatch(/email_sends'[\s\S]{0,180}eq\('workspace_id', workspaceId\)[\s\S]{0,180}eq\('status', 'sent'\)/);
+  });
+
+  it('stores the exact provider payload and durable attempt timestamps before submission', () => {
+    expect(queueSource).toMatch(/recordAttemptPayload[\s\S]+await sendWithProvider/);
+    expect(queueSource).toMatch(/attempted_at/);
+    expect(queueSource).toMatch(/failed_at/);
+    expect(queueSource).toMatch(/blocked_at/);
   });
 });

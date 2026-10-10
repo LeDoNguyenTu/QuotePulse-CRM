@@ -36,6 +36,22 @@ describe('email delivery operations migration', () => {
 
   it('keeps every campaign send attempt while identifying the current one', () => {
     expect(sql).toMatch(/send\.id = recipient\.email_send_id as is_current_attempt/i);
+    expect(sql).toMatch(/recipient\.status as recipient_status/i);
+    expect(sql).toMatch(/coalesce\(send\.status, recipient\.status\) as status/i);
     expect(sql).toMatch(/send\.campaign_id = recipient\.campaign_id[\s\S]+lower\(btrim\(send\.to_email\)\) = recipient\.email_normalized/i);
+  });
+
+  it('allows idempotency only while the direct retry remains the current active attempt', () => {
+    expect(sql).toMatch(/for update of recipient/i);
+    expect(sql).toMatch(/v_recipient_email_send_id <> p_email_send_id/i);
+    expect(sql).toMatch(/v_recipient_email_send_id = v_retry_id[\s\S]+v_retry_status in \('queued','scheduled','sending','retrying'\)/i);
+    expect(sql).toMatch(/failed send is no longer the current attempt/i);
+  });
+
+  it('adds durable provider-attempt and terminal timestamps', () => {
+    expect(sql).toMatch(/add column if not exists attempted_at timestamptz/i);
+    expect(sql).toMatch(/add column if not exists failed_at timestamptz/i);
+    expect(sql).toMatch(/add column if not exists blocked_at timestamptz/i);
+    expect(sql).toMatch(/send\.attempted_at/i);
   });
 });

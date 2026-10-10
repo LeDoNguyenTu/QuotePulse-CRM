@@ -27,17 +27,18 @@ QuotePulse now keeps an auditable email trail from both campaigns and contacts, 
 
 - Migration: `supabase/migrations/20261011120000_email_delivery_operations.sql`
 - New Edge Function: `provider-status` (`verify_jwt = true`)
-- Updated provider call sites: `process-email-queue`, `enrich-kyc`, and `parse-quote`
+- Updated provider call sites: `process-email-queue`, `enrich-crm-company`, and `parse-quote`
 - Sales route: `/w/:workspaceId/sales/operations`
 - Supabase workflow deploy list includes `provider-status` and applies the migration before function deployment.
 
 ## Verification
 
-- Full Vitest: 189 files passed, 1 skipped; 680 tests passed, 9 skipped.
+- Full Vitest: 190 files passed, 1 skipped; 686 tests passed, 9 skipped.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - `npm run build`: passed with existing non-blocking Vite advisories only.
 - GitNexus pre-edit impact checks were low for Task 5 symbols. Worktree change detection covered the expected workspace navigation/rendering, campaign submit, and settings flows.
+- Pull-request CI starts a local Supabase stack and executes the retry/history SQL transaction before production deployment is eligible.
 
 Detailed reproducible acceptance steps are in `docs/testing/2026-10-11-email-delivery-operations-acceptance.md`.
 

@@ -1033,6 +1033,15 @@ body {
   font-weight: 700;
 }
 
+.crm-task-list .crm-operations-failure {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.crm-operations-failure > div {
+  display: grid;
+  gap: .25rem;
+}
+
 .crm-budget-editor label {
   display: grid;
   gap: .35rem;

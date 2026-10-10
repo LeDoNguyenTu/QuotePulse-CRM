@@ -19,7 +19,20 @@ export interface BrevoStatusCard {
 
 export interface ProviderStatusResult {
   checkedAt: string;
-  delivery: { queued: number; failed: number; oldestQueuedAt: string | null };
+  delivery: {
+    queued: number;
+    failed: number;
+    oldestQueuedAt: string | null;
+    recentFailures: Array<{
+      id: string;
+      campaignId: string | null;
+      campaignName: string | null;
+      toEmail: string;
+      status: 'failed' | 'blocked';
+      summary: string;
+      occurredAt: string;
+    }>;
+  };
   brevo: BrevoStatusCard;
   microsoft: TrackedUsageCard;
   serper: TrackedUsageCard;

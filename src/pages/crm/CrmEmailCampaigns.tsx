@@ -41,7 +41,7 @@ export function CrmEmailCampaigns() {
   const [templateId, setTemplateId] = useState('');
   const [previewRecipientId, setPreviewRecipientId] = useState('');
   const [queuedBaseline, setQueuedBaseline] = useState<string | null>(null);
-  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(() => typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('campaign'));
   const campaignRecipients = useCampaignRecipients(workspace.id, expandedCampaignId);
   const retryFailedEmail = useRetryFailedEmail(workspace.id);
   const visible = api.contacts.data?.rows ?? [];

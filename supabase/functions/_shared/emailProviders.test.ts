@@ -48,4 +48,10 @@ describe('email provider HTML delivery', () => {
     expect(failure.errorCode).toBe('brevo_ip_restricted');
     expect(failure.retryable).toBe(false);
   });
+
+  it('does not expose arbitrary provider response bodies to the browser', () => {
+    const failure = classifyBrevoError(400, '{"message":"private provider diagnostic token=secret"}');
+    expect(failure.errorMessage).toBe('Brevo rejected the request. Check the sender and message settings, then try again.');
+    expect(failure.errorMessage).not.toContain('secret');
+  });
 });

@@ -15,6 +15,8 @@ name: Deploy Supabase
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch: # allow a manual re-run from the Actions tab
 
 concurrency:
@@ -37,7 +39,8 @@ jobs:
       - run: npm run build
 
   deploy:
-    needs: quality
+    if: github.event_name != 'pull_request'
+    needs: [quality, database-contract]
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -114,6 +117,7 @@ jobs:
             supabase/tests/crm_pst_content_and_contacts.sql \
             supabase/tests/crm_recovery.sql \
             supabase/tests/crm_source_filters_and_counts.sql \
+            supabase/tests/email_delivery_operations.sql \
             supabase/tests/legacy_archive_company_bloom.sql \
             supabase/tests/sales_crm_isolation.sql \
             supabase/tests/workspace_isolation.sql; do
@@ -158,3 +162,16 @@ jobs:
               select 1 from public.storage_compaction_state where id and controller_enabled
             ) then raise exception 'automatic storage recovery controller is not enabled'; end if;
           end \$\$;"
+
+  database-contract:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.113.0
+      - name: Start local Supabase and apply migrations
+        run: supabase start
+      - name: Verify email delivery retry and history invariants
+        run: supabase db query --local --file supabase/tests/email_delivery_operations.sql

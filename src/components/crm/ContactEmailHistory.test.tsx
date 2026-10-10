@@ -10,6 +10,7 @@ describe('ContactEmailHistory', () => {
       body_rendered: 'Exact fallback', body_html_rendered: '<table><tr><td>Exact HTML</td></tr></table>', status: 'failed',
       provider: 'brevo', provider_message_id: null, attempt_count: 1, scheduled_at: '2026-10-11T00:00:00Z',
       next_attempt_at: null, sent_at: null, error_message: 'Rejected', last_error_code: '401', retry_of_id: null,
+      is_current_attempt: false, attempted_at: '2026-10-11T00:00:30Z', failed_at: '2026-10-11T00:01:00Z', blocked_at: null,
       created_at: '2026-10-11T00:00:00Z', updated_at: '2026-10-11T00:01:00Z',
     }]} onRetry={vi.fn()} retryingId={null} />);
 
@@ -19,5 +20,8 @@ describe('ContactEmailHistory', () => {
     expect(html).toContain('Exact subject');
     expect(html).toContain('sandbox=""');
     expect(html).toContain('Exact HTML');
+    expect(html).toContain('Attempted');
+    expect(html).toContain('Failed');
+    expect(html).not.toContain('Retry failed send');
   });
 });

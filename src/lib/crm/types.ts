@@ -177,6 +177,8 @@ export interface CrmCampaignRecipientReport {
   blocked_reason: string | null;
   email_send_id: string | null;
   campaign_name: string;
+  attempt_id: string | null;
+  is_current_attempt: boolean;
   subject: string | null;
   body_rendered: string | null;
   body_html_rendered: string | null;

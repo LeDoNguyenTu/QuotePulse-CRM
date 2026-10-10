@@ -20,10 +20,12 @@ vi.mock('../../hooks/crm/useCrmCampaigns', () => ({
       isFetching: true,
       error: null,
     },
-    campaigns: { data: [], isLoading: false, error: null },
+    campaigns: { data: [{ id: 'campaign-1', name: 'Testing campaign', status: 'completed', provider: 'brevo', recipient_count: 1, queued_count: 0, scheduled_count: 0, sending_count: 0, retrying_count: 0, sent_count: 0, deferred_count: 0, blocked_count: 0, failed_count: 1 }], isLoading: false, error: null },
     resolveMatchingRecipientIds: { isPending: false, mutateAsync: vi.fn() },
     queue: { isPending: false, mutateAsync: vi.fn() },
   }),
+  useCampaignRecipients: () => ({ data: [{ id: 'recipient-1', campaign_id: 'campaign-1', email_normalized: 'test@example.com', contact_name: 'Test Person', company_name: 'Northstar', status: 'failed', provider: 'brevo', provider_message_id: null, attempt_count: 1, error_message: 'Brevo detected an unrecognised IP address.', last_error_code: '401', subject: 'Exact subject', body_rendered: 'Exact text', body_html_rendered: '<p>Exact HTML</p>', email_send_id: 'send-1', attempt_id: 'send-1', is_current_attempt: true }], isLoading: false, error: null }),
+  useRetryFailedEmail: () => ({ isPending: false, variables: null, mutateAsync: vi.fn() }),
 }));
 
 vi.mock('../../hooks/useTemplates', () => ({
@@ -81,5 +83,17 @@ describe('CRM email campaign composer', () => {
     act(() => name.props.onChange({ target: { value: 'October renewal outreach' } }));
 
     expect(useUnsavedChangesMock).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true }));
+  });
+
+  it('expands completed campaigns into a recipient delivery ledger', () => {
+    let renderer: ReturnType<typeof create>;
+    act(() => { renderer = create(<CrmEmailCampaigns />); });
+    expect(JSON.stringify(renderer!.toJSON())).toContain('Completed with failures');
+    const campaign = renderer!.root.findAllByType('button').find((button) => button.props['aria-label'] === 'View Testing campaign delivery details')!;
+    act(() => campaign.props.onClick());
+    const html = renderer!.toJSON();
+    expect(JSON.stringify(html)).toContain('test@example.com');
+    expect(JSON.stringify(html)).toContain('Brevo blocked the sending server IP');
+    expect(JSON.stringify(html)).toContain('Exact HTML');
   });
 });

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CampaignMessageEditor } from '../../components/crm/CampaignMessageEditor';
 import { CampaignRecipientPicker } from '../../components/crm/CampaignRecipientPicker';
+import { CampaignRecipientLedger } from '../../components/crm/CampaignRecipientLedger';
 import { CrmPageHeader } from '../../components/crm/CrmPageChrome';
 import { ErrorState, Spinner } from '../../components/ui';
-import { useCrmCampaigns } from '../../hooks/crm/useCrmCampaigns';
+import { useCampaignRecipients, useCrmCampaigns, useRetryFailedEmail } from '../../hooks/crm/useCrmCampaigns';
 import { useCrmIndustryOptions } from '../../hooks/crm/useCrmCompanies';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useSettings } from '../../hooks/useSettings';
@@ -13,6 +14,7 @@ import { useActiveWorkspace } from '../../hooks/useWorkspaces';
 import { validateCrmCampaignInput, type CrmCampaignInput } from '../../lib/crm/campaignInput';
 import { addRecipients, clearRecipients, removeRecipient, type CampaignRecipient } from '../../lib/crm/campaignRecipients';
 import { findUnresolvedCampaignTokens, renderCampaignPreview, type CampaignContent } from '../../lib/emailCampaignPreview';
+import { campaignOutcomeLabel } from '../../lib/crm/emailDelivery';
 
 const statusOrder = ['queued', 'scheduled', 'sending', 'retrying', 'sent', 'deferred', 'blocked', 'failed'];
 
@@ -37,6 +39,9 @@ export function CrmEmailCampaigns() {
   const [templateId, setTemplateId] = useState('');
   const [previewRecipientId, setPreviewRecipientId] = useState('');
   const [queuedBaseline, setQueuedBaseline] = useState<string | null>(null);
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const campaignRecipients = useCampaignRecipients(workspace.id, expandedCampaignId);
+  const retryFailedEmail = useRetryFailedEmail(workspace.id);
   const visible = api.contacts.data?.rows ?? [];
   const matchingCount = api.contacts.data?.count ?? 0;
   const queueCount = selected.length;
@@ -153,7 +158,14 @@ export function CrmEmailCampaigns() {
       <div className="crm-panel-heading"><h2>Campaign reporting</h2><span>{api.campaigns.data?.length ?? 0}</span></div>
       {api.campaigns.data?.length ? <div className="crm-task-list">{api.campaigns.data.map((campaign) => {
         const counts = Object.fromEntries(statusOrder.map((status) => [status, campaign[`${status}_count` as keyof typeof campaign] as number]));
-        return <article key={campaign.id}><div><strong>{campaign.name}</strong><p>{campaign.status} · {campaign.provider.replace('_', ' ')}</p></div><span>{statusOrder.filter((status) => counts[status]).map((status) => `${status}: ${counts[status]}`).join(' · ') || 'No recipients'}</span></article>;
+        const expanded = expandedCampaignId === campaign.id;
+        return <article key={campaign.id} className="crm-campaign-report">
+          <button type="button" className="crm-campaign-report__summary" aria-expanded={expanded} aria-label={`View ${campaign.name} delivery details`} onClick={() => setExpandedCampaignId(expanded ? null : campaign.id)}>
+            <div><strong>{campaign.name}</strong><p>{campaignOutcomeLabel(campaign)} · {campaign.provider.replace('_', ' ')}</p></div>
+            <span>{statusOrder.filter((status) => counts[status]).map((status) => `${status}: ${counts[status]}`).join(' · ') || 'No recipients'}</span>
+          </button>
+          {expanded && <CampaignRecipientLedger rows={campaignRecipients.data ?? []} loading={campaignRecipients.isLoading} error={campaignRecipients.error} retryingId={retryFailedEmail.isPending ? retryFailedEmail.variables ?? null : null} onRetry={(sendId) => void retryFailedEmail.mutateAsync(sendId)} />}
+        </article>;
       })}</div> : <p className="crm-panel-empty">Campaign results will appear here after the first message is queued.</p>}
     </section>
   </div>;

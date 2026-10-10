@@ -937,3 +937,63 @@ body {
 .template-editor-preview iframe {
   min-height: min(70dvh, 760px);
 }
+
+.crm-campaign-report__summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 0;
+  text-align: left;
+}
+
+.crm-campaign-ledger,
+.crm-email-history-list {
+  display: grid;
+  gap: .75rem;
+  padding: .25rem 0 1rem;
+}
+
+.crm-campaign-ledger__row,
+.crm-email-history-card {
+  display: grid;
+  gap: .65rem;
+  border: 1px solid var(--crm-border, #dbe4f0);
+  border-radius: .85rem;
+  padding: 1rem;
+}
+
+.crm-email-history-card__header,
+.crm-email-history-card__meta,
+.crm-campaign-ledger__delivery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem 1rem;
+}
+
+.crm-email-history-card__header > div,
+.crm-campaign-ledger__delivery {
+  display: grid;
+}
+
+.crm-email-content summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.crm-email-content iframe {
+  margin-top: .75rem;
+  min-height: 28rem;
+  width: 100%;
+  border: 1px solid var(--crm-border, #dbe4f0);
+  background: white;
+}
+
+.crm-email-content__subject {
+  display: grid;
+  gap: .2rem;
+  margin-top: .75rem;
+}

@@ -26,6 +26,8 @@ select
   recipient.email_send_id,
   recipient.created_at,
   campaign.name as campaign_name,
+  send.id as attempt_id,
+  send.id = recipient.email_send_id as is_current_attempt,
   send.subject,
   send.body_rendered,
   send.body_html_rendered,
@@ -47,7 +49,8 @@ join public.crm_email_campaigns campaign
  and campaign.id = recipient.campaign_id
 left join public.email_sends send
   on send.workspace_id = recipient.workspace_id
- and send.id = recipient.email_send_id;
+ and send.campaign_id = recipient.campaign_id
+ and lower(btrim(send.to_email)) = recipient.email_normalized;
 
 revoke all on public.crm_campaign_recipient_reporting from public, anon;
 grant select on public.crm_campaign_recipient_reporting to authenticated;

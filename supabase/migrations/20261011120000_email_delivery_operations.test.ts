@@ -33,4 +33,9 @@ describe('email delivery operations migration', () => {
     expect(sql).toMatch(/jsonb_build_object\('email_send_id', v_retry_id, 'status', 'queued'\)/i);
     expect(sql).not.toMatch(/update public\.email_sends[\s\S]+where id = p_email_send_id/i);
   });
+
+  it('keeps every campaign send attempt while identifying the current one', () => {
+    expect(sql).toMatch(/send\.id = recipient\.email_send_id as is_current_attempt/i);
+    expect(sql).toMatch(/send\.campaign_id = recipient\.campaign_id[\s\S]+lower\(btrim\(send\.to_email\)\) = recipient\.email_normalized/i);
+  });
 });

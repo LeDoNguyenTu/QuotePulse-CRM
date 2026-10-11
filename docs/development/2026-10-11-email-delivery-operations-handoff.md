@@ -53,4 +53,6 @@ Detailed reproducible acceptance steps are in `docs/testing/2026-10-11-email-del
 
 ## Continuation point
 
-The implementation is ready for final independent review and release. After merge, update the acceptance record with the exact merge SHA, GitHub Actions/Supabase result, Vercel deployment ID/URL, and authenticated production observations.
+The implementation is merged and deployed. Feature PR #61 merged as `f39e26607a99ec6c14f059425ca6515a04ef932d`; RLS follow-up PR #62 merged as `2d2946c822bf1e0e3acaf5d7ff77b3caeee78eeb`. Production workflow run 38136110670 and Vercel deployment `dpl_5WaprK8nGJwAPNczWzQkDXyKjrTK` passed. Migration parity, active functions, reporting views/RPC, credential-bound cache schema, and zero unoptimised RLS policies were verified directly in production.
+
+Only the signed-in visual smoke remains unverified: the Windows browser-control runtime failed before attaching to the already authenticated Chrome tab, while the isolated debugging browser had no session and redirected to `/login`. Do not send a real campaign or retry merely for smoke testing. When browser control is available, follow the eight read-only steps in the acceptance record.

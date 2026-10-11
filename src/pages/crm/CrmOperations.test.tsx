@@ -30,5 +30,6 @@ describe('CrmOperations', () => {
     expect(html).toContain('Recent failures');
     expect(html).toContain('Testing campaign');
     expect(html).toContain('/w/sales-id/sales/email-campaigns?campaign=campaign-1');
+    expect(html.match(/crm-operations-section/g)).toHaveLength(3);
   });
 });

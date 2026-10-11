@@ -1005,6 +1005,31 @@ body {
   margin-top: 1rem;
 }
 
+.crm-operations-section {
+  border-color: #c7d2e0;
+  box-shadow: 0 12px 28px rgba(16, 35, 63, 0.085);
+}
+
+.crm-operations-section .crm-panel-heading {
+  border-bottom-color: #d3dce8;
+}
+
+.crm-operations-section .crm-operations-card,
+.crm-operations-section .crm-budget-editor {
+  border-color: #cbd6e4;
+  background: var(--workspace-surface-inset);
+}
+
+[data-theme='dark'] .crm-operations-section {
+  border-color: #3b4f68;
+}
+
+[data-theme='dark'] .crm-operations-section .crm-panel-heading,
+[data-theme='dark'] .crm-operations-section .crm-operations-card,
+[data-theme='dark'] .crm-operations-section .crm-budget-editor {
+  border-color: #32465f;
+}
+
 .crm-operations-card,
 .crm-budget-editor {
   display: grid;

@@ -6,6 +6,39 @@ export interface PreparedEmailHtml {
   unresolvedImages: string[];
 }
 
+const PRESERVED_IMAGE_SOURCE = 'data-quotepulse-src';
+
+function normalizeHtmlEncoding(value: string): string | null {
+  const encoding = value.trim().toLowerCase().replace(/_/g, '-');
+  if (['utf-8', 'utf8', 'unicode-1-1-utf-8'].includes(encoding)) return 'utf-8';
+  if (['windows-1252', 'cp1252', 'iso-8859-1', 'latin1', 'us-ascii'].includes(encoding)) return 'windows-1252';
+  return null;
+}
+
+export function decodeEmailHtmlBytes(input: ArrayBuffer | Uint8Array): string {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return new TextDecoder('utf-16le').decode(bytes);
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return new TextDecoder('utf-16be').decode(bytes);
+  }
+
+  const header = new TextDecoder('windows-1252').decode(bytes.subarray(0, 4096));
+  const declared = header.match(/charset\s*=\s*["']?\s*([a-z0-9._-]+)/i)?.[1];
+  const encoding = declared ? normalizeHtmlEncoding(declared) : null;
+  if (encoding) return new TextDecoder(encoding).decode(bytes);
+
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
+}
+
 function decodeReference(value: string): string {
   try { return decodeURIComponent(value); } catch { return value; }
 }
@@ -36,7 +69,10 @@ function stripOutlookHeaderParagraphs(source: string): { html: string; subject: 
       removeFollowingSpacer = true;
       return '';
     }
-    if (removeFollowingSpacer && !text) return '';
+    if (removeFollowingSpacer && !text) {
+      removeFollowingSpacer = false;
+      return '';
+    }
     if (text) inLeadingHeaders = false;
     removeFollowingSpacer = false;
     return paragraph;
@@ -61,15 +97,21 @@ export function prepareImportedEmailHtml(
     .replace(/\s+style\s*=\s*("[^"]*"|'[^']*')/gi, (attribute) => /expression\s*\(|javascript\s*:|url\s*\(\s*['"]?data:/i.test(attribute) ? '' : attribute);
 
   html = html.replace(/<img\b[^>]*>/gi, (tag) => {
-    const match = tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const match = tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
+      ?? tag.match(new RegExp(`\\b${PRESERVED_IMAGE_SOURCE}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
     if (!match) return '';
     const reference = match[1] ?? match[2] ?? match[3] ?? '';
     imageReferences.push(reference);
     const publicUrl = byName.get(basename(reference));
-    if (publicUrl) return tag.replace(match[0], `src="${escapeAttribute(publicUrl)}"`);
-    if (/^https:\/\//i.test(reference)) return tag;
+    const inactiveTag = tag
+      .replace(/\s+src\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(new RegExp(`\\s+${PRESERVED_IMAGE_SOURCE}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)`, 'gi'), '');
+    const withAttribute = (name: string, value: string) => inactiveTag.replace(/\s*\/?>$/, ` ${name}="${escapeAttribute(value)}">`);
+    if (publicUrl) return withAttribute('src', publicUrl);
+    if (/^https:\/\//i.test(reference)) return withAttribute('src', reference);
     unresolvedImages.push(reference);
-    return '';
+    if (/^data:/i.test(reference)) return '';
+    return withAttribute(PRESERVED_IMAGE_SOURCE, reference);
   });
 
   html = html.replace(/\s+(href|src|action|formaction)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,

@@ -101,9 +101,8 @@ function normalizeMappedText(input: readonly MappedCharacter[]) {
       pending = [];
       return;
     }
-    const hasLineBreak = pending.some((item) => /[\r\n]/.test(item.value));
     characters.push({
-      value: hasLineBreak ? '\n' : ' ',
+      value: ' ',
       start: pending[0].start,
       end: pending[pending.length - 1].end,
     });
@@ -170,12 +169,15 @@ export function synchronizePlainTextToHtml(
   const documentNode = new DOMParser().parseFromString(html, 'text/html');
   const mapped = normalizeMappedText(mappedHtmlText(documentNode.body));
   const visibleText = mapped.map((character) => character.value).join('');
-  const previous = normalizePlainText(previousText);
-  const next = normalizePlainText(nextText);
-  const previousLines = previous.split('\n');
-  const nextLines = next.split('\n');
+  const previousLines = previousText.replace(/\r\n?/g, '\n').split('\n');
+  const nextLines = nextText.replace(/\r\n?/g, '\n').split('\n');
   const changedLineIndexes = previousLines.flatMap((line, index) => line === nextLines[index] ? [] : [index]);
-  if (previousLines.length === nextLines.length && changedLineIndexes.length > 1) {
+  if (
+    previousLines.length === nextLines.length
+    && previousLines.length > 1
+    && changedLineIndexes.length > 0
+    && changedLineIndexes.every((index) => previousLines[index].trim())
+  ) {
     let synchronizedHtml = html;
     for (const index of changedLineIndexes) {
       const lineResult = synchronizePlainTextToHtml(previousLines[index], nextLines[index], synchronizedHtml);
@@ -184,6 +186,8 @@ export function synchronizePlainTextToHtml(
     }
     return { html: synchronizedHtml, synchronized: true };
   }
+  const previous = normalizePlainText(previousText);
+  const next = normalizePlainText(nextText);
   const firstMatch = visibleText.indexOf(previous);
   if (!previous || firstMatch < 0 || visibleText.indexOf(previous, firstMatch + 1) >= 0) {
     return { html, synchronized: false };

@@ -55,4 +55,21 @@ describe('synchronizePlainTextToHtml', () => {
     expect(result.html).toContain('Closing new copy');
     expect(result.html).toContain('<img src="https://cdn.example/offer.png">');
   });
+
+  it('matches Outlook backup line wrapping to the same HTML paragraph text', () => {
+    const previous = `Dear {{contact_name}}
+
+R Systems, together with Microsoft, is pleased to
+offer your organisation an exclusive trial.`;
+    const next = previous.replace('is pleased to', 'is very pleased to');
+    const result = synchronizePlainTextToHtml(
+      previous,
+      next,
+      '<table><tbody><tr><td><p>Dear {{contact_name}}</p><p>R Systems, together with Microsoft, is pleased to offer your organisation an exclusive trial.</p></td></tr></tbody></table>',
+    );
+
+    expect(result.synchronized).toBe(true);
+    expect(result.html).toContain('is very pleased to offer');
+    expect(result.html).toContain('<table>');
+  });
 });

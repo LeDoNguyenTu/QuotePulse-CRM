@@ -17,6 +17,21 @@ describe('renderCampaignPreview', () => {
     });
   });
 
+  it('treats customer as a contact-name alias in every campaign format', () => {
+    expect(renderCampaignPreview({
+      subject: 'Hello {{ customer }}',
+      bodyHtml: '<p>Dear {{customer}}</p>',
+      bodyText: 'Dear {{customer}}',
+    }, {
+      contact_name: 'Avery Tan', company_name: 'Northstar', industry: 'Technology',
+    })).toEqual({
+      subject: 'Hello Avery Tan',
+      bodyHtml: '<p>Dear Avery Tan</p>',
+      bodyText: 'Dear Avery Tan',
+      unresolvedTokens: [],
+    });
+  });
+
   it('reports unresolved supported and unknown tokens', () => {
     const preview = renderCampaignPreview({
       subject: 'Hello {{contact_name}}', bodyHtml: null, bodyText: '{{missing}} / {{company_name}}',

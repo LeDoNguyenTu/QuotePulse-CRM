@@ -944,8 +944,23 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem 0;
+  padding: 1rem;
   text-align: left;
+}
+
+.crm-task-list > .crm-campaign-report {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--workspace-line);
+  border-radius: .9rem;
+  background: var(--workspace-surface);
+  padding: 0;
+}
+
+.crm-campaign-report > .crm-campaign-ledger {
+  border-top: 1px solid var(--workspace-line);
+  background: var(--workspace-surface-inset);
+  padding: 1rem;
 }
 
 .crm-campaign-ledger,
@@ -962,6 +977,47 @@ body {
   border: 1px solid var(--crm-border, #dbe4f0);
   border-radius: .85rem;
   padding: 1rem;
+}
+
+.crm-campaign-ledger > .crm-campaign-ledger__row {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  background: var(--workspace-surface);
+}
+
+.crm-campaign-ledger__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 13rem);
+  gap: 1rem;
+  align-items: start;
+}
+
+.crm-campaign-ledger__identity,
+.crm-campaign-ledger__failure,
+.crm-campaign-ledger__technical {
+  min-width: 0;
+}
+
+.crm-campaign-ledger__identity p {
+  overflow-wrap: anywhere;
+}
+
+.crm-campaign-ledger__failure {
+  display: grid;
+  gap: .6rem;
+  overflow-wrap: anywhere;
+}
+
+.crm-campaign-ledger__failure .crm-inline-status {
+  margin-top: 0;
+}
+
+.crm-campaign-ledger__technical pre {
+  max-width: 100%;
+  margin-top: .5rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .crm-email-history-card__header,
@@ -982,6 +1038,19 @@ body {
 .crm-email-content summary {
   cursor: pointer;
   font-weight: 700;
+}
+
+.crm-email-content {
+  min-width: 0;
+  width: 100%;
+  border-top: 1px solid var(--workspace-line);
+  padding-top: .75rem;
+}
+
+.crm-email-content pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .crm-email-content iframe {
@@ -1012,6 +1081,19 @@ body {
 
 .crm-operations-section .crm-panel-heading {
   border-bottom-color: #d3dce8;
+}
+
+.crm-operations-section > .crm-operations-grid {
+  margin-top: 0;
+  padding: 1rem;
+}
+
+.crm-operations-section > .crm-operations-grid + .crm-operations-grid {
+  padding-top: 0;
+}
+
+.crm-operations-section > .crm-task-list {
+  padding: 1rem;
 }
 
 .crm-operations-section .crm-operations-card,
@@ -1060,6 +1142,14 @@ body {
 
 .crm-task-list .crm-operations-failure {
   grid-template-columns: minmax(0, 1fr) auto;
+  border: 1px solid #cbd6e4;
+  border-radius: .9rem;
+  background: var(--workspace-surface-inset);
+  padding: 1rem;
+}
+
+[data-theme='dark'] .crm-task-list .crm-operations-failure {
+  border-color: #32465f;
 }
 
 .crm-operations-failure > div {
@@ -1072,4 +1162,23 @@ body {
   gap: .35rem;
   font-size: .8rem;
   font-weight: 700;
+}
+
+@media (max-width: 767px) {
+  .crm-campaign-ledger__summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crm-campaign-ledger__delivery {
+    justify-items: start;
+  }
+
+  .crm-operations-section > .crm-operations-grid,
+  .crm-operations-section > .crm-task-list {
+    padding: .75rem;
+  }
+
+  .crm-operations-section > .crm-operations-grid + .crm-operations-grid {
+    padding-top: 0;
+  }
 }

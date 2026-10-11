@@ -208,7 +208,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
             />
             <p className="mt-1 text-xs text-slate-500">
               Placeholders: <code>{'{{company_name}}'}</code>,{' '}
-              <code>{'{{contact_name}}'}</code>, <code>{'{{industry}}'}</code>
+              <code>{'{{contact_name}}'}</code> (or <code>{'{{customer}}'}</code>), <code>{'{{industry}}'}</code>
             </p>
           </div>
           <fieldset className="space-y-2 rounded-md border border-slate-200 p-3">

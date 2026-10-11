@@ -16,6 +16,7 @@ describe("workspace navigation", () => {
       "Imports",
       "PST Extractor",
       "Recycle bin",
+      "Operations",
       "Settings",
     ]);
   });

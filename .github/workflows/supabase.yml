@@ -15,6 +15,8 @@ name: Deploy Supabase
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch: # allow a manual re-run from the Actions tab
 
 concurrency:
@@ -37,7 +39,8 @@ jobs:
       - run: npm run build
 
   deploy:
-    needs: quality
+    if: github.event_name != 'pull_request'
+    needs: [quality, database-contract]
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -95,7 +98,7 @@ jobs:
       - name: Deploy Edge Functions
         run: |
           set -euo pipefail
-          for fn in hubspot-ingest enrich-kyc enrich-crm-company discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue unsubscribe export-xlsx export-crm-records uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status storage-maintenance workspace-archive crm-workbook-template crm-source-rows crm-mailbox-archive crm-recovery; do
+          for fn in hubspot-ingest enrich-kyc enrich-crm-company discover-jobs parse-quote ms-auth-start ms-auth-callback process-email-queue provider-status unsubscribe export-xlsx export-crm-records uploaded-file-merge company-attachments deal-archive-properties archive-hubspot-data storage-status storage-maintenance workspace-archive crm-workbook-template crm-source-rows crm-mailbox-archive crm-recovery; do
             echo "::group::deploy $fn"
             supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --use-api
             echo "::endgroup::"
@@ -114,6 +117,7 @@ jobs:
             supabase/tests/crm_pst_content_and_contacts.sql \
             supabase/tests/crm_recovery.sql \
             supabase/tests/crm_source_filters_and_counts.sql \
+            supabase/tests/email_delivery_operations.sql \
             supabase/tests/legacy_archive_company_bloom.sql \
             supabase/tests/sales_crm_isolation.sql \
             supabase/tests/workspace_isolation.sql; do
@@ -158,3 +162,42 @@ jobs:
               select 1 from public.storage_compaction_state where id and controller_enabled
             ) then raise exception 'automatic storage recovery controller is not enabled'; end if;
           end \$\$;"
+
+  database-contract:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.113.0
+      - name: Start local Supabase and apply migrations
+        run: |
+          # A historical production migration expects the Vault-backed storage
+          # cron to exist. Fresh local stacks have no Vault secrets, so inject
+          # only that disposable prerequisite at the original migration point.
+          cp supabase/tests/local_storage_archive_cron_fixture.sql \
+            supabase/migrations/20260828154833_ci_storage_archive_cron_fixture.sql
+          supabase start
+          rm supabase/migrations/20260828154833_ci_storage_archive_cron_fixture.sql
+      - name: Verify email delivery retry and history invariants
+        run: |
+          docker exec -i supabase_db_sales-outreach-tool \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/tests/email_delivery_operations.sql
+      - name: Verify concurrent retry serialization
+        run: |
+          set -euo pipefail
+          run_sql() {
+            docker exec -i supabase_db_sales-outreach-tool \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+          }
+          run_sql < supabase/tests/email_delivery_retry_concurrency_setup.sql
+          run_sql < supabase/tests/email_delivery_retry_concurrency_a.sql > /tmp/retry-a.log &
+          retry_a_pid=$!
+          sleep 1
+          run_sql < supabase/tests/email_delivery_retry_concurrency_b.sql > /tmp/retry-b.log
+          wait "$retry_a_pid"
+          cat /tmp/retry-a.log
+          cat /tmp/retry-b.log
+          run_sql < supabase/tests/email_delivery_retry_concurrency_verify.sql

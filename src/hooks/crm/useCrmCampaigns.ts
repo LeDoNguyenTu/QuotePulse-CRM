@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase';
-import type { CrmEmailCampaign } from '../../lib/crm/types';
+import type { CrmCampaignRecipientReport, CrmEmailCampaign } from '../../lib/crm/types';
 import type { CrmCampaignInput } from '../../lib/crm/campaignInput';
 import { collectRecipientPages, type CampaignRecipient } from '../../lib/crm/campaignRecipients';
 
@@ -59,4 +59,34 @@ export function useCrmCampaigns(workspaceId: string, filters: { search: string; 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'campaigns'] }),
   });
   return { campaigns, contacts, resolveMatchingRecipientIds, queue };
+}
+
+export function useCampaignRecipients(workspaceId: string, campaignId: string | null) {
+  return useQuery({
+    queryKey: ['crm', workspaceId, 'campaign-recipients', campaignId],
+    enabled: Boolean(campaignId),
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from('crm_campaign_recipient_reporting').select('*')
+        .eq('workspace_id', workspaceId).eq('campaign_id', campaignId)
+        .order('email_normalized').order('send_created_at', { ascending: false, nullsFirst: false });
+      if (error) throw error;
+      return (data ?? []) as CrmCampaignRecipientReport[];
+    },
+  });
+}
+
+export function useRetryFailedEmail(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (emailSendId: string) => {
+      const { data, error } = await (supabase as any).rpc('crm_retry_failed_email_send', { p_workspace_id: workspaceId, p_email_send_id: emailSendId });
+      if (error) throw error;
+      return data as { email_send_id: string; status: 'queued' };
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'campaigns'] });
+      void queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'campaign-recipients'] });
+      void queryClient.invalidateQueries({ queryKey: ['crm', workspaceId, 'contact-email-history'] });
+    },
+  });
 }

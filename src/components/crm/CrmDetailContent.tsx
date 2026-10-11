@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { CrmActivity, CrmCompany, CrmContact, CrmDeal, CrmTask } from '../../lib/crm/types';
+import type { CrmActivity, CrmCompany, CrmContact, CrmDeal, CrmEmailSendHistory, CrmTask } from '../../lib/crm/types';
 import type { CrmDetailData, CrmDetailKind, CrmSourceLineage } from '../../lib/crm/detailQueries';
 import { crmRecordPath } from '../../lib/crm/salesRoutes';
 import { displayText, formatCrmDate, formatCrmMoney } from '../../lib/crm/presenters';
@@ -8,6 +8,7 @@ import { normalizeWebsiteUrl } from '../../lib/crm/inputs';
 import { fieldSourceLabel } from '../../lib/crm/companyEnrichment';
 import { CrmActivityEditor } from './CrmActivityComposer';
 import type { CrmActivityEditInput } from '../../lib/crm/activityInput';
+import { ContactEmailHistory } from './ContactEmailHistory';
 
 type DealContactRow = { role: string | null; contact: CrmContact | null };
 type ContactDealRow = { role: string | null; deal: CrmDeal | null };
@@ -103,7 +104,7 @@ function CompanyDetail({ workspaceId, data }: { workspaceId: string; data: CrmDe
   </>;
 }
 
-function ContactDetail({ workspaceId, data }: { workspaceId: string; data: CrmDetailData<CrmContact> }) {
+function ContactDetail({ workspaceId, data, emailHistory, emailHistoryLoading, emailHistoryError, onRetryEmail, retryingEmailId }: { workspaceId: string; data: CrmDetailData<CrmContact>; emailHistory?: CrmEmailSendHistory[]; emailHistoryLoading?: boolean; emailHistoryError?: unknown; onRetryEmail?: (sendId: string) => void; retryingEmailId?: string | null }) {
   const contact = data.record!;
   const deals = (data.associations[0] ?? []) as ContactDealRow[];
   const name = displayText(contact.full_name ?? [contact.first_name, contact.last_name].filter(Boolean).join(' '), 'Unnamed contact');
@@ -113,7 +114,7 @@ function ContactDetail({ workspaceId, data }: { workspaceId: string; data: CrmDe
       <Fact label="Email" value={displayText(contact.email)} href={contact.email ? `mailto:${contact.email}` : null} /><Fact label="Phone" value={displayText(contact.phone)} />
       <Fact label="Job title" value={displayText(contact.job_title)} /><Fact label="Created" value={formatCrmDate(contact.created_at)} />
       <div className="crm-detail-fact"><dt>Company</dt><dd>{contact.company ? <RecordLink workspaceId={workspaceId} kind="company" id={contact.company.id}>{contact.company.name}</RecordLink> : '—'}</dd></div>
-    </dl></section><section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Associated deals</h2><span>{data.associationCounts[0] ?? deals.length}</span></div>{deals.length ? <div className="crm-association-list">{deals.map(({ deal, role }, index) => deal && <div key={deal.id ?? index}><div><RecordLink workspaceId={workspaceId} kind="deal" id={deal.id}>{deal.name}</RecordLink><p>{displayText(role, deal.stage)}</p></div><strong>{formatCrmMoney(deal.amount, deal.currency)}</strong></div>)}</div> : <p className="crm-panel-empty">No deals are linked to this contact.</p>}<TruncationNotice shown={deals.length} total={data.associationCounts[0] ?? deals.length} /></section><RelatedTasks workspaceId={workspaceId} tasks={data.tasks ?? []} total={data.taskCount ?? 0} /><ActivityTimeline activities={data.activities} total={data.activityCount} /></main><LineageRail lineage={data.lineage} total={data.lineageCount} /></div>
+    </dl></section><section className="crm-detail-panel"><div className="crm-panel-heading"><h2>Associated deals</h2><span>{data.associationCounts[0] ?? deals.length}</span></div>{deals.length ? <div className="crm-association-list">{deals.map(({ deal, role }, index) => deal && <div key={deal.id ?? index}><div><RecordLink workspaceId={workspaceId} kind="deal" id={deal.id}>{deal.name}</RecordLink><p>{displayText(role, deal.stage)}</p></div><strong>{formatCrmMoney(deal.amount, deal.currency)}</strong></div>)}</div> : <p className="crm-panel-empty">No deals are linked to this contact.</p>}<TruncationNotice shown={deals.length} total={data.associationCounts[0] ?? deals.length} /></section>{emailHistory !== undefined && <ContactEmailHistory rows={emailHistory} loading={emailHistoryLoading} error={emailHistoryError} onRetry={onRetryEmail ?? (() => undefined)} retryingId={retryingEmailId ?? null} />}<RelatedTasks workspaceId={workspaceId} tasks={data.tasks ?? []} total={data.taskCount ?? 0} /><ActivityTimeline activities={data.activities} total={data.activityCount} /></main><LineageRail lineage={data.lineage} total={data.lineageCount} /></div>
   </>;
 }
 
@@ -128,13 +129,13 @@ function DealDetail({ workspaceId, data }: { workspaceId: string; data: CrmDetai
   </>;
 }
 
-export function CrmDetailContent({ kind, workspaceId, data, activityPending = false, onEditActivity }: { kind: CrmDetailKind; workspaceId: string; data: CrmDetailData; activityPending?: boolean; onEditActivity?: (activityId: string, input: CrmActivityEditInput) => Promise<unknown> }) {
+export function CrmDetailContent({ kind, workspaceId, data, activityPending = false, onEditActivity, emailHistory, emailHistoryLoading, emailHistoryError, onRetryEmail, retryingEmailId }: { kind: CrmDetailKind; workspaceId: string; data: CrmDetailData; activityPending?: boolean; onEditActivity?: (activityId: string, input: CrmActivityEditInput) => Promise<unknown>; emailHistory?: CrmEmailSendHistory[]; emailHistoryLoading?: boolean; emailHistoryError?: unknown; onRetryEmail?: (sendId: string) => void; retryingEmailId?: string | null }) {
   const content = !data.record
     ? <section className="crm-state"><h1 className="text-xl font-semibold">Record unavailable</h1><p className="mt-2 text-sm text-slate-600">It may have been removed or belongs to another workspace.</p></section>
     : kind === 'company'
       ? <CompanyDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmCompany>} />
       : kind === 'contact'
-        ? <ContactDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmContact>} />
+      ? <ContactDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmContact>} emailHistory={emailHistory} emailHistoryLoading={emailHistoryLoading} emailHistoryError={emailHistoryError} onRetryEmail={onRetryEmail} retryingEmailId={retryingEmailId} />
         : <DealDetail workspaceId={workspaceId} data={data as CrmDetailData<CrmDeal>} />;
   return <ActivityEditContext.Provider value={{ pending: activityPending, onEdit: onEditActivity }}>{content}</ActivityEditContext.Provider>;
 }

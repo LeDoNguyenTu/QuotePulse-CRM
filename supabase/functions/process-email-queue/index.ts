@@ -5,6 +5,8 @@ import { refreshAccessToken } from '../_shared/ms.ts';
 import { safeErrorMessage } from '../_shared/errors.ts';
 import { sendBrevo, sendMicrosoftGraph, type EmailProvider } from '../_shared/emailProviders.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { recordProviderUsage } from '../_shared/providerTelemetry.ts';
+import { appendHtmlUnsubscribe } from '../_shared/emailContent.ts';
 
 const BATCH_SIZE = 20;
 const MAX_ATTEMPTS = 5;
@@ -26,12 +28,6 @@ function retryAt(attempt: number, retryAfterSeconds?: number) {
 
 function renderTemplate(text: string, vars: Record<string, string | null>) {
   return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) => vars[key] || `{{${key}}}`);
-}
-
-function appendHtmlUnsubscribe(html: string, unsubscribeUrl: string | null) {
-  if (!unsubscribeUrl) return html;
-  const safeUrl = unsubscribeUrl.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-  return `${html}<p style="font-size:12px;color:#64748b">To stop receiving these messages, <a href="${safeUrl}">unsubscribe</a>.</p>`;
 }
 
 Deno.serve(async (request) => {
@@ -56,13 +52,13 @@ Deno.serve(async (request) => {
     try {
       const settings = await getUserSettings(admin, ownerId);
       if (!settings) {
-        await finish(admin, row, { status: 'blocked', error_message: 'Owner settings are unavailable.' }); result.blocked++; continue;
+        await finish(admin, row, { status: 'blocked', blocked_at: new Date().toISOString(), error_message: 'Owner settings are unavailable.' }); result.blocked++; continue;
       }
       const sentCount = sentByOwner.get(ownerId) ?? await countSentLast24h(admin, ownerId);
       sentByOwner.set(ownerId, sentCount);
       const dailyLimit = settings.daily_send_limit ?? 50;
       if (sentCount >= dailyLimit) {
-        await finish(admin, row, { status: 'blocked', error_message: `Daily send limit (${dailyLimit}) reached.` }); result.blocked++; continue;
+        await finish(admin, row, { status: 'blocked', blocked_at: new Date().toISOString(), error_message: `Daily send limit (${dailyLimit}) reached.` }); result.blocked++; continue;
       }
       const vars = await resolveVars(admin, ownerId, row.company_id, row.to_email, row.recipient_snapshot);
       const subject = renderTemplate(row.subject ?? '', vars);
@@ -73,11 +69,22 @@ Deno.serve(async (request) => {
         : null;
       const provider = (row.provider ?? settings.email_provider ?? 'microsoft_graph') as EmailProvider;
       if (await isSuppressed(admin, ownerId, row.to_email)) {
-        await finish(admin, row, { status: 'blocked', error_message: 'Recipient unsubscribed or is suppressed.' }); result.blocked++; continue;
+        await finish(admin, row, { status: 'blocked', blocked_at: new Date().toISOString(), error_message: 'Recipient unsubscribed or is suppressed.' }); result.blocked++; continue;
       }
+      await recordAttemptPayload(admin, row, { subject, body_rendered: bodyText, body_html_rendered: bodyHtml, attempted_at: new Date().toISOString() });
       const providerResult = await sendWithProvider(provider, settings, tokenByOwner, ownerId, {
         toEmail: row.to_email, subject, bodyText, bodyHtml, senderEmail: settings.brevo_sender_email,
         senderName: settings.brevo_sender_name,
+      });
+      if (row.workspace_id) await recordProviderUsage(admin, {
+        workspaceId: row.workspace_id as string,
+        ownerId,
+        provider,
+        operation: 'email_send',
+        units: 1,
+        succeeded: providerResult.ok,
+        errorCategory: providerResult.errorCode ?? null,
+        rateLimit: providerResult.rateLimit ?? null,
       });
       if (providerResult.ok) {
         await finish(admin, row, { status: 'sent', subject, body_rendered: bodyText, body_html_rendered: bodyHtml, sent_at: new Date().toISOString(),
@@ -88,11 +95,12 @@ Deno.serve(async (request) => {
         await finish(admin, row, { status: 'retrying', next_attempt_at: retryAt(row.attempt_count, providerResult.retryAfterSeconds),
           error_message: providerResult.errorMessage, last_error_code: providerResult.errorCode }); result.retrying++; continue;
       }
+      const terminalAt = new Date().toISOString();
       await finish(admin, row, { status: providerResult.ambiguous ? 'blocked' : 'failed', error_message: providerResult.errorMessage,
-        last_error_code: providerResult.errorCode });
+        last_error_code: providerResult.errorCode, ...(providerResult.ambiguous ? { blocked_at: terminalAt } : { failed_at: terminalAt }) });
       providerResult.ambiguous ? result.blocked++ : result.failed++;
     } catch (error) {
-      await finish(admin, row, { status: 'failed', error_message: safeErrorMessage(error) }); result.failed++;
+      await finish(admin, row, { status: 'failed', failed_at: new Date().toISOString(), error_message: safeErrorMessage(error) }); result.failed++;
     }
   }
   return json(result);
@@ -120,6 +128,14 @@ async function sendWithProvider(provider: EmailProvider, settings: UserSettingsR
 async function finish(admin: SupabaseClient, row: Record<string, unknown>, patch: Record<string, unknown>) {
   let query = admin.from('email_sends').update({ ...patch, claimed_at: null, lease_expires_at: null })
     .eq('id', row.id).eq('created_by', row.created_by);
+  if (row.workspace_id) query = query.eq('workspace_id', row.workspace_id);
+  if (row.campaign_id) query = query.eq('campaign_id', row.campaign_id);
+  const { error } = await query;
+  if (error) throw error;
+}
+
+async function recordAttemptPayload(admin: SupabaseClient, row: Record<string, unknown>, patch: Record<string, unknown>) {
+  let query = admin.from('email_sends').update(patch).eq('id', row.id).eq('created_by', row.created_by);
   if (row.workspace_id) query = query.eq('workspace_id', row.workspace_id);
   if (row.campaign_id) query = query.eq('campaign_id', row.campaign_id);
   const { error } = await query;

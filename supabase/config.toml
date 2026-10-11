@@ -82,6 +82,9 @@ verify_jwt = true
 [functions.storage-maintenance]
 verify_jwt = false # cron-secret protected; invokes the owner-scoped archive worker
 
+[functions.provider-status]
+verify_jwt = true
+
 [functions.workspace-archive]
 verify_jwt = true
 

@@ -6,6 +6,7 @@
 import { handleOptions, json, errorResponse } from '../_shared/cors.ts';
 import { getAdminClient, getUserId, getUserSettings } from '../_shared/supabaseAdmin.ts';
 import { HubSpotClient, HubSpotApiError } from '../_shared/hubspot.ts';
+import { recordProviderUsage } from '../_shared/providerTelemetry.ts';
 
 // Default to NVIDIA's OpenAI-compatible integrate endpoint. Override with env if
 // you use a dedicated OCR NIM with a different schema.
@@ -79,7 +80,14 @@ Deno.serve(async (req) => {
     // 2) OCR via NVIDIA.
     const apiKey = settings?.nvidia_key || Deno.env.get('NVIDIA_API_KEY');
     if (!apiKey) return errorResponse('No NVIDIA API key configured', 400);
-    const text = await runOcr(b64, contentType, apiKey, errors);
+    let text: string;
+    try {
+      text = await runOcr(b64, contentType, apiKey, errors);
+      await recordProviderUsage(admin, { ownerId: userId, workspaceId: null, provider: 'nvidia', operation: 'quote_ocr', units: 1, succeeded: true });
+    } catch (error) {
+      await recordProviderUsage(admin, { ownerId: userId, workspaceId: null, provider: 'nvidia', operation: 'quote_ocr', units: 1, succeeded: false, errorCategory: 'provider_error' });
+      throw error;
+    }
 
     // 3) Parse MYOB fields.
     const summary = parseMyobQuote(text);

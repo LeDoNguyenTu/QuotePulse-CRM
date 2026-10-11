@@ -10,6 +10,7 @@ import { CrmTasks } from './crm/CrmTasks';
 import { CrmEmailCampaigns } from './crm/CrmEmailCampaigns';
 import { CrmPstExtractor } from './crm/CrmPstExtractor';
 import { CrmSalesSettings } from './crm/CrmSalesSettings';
+import { CrmOperations } from './crm/CrmOperations';
 import { CrmRecycleBin } from './crm/CrmRecycleBin';
 import { Templates } from './Templates';
 
@@ -27,6 +28,7 @@ export function SalesWorkspacePage() {
   if (resolution === 'placeholder' && module === 'email-campaigns') return <CrmEmailCampaigns />;
   if (resolution === 'placeholder' && module === 'pst-extractor') return <CrmPstExtractor />;
   if (resolution === 'placeholder' && module === 'settings') return <CrmSalesSettings />;
+  if (resolution === 'placeholder' && module === 'operations') return <CrmOperations />;
   if (resolution === 'company-detail') return <CrmRecordDetailPage kind="company" recordId={recordId!} />;
   if (resolution === 'contact-detail') return <CrmRecordDetailPage kind="contact" recordId={recordId!} />;
   if (resolution === 'deal-detail') return <CrmRecordDetailPage kind="deal" recordId={recordId!} />;

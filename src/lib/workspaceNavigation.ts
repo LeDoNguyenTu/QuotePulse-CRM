@@ -34,6 +34,7 @@ export function workspaceNavigation(
     { to: `${base}/imports`, label: 'Imports' },
     { to: `${base}/pst-extractor`, label: 'PST Extractor' },
     { to: `${base}/recycle-bin`, label: 'Recycle bin' },
+    { to: `${base}/operations`, label: 'Operations' },
     { to: `${base}/settings`, label: 'Settings' },
   ];
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EmailTemplate } from '../lib/types';
 import { renderTemplate } from '../lib/render';
-import { prepareImportedEmailHtml } from '../lib/emailTemplateHtml';
+import { prepareImportedEmailHtml, sanitizeImportedSubject } from '../lib/emailTemplateHtml';
 import { parseOutlookMsg } from '../lib/outlookMsg';
 import { uploadEmailTemplateAssets } from '../hooks/useTemplates';
 import { useAuth } from '../hooks/useAuth';
@@ -31,6 +31,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
   const [bodyFormat, setBodyFormat] = useState<'plain' | 'html'>(initial?.body_format ?? 'plain');
   const [rawHtml, setRawHtml] = useState(initial?.body_html ?? '');
   const [bodyHtml, setBodyHtml] = useState(initial?.body_html ?? '');
+  const [sourceHtml, setSourceHtml] = useState(initial?.body_html ?? '');
   const [assets, setAssets] = useState(initial?.asset_manifest ?? []);
   const [fromEmail, setFromEmail] = useState(initial?.from_email ?? '');
   const [saving, setSaving] = useState(false);
@@ -44,16 +45,26 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
 
   useEffect(() => {
     if (!open) return;
-    setName(initial?.name ?? ''); setIndustry(initial?.industry ?? ''); setSubject(initial?.subject ?? '');
+    const prepared = initial?.body_html ? prepareImportedEmailHtml(initial.body_html, assetUrls(initial.asset_manifest ?? [])) : null;
+    const normalizedSubject = sanitizeImportedSubject(prepared?.subject || initial?.subject || '');
+    const normalizedHtml = prepared?.html ?? '';
+    setName(initial?.name ?? ''); setIndustry(initial?.industry ?? ''); setSubject(normalizedSubject);
     setBody(initial?.body ?? ''); setBodyFormat(initial?.body_format ?? 'plain');
-    setRawHtml(initial?.body_html ?? ''); setBodyHtml(initial?.body_html ?? '');
+    setRawHtml(normalizedHtml); setBodyHtml(normalizedHtml); setSourceHtml(initial?.body_html ?? '');
     setAssets(initial?.asset_manifest ?? []); setFromEmail(initial?.from_email ?? ''); setImportMessage(null);
     setSavedDraft(JSON.stringify({
-      name: initial?.name ?? '', industry: initial?.industry ?? '', subject: initial?.subject ?? '', body: initial?.body ?? '',
-      bodyFormat: initial?.body_format ?? 'plain', rawHtml: initial?.body_html ?? '', bodyHtml: initial?.body_html ?? '',
+      name: initial?.name ?? '', industry: initial?.industry ?? '', subject: normalizedSubject, body: initial?.body ?? '',
+      bodyFormat: initial?.body_format ?? 'plain', rawHtml: normalizedHtml, bodyHtml: normalizedHtml,
       assets: initial?.asset_manifest ?? [], fromEmail: initial?.from_email ?? '',
     }));
   }, [initial, open]);
+
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [open]);
 
   const requestClose = () => {
     const approve = confirmDiscard ?? ((message: string) => globalThis.confirm(message));
@@ -64,7 +75,8 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
   const assetUrls = (nextAssets = assets) => Object.fromEntries(nextAssets.map((asset) => [asset.original_name, asset.public_url]));
   const applyHtml = (html: string, nextAssets = assets) => {
     const prepared = prepareImportedEmailHtml(html, assetUrls(nextAssets));
-    setRawHtml(html); setBodyHtml(prepared.html);
+    setSourceHtml(html); setRawHtml(prepared.html); setBodyHtml(prepared.html);
+    if (!subject.trim() && prepared.subject) setSubject(prepared.subject);
     if (!body.trim()) setBody(prepared.text);
     setImportMessage(`${prepared.imageReferences.length - prepared.unresolvedImages.length} image${prepared.imageReferences.length - prepared.unresolvedImages.length === 1 ? '' : 's'} linked${prepared.unresolvedImages.length ? `; ${prepared.unresolvedImages.length} still need matching image files` : ''}.`);
   };
@@ -107,7 +119,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
       const uploaded = await uploadEmailTemplateAssets(user.id, [...files]);
       const nextAssets = [...assets, ...uploaded];
       setAssets(nextAssets);
-      if (rawHtml) applyHtml(rawHtml, nextAssets);
+      if (sourceHtml) applyHtml(sourceHtml, nextAssets);
       else setImportMessage(`${uploaded.length} image${uploaded.length === 1 ? '' : 's'} uploaded.`);
     } catch (error) {
       setImportMessage(error instanceof Error ? error.message : 'Unable to upload email images.');
@@ -143,8 +155,9 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
       onClose={requestClose}
       title={initial?.id ? 'Edit template' : 'New template'}
       wide
+      panelClassName="template-editor-modal"
     >
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="template-editor-layout">
         <div className="space-y-3">
           <div>
             <label className="label">Name</label>
@@ -176,7 +189,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
             />
           </div>
           <div>
-            <label className="label">Body</label>
+            <label className="label">Plain-text fallback</label>
             <textarea
               className="input min-h-[180px] font-mono text-xs"
               value={body}
@@ -196,7 +209,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
             {bodyFormat === 'html' && <div className="space-y-2">
               <label className="block text-sm font-medium">Import .msg, .htm, or .html<input className="mt-1 block w-full text-sm" type="file" accept=".msg,.htm,.html,application/vnd.ms-outlook,text/html" disabled={uploading} onChange={(event) => void importHtml(event.target.files?.[0])} /></label>
               <label className="block text-sm font-medium">Companion image ZIP or images<input className="mt-1 block w-full text-sm" type="file" multiple accept=".zip,image/png,image/jpeg,image/gif,image/webp" disabled={uploading} onChange={(event) => void importAssets(event.target.files)} /></label>
-              <label className="block text-sm font-medium">Imported HTML source (sanitized for preview and sending)<textarea className="input mt-1 min-h-[140px] font-mono text-xs" value={rawHtml} onChange={(event) => applyHtml(event.target.value)} /></label>
+              <label className="block text-sm font-medium">HTML source (sanitized for preview and sending)<textarea className="input mt-1 min-h-[260px] font-mono text-xs" value={rawHtml} onChange={(event) => applyHtml(event.target.value)} /></label>
               {importMessage && <p className="text-xs text-slate-600" role="status">{importMessage}</p>}
             </div>}
           </fieldset>
@@ -204,12 +217,12 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
 
         <div className="space-y-2">
           <div className="label">Live preview (sample data)</div>
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div className="template-editor-preview rounded-md border border-slate-200 bg-slate-50 p-3">
             <div className="text-sm font-medium">
               {renderTemplate(subject, SAMPLE) || '(no subject)'}
             </div>
             {bodyFormat === 'html' && bodyHtml
-              ? <iframe title="HTML email preview" sandbox="" className="mt-2 h-96 w-full bg-white" srcDoc={renderTemplate(bodyHtml, SAMPLE)} />
+              ? <iframe title="HTML email preview" sandbox="" className="mt-2 w-full bg-white" srcDoc={renderTemplate(bodyHtml, SAMPLE)} />
               : <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{renderTemplate(body, SAMPLE) || '(empty body)'}</pre>}
           </div>
         </div>

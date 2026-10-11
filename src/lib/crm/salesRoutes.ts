@@ -16,6 +16,7 @@ const PLACEHOLDER_MODULES = new Set([
   'templates',
   'email-campaigns',
   'pst-extractor',
+  'operations',
   'settings',
 ]);
 

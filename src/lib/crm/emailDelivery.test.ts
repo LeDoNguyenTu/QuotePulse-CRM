@@ -17,4 +17,24 @@ describe('email delivery presentation', () => {
     expect(classifyDeliveryFailure({ ...result, status: 'blocked', provider_message_id: null }).retryable).toBe(false);
     expect(classifyDeliveryFailure({ ...result, status: 'failed', provider_message_id: 'accepted-1' }).retryable).toBe(false);
   });
+
+  it('extracts provider JSON and recognizes the live Brevo IP restriction response', () => {
+    const errorMessage = JSON.stringify({
+      message: 'We have detected you are using an unrecognised IP address 2406:da18::1. If you performed this action add the new IP address in Brevo.',
+      code: 'unauthorized',
+    });
+
+    const result = classifyDeliveryFailure({
+      status: 'failed', provider_message_id: null, last_error_code: 'unauthorized', error_message: errorMessage,
+    });
+
+    expect(result.summary).toBe('Brevo blocked the sending server IP. Check Brevo API-key IP restrictions, then retry this definitive failure.');
+    expect(result.summary).not.toContain('{"message"');
+  });
+
+  it('shows the message from other structured provider errors without exposing the JSON wrapper', () => {
+    expect(classifyDeliveryFailure({
+      status: 'failed', error_message: '{"message":"Mailbox rejected the recipient.","code":"invalid_parameter"}',
+    }).summary).toBe('Mailbox rejected the recipient.');
+  });
 });

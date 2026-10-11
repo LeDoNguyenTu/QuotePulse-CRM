@@ -27,4 +27,24 @@ describe('CampaignMessageEditor', () => {
     expect(text).toContain('Hello Avery');
     expect(renderer!.root.findByProps({ role: 'alert' }).children.join('')).toBe('Unresolved personalization: unknown');
   });
+
+  it('warns when backup text is personalized but the formatted email is not', () => {
+    let renderer: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(<CampaignMessageEditor
+        templates={templates}
+        templateId="a"
+        draft={{ subject: 'Offer', bodyText: 'Dear {{contact_name}}', bodyHtml: '<p>Dear</p>' }}
+        dirty={false}
+        recipient={{ contact_name: 'Avery', company_name: 'Northstar', industry: 'Technology' }}
+        onTemplateChange={vi.fn()}
+        onChange={vi.fn()}
+      />);
+    });
+
+    const rendered = JSON.stringify(renderer!.toJSON());
+    expect(rendered).toContain('Personalize your email');
+    expect(rendered).toContain('formatted email is missing: ');
+    expect(renderer!.root.findByProps({ role: 'alert' }).findByType('strong').children).toEqual(['Recipient name']);
+  });
 });

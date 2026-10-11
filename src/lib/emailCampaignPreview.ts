@@ -14,7 +14,8 @@ const TOKEN = /\{\{\s*(\w+)\s*\}\}/g;
 
 function render(value: string, recipient: CampaignPreviewRecipient, unresolved: Set<string>) {
   return value.replace(TOKEN, (_match, key: string) => {
-    const replacement = recipient[key as keyof CampaignPreviewRecipient];
+    const recipientKey = key === 'customer' ? 'contact_name' : key;
+    const replacement = recipient[recipientKey as keyof CampaignPreviewRecipient];
     if (typeof replacement === 'string' && replacement.length) return replacement;
     unresolved.add(key);
     return `{{${key}}}`;

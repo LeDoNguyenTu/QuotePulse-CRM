@@ -32,7 +32,7 @@ export function CampaignMessageEditor({ templates, templateId, draft, dirty, rec
       <label className="crm-field"><span>Subject</span><input className="input" value={draft.subject} onChange={(event) => onChange({ ...draft, subject: event.target.value })} /></label>
       <label className="crm-field"><span>Plain-text fallback</span><textarea className="input crm-message-editor" value={draft.bodyText} onChange={(event) => onChange({ ...draft, bodyText: event.target.value })} /></label>
       <label className="crm-field"><span>HTML message</span><textarea className="input crm-message-editor" value={draft.bodyHtml ?? ''} onChange={(event) => onChange({ ...draft, bodyHtml: event.target.value || null })} placeholder="Optional HTML email markup" /></label>
-      <small>Supported fields: {'{{company_name}}'}, {'{{contact_name}}'}, and {'{{industry}}'}.</small>
+      <small>Supported fields: {'{{company_name}}'}, {'{{contact_name}}'} (or {'{{customer}}'}), and {'{{industry}}'}.</small>
     </div>
     <aside className="crm-message-preview">
       <span className="crm-section-kicker">Recipient preview</span>

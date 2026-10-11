@@ -17,4 +17,8 @@ describe('campaign queue worker isolation', () => {
     expect(source).toMatch(/body_html_rendered: bodyHtml/);
     expect(source).not.toMatch(/from\('email_templates'\)/);
   });
+
+  it('maps the customer placeholder to the snapshotted contact name', () => {
+    expect(source).toMatch(/customer:\s*contactName/);
+  });
 });

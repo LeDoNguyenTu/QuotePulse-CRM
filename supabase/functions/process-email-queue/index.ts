@@ -143,11 +143,15 @@ async function recordAttemptPayload(admin: SupabaseClient, row: Record<string, u
 }
 
 async function resolveVars(admin: SupabaseClient, userId: string, companyId: string | null, toEmail: string, snapshot?: Record<string, unknown> | null) {
-  if (snapshot) return {
-    company_name: typeof snapshot.company_name === 'string' ? snapshot.company_name : null,
-    industry: typeof snapshot.industry === 'string' ? snapshot.industry : null,
-    contact_name: typeof snapshot.contact_name === 'string' ? snapshot.contact_name : null,
-  };
+  if (snapshot) {
+    const contactName = typeof snapshot.contact_name === 'string' ? snapshot.contact_name : null;
+    return {
+      company_name: typeof snapshot.company_name === 'string' ? snapshot.company_name : null,
+      industry: typeof snapshot.industry === 'string' ? snapshot.industry : null,
+      contact_name: contactName,
+      customer: contactName,
+    };
+  }
   let company_name: string | null = null, industry: string | null = null, contact_name: string | null = null;
   if (companyId) {
     const { data: company } = await admin.from('companies').select('name_clean, industry').eq('id', companyId).eq('owner_id', userId).maybeSingle();
@@ -155,7 +159,7 @@ async function resolveVars(admin: SupabaseClient, userId: string, companyId: str
     const { data: contact } = await admin.from('contacts').select('full_name').eq('company_id', companyId).eq('owner_id', userId).ilike('email', toEmail).maybeSingle();
     contact_name = contact?.full_name ?? null;
   }
-  return { company_name, industry, contact_name };
+  return { company_name, industry, contact_name, customer: contact_name };
 }
 
 async function countSentLast24h(admin: SupabaseClient, userId: string) {

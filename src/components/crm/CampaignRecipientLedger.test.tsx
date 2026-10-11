@@ -27,4 +27,13 @@ describe('CampaignRecipientLedger', () => {
     expect(html).toContain('Sent');
     expect(html).not.toContain('Retry failed send');
   });
+
+  it('separates the compact recipient summary from full-width failure and content details', () => {
+    const html = renderToStaticMarkup(<CampaignRecipientLedger rows={[base]} loading={false} error={null} onRetry={vi.fn()} retryingId={null} />);
+
+    expect(html).toContain('crm-campaign-ledger__summary');
+    expect(html).toContain('crm-campaign-ledger__failure');
+    expect(html).toContain('crm-campaign-ledger__technical');
+    expect(html).toContain('crm-email-content');
+  });
 });

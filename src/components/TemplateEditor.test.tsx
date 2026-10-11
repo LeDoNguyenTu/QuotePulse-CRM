@@ -139,4 +139,38 @@ describe('TemplateEditor rich email controls', () => {
     expect(preview.props.srcDoc).toMatch(/max-width:\s*100%\s*!important/);
     expect(preview.props.srcDoc).toMatch(/overflow-x:\s*hidden\s*!important/);
   });
+
+  it('explains personalization in plain language, copies each field, and warns when HTML is missing it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    let renderer: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<TemplateEditor
+        open
+        initial={{
+          name: 'R system',
+          subject: 'Offer for {{contact_name}}',
+          body: 'Dear {{contact_name}}',
+          body_format: 'html',
+          body_html: '<p>Dear</p>',
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />);
+    });
+
+    const rendered = JSON.stringify(renderer!.toJSON());
+    expect(rendered).toContain('Personalize your email');
+    expect(rendered).toContain('Recipient name');
+    expect(rendered).toContain('Company name');
+    expect(rendered).toContain('Industry');
+    expect(rendered).toContain('formatted email is missing: ');
+    expect(renderer!.root.findByProps({ role: 'alert' }).findByType('strong').children).toEqual(['Recipient name']);
+
+    const copyRecipient = renderer!.root.findByProps({ 'aria-label': 'Copy Recipient name field' });
+    await act(async () => copyRecipient.props.onClick());
+    expect(writeText).toHaveBeenCalledWith('{{contact_name}}');
+    expect(JSON.stringify(renderer!.toJSON())).toContain('Copied');
+    vi.unstubAllGlobals();
+  });
 });

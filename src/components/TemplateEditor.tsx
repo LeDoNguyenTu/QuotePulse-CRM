@@ -7,6 +7,7 @@ import { uploadEmailTemplateAssets } from '../hooks/useTemplates';
 import { useAuth } from '../hooks/useAuth';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { Modal } from './Modal';
+import { PersonalizationFieldGuide } from './PersonalizationFieldGuide';
 
 interface TemplateEditorProps {
   open: boolean;
@@ -199,17 +200,15 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
               onChange={(e) => setSubject(e.target.value)}
             />
           </div>
+          <PersonalizationFieldGuide bodyText={body} bodyHtml={bodyFormat === 'html' ? bodyHtml : null} />
           <div>
-            <label className="label">Plain-text fallback</label>
+            <label className="label">Backup text</label>
             <textarea
               className="input min-h-[180px] font-mono text-xs"
               value={body}
               onChange={(e) => setBody(e.target.value)}
             />
-            <p className="mt-1 text-xs text-slate-500">
-              Placeholders: <code>{'{{company_name}}'}</code>,{' '}
-              <code>{'{{contact_name}}'}</code> (or <code>{'{{customer}}'}</code>), <code>{'{{industry}}'}</code>
-            </p>
+            <p className="mt-1 text-xs text-slate-500">Plain-text fallback for email apps that cannot display the formatted version.</p>
           </div>
           <fieldset className="space-y-2 rounded-md border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold">Message format</legend>
@@ -220,7 +219,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
             {bodyFormat === 'html' && <div className="space-y-2">
               <label className="block text-sm font-medium">Import .msg, .htm, or .html<input className="mt-1 block w-full text-sm" type="file" accept=".msg,.htm,.html,application/vnd.ms-outlook,text/html" disabled={uploading} onChange={(event) => void importHtml(event.target.files?.[0])} /></label>
               <label className="block text-sm font-medium">Companion image ZIP or images<input className="mt-1 block w-full text-sm" type="file" multiple accept=".zip,image/png,image/jpeg,image/gif,image/webp" disabled={uploading} onChange={(event) => void importAssets(event.target.files)} /></label>
-              <label className="block text-sm font-medium">HTML source (sanitized for preview and sending)<textarea className="input mt-1 min-h-[260px] font-mono text-xs" value={rawHtml} onChange={(event) => applyHtml(event.target.value)} /></label>
+              <label className="block text-sm font-medium">HTML source <span className="font-normal text-slate-500">(the formatted email recipients receive)</span><textarea className="input mt-1 min-h-[260px] font-mono text-xs" value={rawHtml} onChange={(event) => applyHtml(event.target.value)} /></label>
               {importMessage && <p className="text-xs text-slate-600" role="status">{importMessage}</p>}
             </div>}
           </fieldset>

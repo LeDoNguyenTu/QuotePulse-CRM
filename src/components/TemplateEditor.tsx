@@ -22,6 +22,17 @@ const SAMPLE = {
   industry: 'Manufacturing',
 };
 
+function fitEmailPreview(html: string) {
+  const previewStyle = `<style data-quotepulse-preview-fit>
+    html, body { max-width: 100%; overflow-x: hidden !important; }
+    table, img { max-width: 100% !important; }
+    img { height: auto !important; }
+  </style>`;
+  return /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, `${previewStyle}</head>`)
+    : `${previewStyle}${html}`;
+}
+
 export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard }: TemplateEditorProps) {
   const { user } = useAuth();
   const [name, setName] = useState(initial?.name ?? '');
@@ -222,7 +233,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
               {renderTemplate(subject, SAMPLE) || '(no subject)'}
             </div>
             {bodyFormat === 'html' && bodyHtml
-              ? <iframe title="HTML email preview" sandbox="" className="mt-2 w-full bg-white" srcDoc={renderTemplate(bodyHtml, SAMPLE)} />
+              ? <iframe title="HTML email preview" sandbox="" className="mt-2 w-full bg-white" srcDoc={fitEmailPreview(renderTemplate(bodyHtml, SAMPLE))} />
               : <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{renderTemplate(body, SAMPLE) || '(empty body)'}</pre>}
           </div>
         </div>

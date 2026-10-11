@@ -116,4 +116,27 @@ describe('TemplateEditor rich email controls', () => {
     expect(html).toContain('Plain-text fallback');
     expect(html).toContain('HTML source');
   });
+
+  it('fits fixed-width imported email tables inside the preview pane', () => {
+    let renderer: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(<TemplateEditor
+        open
+        initial={{
+          name: 'Offer',
+          subject: 'Hello',
+          body: 'Plain',
+          body_format: 'html',
+          body_html: '<table width="787"><tbody><tr><td>HTML</td></tr></tbody></table>',
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />);
+    });
+
+    const preview = renderer!.root.findByType('iframe');
+    expect(preview.props.srcDoc).toContain('data-quotepulse-preview-fit');
+    expect(preview.props.srcDoc).toMatch(/max-width:\s*100%\s*!important/);
+    expect(preview.props.srcDoc).toMatch(/overflow-x:\s*hidden\s*!important/);
+  });
 });

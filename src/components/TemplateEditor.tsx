@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EmailTemplate } from '../lib/types';
 import { renderTemplate } from '../lib/render';
-import { prepareImportedEmailHtml, sanitizeImportedSubject } from '../lib/emailTemplateHtml';
+import { decodeEmailHtmlBytes, prepareImportedEmailHtml, sanitizeImportedSubject } from '../lib/emailTemplateHtml';
 import { parseOutlookMsg } from '../lib/outlookMsg';
 import { uploadEmailTemplateAssets } from '../hooks/useTemplates';
 import { useAuth } from '../hooks/useAuth';
@@ -113,7 +113,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
         setImportMessage('Choose an Outlook .msg, .htm, or .html file.');
         return;
       }
-      const html = await file.text();
+      const html = decodeEmailHtmlBytes(await file.arrayBuffer());
       setBodyFormat('html');
       applyHtml(html);
     } catch (error) {

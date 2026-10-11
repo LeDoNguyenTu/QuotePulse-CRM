@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { htmlToPlainText, prepareImportedEmailHtml, sanitizeImportedSubject } from './emailTemplateHtml';
+import { decodeEmailHtmlBytes, htmlToPlainText, prepareImportedEmailHtml, sanitizeImportedSubject } from './emailTemplateHtml';
 
 describe('HTML email import', () => {
   it('preserves table layout, rewrites companion images, and removes active content', () => {
@@ -19,10 +19,36 @@ describe('HTML email import', () => {
     expect(result.imageReferences).toEqual(['Campaign_files/image001.png']);
   });
 
-  it('removes unresolved relative, cid, and embedded data images', () => {
+  it('keeps unresolved file references inert so a later ZIP upload can relink them', () => {
     const result = prepareImportedEmailHtml('<img src="cid:logo"><img src="missing.png"><img src="data:image/png;base64,AAAA">', {});
-    expect(result.html).not.toContain('<img');
+    expect(result.html).toContain('data-quotepulse-src="cid:logo"');
+    expect(result.html).toContain('data-quotepulse-src="missing.png"');
+    expect(result.html).not.toContain('data:image/png');
+    expect(result.html).not.toMatch(/<img[^>]+\ssrc=/i);
     expect(result.unresolvedImages).toEqual(['cid:logo', 'missing.png', 'data:image/png;base64,AAAA']);
+
+    const relinked = prepareImportedEmailHtml(result.html, {
+      logo: 'https://assets.example/logo.png',
+      'missing.png': 'https://assets.example/missing.png',
+    });
+    expect(relinked.html).toContain('src="https://assets.example/logo.png"');
+    expect(relinked.html).toContain('src="https://assets.example/missing.png"');
+    expect(relinked.html).not.toContain('data-quotepulse-src');
+    expect(relinked.unresolvedImages).toEqual([]);
+  });
+
+  it('decodes Outlook HTML using its declared Windows-1252 charset', () => {
+    const prefix = new TextEncoder().encode('<meta http-equiv="Content-Type" content="text/html; charset=windows-1252"><p>organisation');
+    const suffix = new TextEncoder().encode('s company</p>');
+    const bytes = new Uint8Array(prefix.length + 1 + suffix.length);
+    bytes.set(prefix);
+    bytes[prefix.length] = 0x92;
+    bytes.set(suffix, prefix.length + 1);
+
+    const decoded = decodeEmailHtmlBytes(bytes);
+
+    expect(decoded).toContain('organisation’s company');
+    expect(decoded).not.toContain('�');
   });
 
   it('creates a readable plain-text fallback from table HTML', () => {

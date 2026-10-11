@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { prepareImportedEmailHtml } from '../src/lib/emailTemplateHtml';
+import { decodeEmailHtmlBytes, prepareImportedEmailHtml } from '../src/lib/emailTemplateHtml';
 import { parseOutlookMsg } from '../src/lib/outlookMsg';
 import { parseUploadedWorkbook } from '../src/lib/uploadedFileWorkbook';
 import { buildCustomerStatusReviewIndex } from '../src/lib/crm/customerStatusImport';
@@ -123,7 +123,7 @@ describe.skipIf(!customerFilesDirectory)('customer file acceptance', () => {
   it('preserves the supplied email tables and resolves every companion image', () => {
     const htmlFilename = 'Free 30-Day Trial of Microsoft 365 Copilot for Business.htm.html';
     const zipFilename = 'Free 30-Day Trial of Microsoft 365 Copilot for Business_files.zip';
-    const source = new TextDecoder().decode(bytes(htmlFilename));
+    const source = decodeEmailHtmlBytes(bytes(htmlFilename));
     const archive = unzipSync(bytes(zipFilename));
     const imageNames = Object.keys(archive)
       .filter((name) => /\.(png|jpe?g|gif|webp)$/i.test(name))
@@ -136,6 +136,8 @@ describe.skipIf(!customerFilesDirectory)('customer file acceptance', () => {
     expect(prepared.imageReferences).toHaveLength(7);
     expect(imageNames).toHaveLength(7);
     expect(prepared.unresolvedImages).toEqual([]);
+    expect(source).toContain('organisation’s');
+    expect(source).not.toContain('�');
     expect(prepared.text.length).toBeGreaterThan(0);
     expect(prepared.html).not.toMatch(/<\s*(script|iframe|object|embed|form)\b|\son[a-z0-9_-]+\s*=|javascript\s*:/i);
   });

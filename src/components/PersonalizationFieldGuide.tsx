@@ -4,9 +4,10 @@ import { findMissingHtmlPersonalization, PERSONALIZATION_FIELDS } from '../lib/e
 interface PersonalizationFieldGuideProps {
   bodyText: string;
   bodyHtml: string | null;
+  synchronizationFailed?: boolean;
 }
 
-export function PersonalizationFieldGuide({ bodyText, bodyHtml }: PersonalizationFieldGuideProps) {
+export function PersonalizationFieldGuide({ bodyText, bodyHtml, synchronizationFailed = false }: PersonalizationFieldGuideProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const missing = findMissingHtmlPersonalization(bodyText, bodyHtml);
 
@@ -21,7 +22,7 @@ export function PersonalizationFieldGuide({ bodyText, bodyHtml }: Personalizatio
       <div>
         <h3 id="personalization-title" className="text-sm font-semibold text-slate-900">Personalize your email</h3>
         <p className="mt-0.5 text-xs leading-5 text-slate-600">
-          Copy a field, then paste it exactly where that information should appear.
+          Copy a field and paste it into Backup text where that information should appear.
         </p>
       </div>
       {bodyHtml && <span className="rounded-full bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-800">Formatted email</span>}
@@ -43,10 +44,13 @@ export function PersonalizationFieldGuide({ bodyText, bodyHtml }: Personalizatio
       </div>)}
     </div>
     {bodyHtml && <p className="mt-2 text-xs leading-5 text-slate-600">
-      For a formatted email, paste the field into <strong>HTML source</strong>. Adding it only to Backup text will not change the formatted email recipients receive.
+      Backup text edits are also applied to the matching wording in the formatted email automatically.
     </p>}
     {missing.length > 0 && <p role="alert" className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-      Your backup text uses personalization, but the formatted email is missing: <strong>{missing.map((field) => field.label).join(', ')}</strong>. Copy the field above and paste it into HTML source where it should appear.
+      Your backup text uses personalization, but the formatted email is missing: <strong>{missing.map((field) => field.label).join(', ')}</strong>. Edit the matching Backup text wording again, then check the preview.
+    </p>}
+    {synchronizationFailed && <p role="alert" className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+      This wording could not be matched safely in the formatted email. Check the preview, or open Advanced HTML source if this template uses different backup wording.
     </p>}
   </section>;
 }

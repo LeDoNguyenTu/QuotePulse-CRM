@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { Modal } from './Modal';
 import { PersonalizationFieldGuide } from './PersonalizationFieldGuide';
+import { synchronizePlainTextToHtml } from '../lib/emailPersonalization';
 
 interface TemplateEditorProps {
   open: boolean;
@@ -49,6 +50,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [textSyncFailed, setTextSyncFailed] = useState(false);
   const [savedDraft, setSavedDraft] = useState<string | null>(null);
   const draftSnapshot = useMemo(() => JSON.stringify({ name, industry, subject, body, bodyFormat, rawHtml, bodyHtml, assets, fromEmail }), [assets, body, bodyFormat, bodyHtml, fromEmail, industry, name, rawHtml, subject]);
   const dirty = open && savedDraft !== null && draftSnapshot !== savedDraft;
@@ -64,6 +66,7 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
     setBody(initial?.body ?? ''); setBodyFormat(initial?.body_format ?? 'plain');
     setRawHtml(normalizedHtml); setBodyHtml(normalizedHtml); setSourceHtml(initial?.body_html ?? '');
     setAssets(initial?.asset_manifest ?? []); setFromEmail(initial?.from_email ?? ''); setImportMessage(null);
+    setTextSyncFailed(false);
     setSavedDraft(JSON.stringify({
       name: initial?.name ?? '', industry: initial?.industry ?? '', subject: normalizedSubject, body: initial?.body ?? '',
       bodyFormat: initial?.body_format ?? 'plain', rawHtml: normalizedHtml, bodyHtml: normalizedHtml,
@@ -91,6 +94,22 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
     if (!subject.trim() && prepared.subject) setSubject(prepared.subject);
     if (!body.trim()) setBody(prepared.text);
     setImportMessage(`${prepared.imageReferences.length - prepared.unresolvedImages.length} image${prepared.imageReferences.length - prepared.unresolvedImages.length === 1 ? '' : 's'} linked${prepared.unresolvedImages.length ? `; ${prepared.unresolvedImages.length} still need matching image files` : ''}.`);
+    setTextSyncFailed(false);
+  };
+
+  const updateBackupText = (nextBody: string) => {
+    if (bodyFormat === 'html' && bodyHtml) {
+      const result = synchronizePlainTextToHtml(body, nextBody, bodyHtml);
+      if (result.synchronized) {
+        setBodyHtml(result.html);
+        setRawHtml(result.html);
+        setSourceHtml(result.html);
+      }
+      setTextSyncFailed(!result.synchronized);
+    } else {
+      setTextSyncFailed(false);
+    }
+    setBody(nextBody);
   };
 
   const importHtml = async (file: File | undefined) => {
@@ -200,15 +219,15 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
               onChange={(e) => setSubject(e.target.value)}
             />
           </div>
-          <PersonalizationFieldGuide bodyText={body} bodyHtml={bodyFormat === 'html' ? bodyHtml : null} />
+          <PersonalizationFieldGuide bodyText={body} bodyHtml={bodyFormat === 'html' ? bodyHtml : null} synchronizationFailed={textSyncFailed} />
           <div>
             <label className="label">Backup text</label>
             <textarea
               className="input min-h-[180px] font-mono text-xs"
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={(e) => updateBackupText(e.target.value)}
             />
-            <p className="mt-1 text-xs text-slate-500">Plain-text fallback for email apps that cannot display the formatted version.</p>
+            <p className="mt-1 text-xs text-slate-500">Plain-text fallback. Edit this readable version; for formatted templates, matching wording and personalization are updated automatically.</p>
           </div>
           <fieldset className="space-y-2 rounded-md border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold">Message format</legend>
@@ -219,7 +238,10 @@ export function TemplateEditor({ open, initial, onClose, onSave, confirmDiscard 
             {bodyFormat === 'html' && <div className="space-y-2">
               <label className="block text-sm font-medium">Import .msg, .htm, or .html<input className="mt-1 block w-full text-sm" type="file" accept=".msg,.htm,.html,application/vnd.ms-outlook,text/html" disabled={uploading} onChange={(event) => void importHtml(event.target.files?.[0])} /></label>
               <label className="block text-sm font-medium">Companion image ZIP or images<input className="mt-1 block w-full text-sm" type="file" multiple accept=".zip,image/png,image/jpeg,image/gif,image/webp" disabled={uploading} onChange={(event) => void importAssets(event.target.files)} /></label>
-              <label className="block text-sm font-medium">HTML source <span className="font-normal text-slate-500">(the formatted email recipients receive)</span><textarea className="input mt-1 min-h-[260px] font-mono text-xs" value={rawHtml} onChange={(event) => applyHtml(event.target.value)} /></label>
+              <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-slate-700">Advanced HTML source</summary>
+                <label className="mt-3 block text-sm font-medium">Formatted email code<textarea className="input mt-1 min-h-[260px] font-mono text-xs" value={rawHtml} onChange={(event) => applyHtml(event.target.value)} /></label>
+              </details>
               {importMessage && <p className="text-xs text-slate-600" role="status">{importMessage}</p>}
             </div>}
           </fieldset>

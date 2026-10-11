@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { renderToStaticMarkup } from 'react-dom/server';
 import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
@@ -172,5 +174,39 @@ describe('TemplateEditor rich email controls', () => {
     expect(writeText).toHaveBeenCalledWith('{{contact_name}}');
     expect(JSON.stringify(renderer!.toJSON())).toContain('Copied');
     vi.unstubAllGlobals();
+  });
+
+  it('synchronizes backup text edits into formatted HTML and saves the synchronized message', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    let renderer: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<TemplateEditor
+        open
+        initial={{
+          id: 'template-1', name: 'Offer', subject: 'Renewal', body: 'Dear\nYour renewal is ready.',
+          body_format: 'html', body_html: '<table><tbody><tr><td><p>Dear</p><p>Your renewal is ready.</p><img src="https://cdn.example/banner.png"></td></tr></tbody></table>',
+        }}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />);
+    });
+    const backupText = renderer!.root.findAllByType('textarea').find((textarea) => textarea.props.value === 'Dear\nYour renewal is ready.')!;
+
+    act(() => backupText.props.onChange({ target: { value: 'Dear {{contact_name}}\nYour renewal is ready.' } }));
+    const editedBackupText = renderer!.root.findAllByType('textarea').find((textarea) => textarea.props.value === 'Dear {{contact_name}}\nYour renewal is ready.')!;
+    act(() => editedBackupText.props.onChange({ target: { value: 'Dear {{contact_name}}\nYour renewal is now ready.' } }));
+
+    expect(renderer!.root.findByType('iframe').props.srcDoc).toContain('Dear Jordan Lee');
+    expect(renderer!.root.findByType('iframe').props.srcDoc).toContain('renewal is now ready');
+    expect(renderer!.root.findByType('iframe').props.srcDoc).toContain('https://cdn.example/banner.png');
+    expect(useUnsavedChangesMock).toHaveBeenLastCalledWith(expect.objectContaining({ dirty: true }));
+
+    const save = renderer!.root.findAllByType('button').find((button) => button.children.join('') === 'Save')!;
+    await act(async () => save.props.onClick());
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      body: 'Dear {{contact_name}}\nYour renewal is now ready.',
+      body_html: expect.stringContaining('Dear {{contact_name}}'),
+    }));
+    expect(onSave.mock.calls[0][0].body_html).toContain('renewal is now ready');
   });
 });

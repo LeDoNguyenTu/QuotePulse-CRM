@@ -48,4 +48,11 @@ Do not send a real campaign during acceptance unless the operator has selected a
 
 ## Release evidence
 
-Release evidence is completed after merge so it can record the immutable merge SHA, GitHub Actions run, Vercel production deployment, applied migration/function status, and authenticated observations without guessing.
+- Feature PR: [#61](https://github.com/LeDoNguyenTu/QuotePulse-CRM/pull/61), squash merge `f39e26607a99ec6c14f059425ca6515a04ef932d`.
+- RLS performance follow-up: [#62](https://github.com/LeDoNguyenTu/QuotePulse-CRM/pull/62), squash merge `2d2946c822bf1e0e3acaf5d7ff77b3caeee78eeb`.
+- Exact-SHA production workflow: [GitHub Actions run 38136110670](https://github.com/LeDoNguyenTu/QuotePulse-CRM/actions/runs/38136110670) passed quality, fresh local-Supabase database contracts, migration/function deployment, all hosted transactional security/performance tests, storage-controller enablement, and archive-schedule verification.
+- Vercel production deployment `dpl_5WaprK8nGJwAPNczWzQkDXyKjrTK` is Ready and serves the `https://quote-pulse-crm.vercel.app` alias.
+- Linked migration parity was verified after deployment: `20261011120000_email_delivery_operations.sql` and `20261011193500_optimize_email_operations_rls.sql` are both recorded remotely.
+- Direct read-only production checks confirmed `crm_campaign_recipient_reporting`, `crm_contact_email_history`, `crm_retry_failed_email_send(uuid,uuid)`, and `provider_status_cache.credential_fingerprint`; the live count of unoptimised public `auth.uid()` RLS policies is zero.
+- `provider-status` is ACTIVE at version 2; `process-email-queue` is ACTIVE at version 92; `enrich-crm-company` is ACTIVE at version 33; `parse-quote` is ACTIVE at version 95.
+- Authenticated visual acceptance was attempted against the operator's signed-in Chrome tab, but both supported Windows browser-control runtimes failed before attachment with `failed to write kernel assets: The system cannot find the path specified`. The isolated debugging browser correctly redirected to `/login`, so no credentials were copied and no real email/retry was triggered. This is an automation-environment limitation, not a failed application check; a manual signed-in visual pass remains the only unverified checklist item.

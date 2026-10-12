@@ -176,6 +176,32 @@ describe('TemplateEditor rich email controls', () => {
     vi.unstubAllGlobals();
   });
 
+  it('falls back to a temporary text field when browser clipboard access is blocked', async () => {
+    const writeText = vi.fn().mockRejectedValue(new DOMException('Clipboard permission denied', 'NotAllowedError'));
+    const execCommand = vi.fn().mockReturnValue(true);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand });
+    let renderer: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(<TemplateEditor
+        open
+        initial={{ name: 'Offer', subject: 'Hello', body: 'Dear customer' }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />);
+    });
+
+    const copyCompany = renderer!.root.findByProps({ 'aria-label': 'Copy Company name field' });
+    await act(async () => copyCompany.props.onClick());
+
+    expect(writeText).toHaveBeenCalledWith('{{company_name}}');
+    expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(document.querySelector('textarea[data-clipboard-fallback]')).toBeNull();
+    expect(copyCompany.children).toEqual(['Copied']);
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(document, 'execCommand');
+  });
+
   it('synchronizes backup text edits into formatted HTML and saves the synchronized message', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     let renderer: ReturnType<typeof create>;

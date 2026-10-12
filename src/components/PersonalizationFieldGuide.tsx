@@ -1,6 +1,39 @@
 import { useState } from 'react';
 import { findMissingHtmlPersonalization, PERSONALIZATION_FIELDS } from '../lib/emailPersonalization';
 
+async function copyText(text: string) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Clipboard permissions can be blocked even on a secure page. Use the
+      // browser's selection-based copy path before reporting a failure.
+    }
+  }
+
+  if (typeof document === 'undefined' || typeof document.execCommand !== 'function') return false;
+
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.readOnly = true;
+  field.setAttribute('data-clipboard-fallback', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  field.style.pointerEvents = 'none';
+  document.body.appendChild(field);
+  field.focus();
+  field.select();
+
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    field.remove();
+  }
+}
+
 interface PersonalizationFieldGuideProps {
   bodyText: string;
   bodyHtml: string | null;
@@ -9,12 +42,17 @@ interface PersonalizationFieldGuideProps {
 
 export function PersonalizationFieldGuide({ bodyText, bodyHtml, synchronizationFailed = false }: PersonalizationFieldGuideProps) {
   const [copied, setCopied] = useState<string | null>(null);
+  const [copyFailed, setCopyFailed] = useState<string | null>(null);
   const missing = findMissingHtmlPersonalization(bodyText, bodyHtml);
 
   const copy = async (token: string) => {
-    await navigator.clipboard.writeText(token);
-    setCopied(token);
-    globalThis.setTimeout(() => setCopied((current) => current === token ? null : current), 1_600);
+    const succeeded = await copyText(token);
+    setCopied(succeeded ? token : null);
+    setCopyFailed(succeeded ? null : token);
+    globalThis.setTimeout(() => {
+      setCopied((current) => current === token ? null : current);
+      setCopyFailed((current) => current === token ? null : current);
+    }, 1_600);
   };
 
   return <section className="rounded-lg border border-slate-200 bg-slate-50 p-3" aria-labelledby="personalization-title">
@@ -39,7 +77,7 @@ export function PersonalizationFieldGuide({ bodyText, bodyHtml, synchronizationF
           aria-label={`Copy ${field.label} field`}
           onClick={() => void copy(field.token)}
         >
-          {copied === field.token ? 'Copied' : 'Copy'}
+          {copied === field.token ? 'Copied' : copyFailed === field.token ? 'Try again' : 'Copy'}
         </button>
       </div>)}
     </div>

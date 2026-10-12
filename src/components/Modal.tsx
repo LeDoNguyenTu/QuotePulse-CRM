@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 
 interface ModalProps {
   open: boolean;
@@ -10,11 +10,18 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, wide, panelClassName = '' }: ModalProps) {
+  const startedOnBackdrop = useRef(false);
   if (!open) return null;
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
-      onClick={onClose}
+      onMouseDown={(event) => { startedOnBackdrop.current = event.target === event.currentTarget; }}
+      onMouseUp={(event) => { startedOnBackdrop.current &&= event.target === event.currentTarget; }}
+      onClick={(event) => {
+        const close = event.target === event.currentTarget && startedOnBackdrop.current;
+        startedOnBackdrop.current = false;
+        if (close) onClose();
+      }}
     >
       <div
         className={`card w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} p-5 ${panelClassName}`.trim()}

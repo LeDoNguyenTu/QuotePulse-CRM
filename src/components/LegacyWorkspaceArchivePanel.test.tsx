@@ -22,6 +22,8 @@ vi.mock('../hooks/useWorkspaceArchive', () => ({
     archiveAll: { isPending: false, error: null, mutate: vi.fn() },
     stopArchiveAll: vi.fn(),
     restore: { isPending: false, error: null, mutate: vi.fn() },
+    restoreAll: { isPending: false, error: null, mutate: vi.fn() },
+    stopRestoreAll: vi.fn(),
     dryRunDelete: { isPending: false, error: null, mutate: vi.fn() },
     verifyAllForDeletion: { isPending: false, error: null, mutate: vi.fn() },
     deleteAll: { isPending: false, error: null, mutate: vi.fn() },
@@ -52,5 +54,14 @@ describe('LegacyWorkspaceArchivePanel', () => {
     expect(html).toContain('2 / 2,059 archive objects deletion-verified');
     expect(html).toContain('Restore remains available from the verified R2 archive');
     expect(html).toContain('Referenced security or Sales CRM rows are retained');
+  });
+
+  it('offers one resumable action to restore the entire normal Legacy CRM', () => {
+    archiveStatus = 'deleted';
+    const html = renderToStaticMarkup(<LegacyWorkspaceArchivePanel />);
+
+    expect(html).toContain('Restore entire Legacy workspace');
+    expect(html).toContain('normal searchable CRM');
+    expect(html).not.toContain('Restore next verified object');
   });
 });

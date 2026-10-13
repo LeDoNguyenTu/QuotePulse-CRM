@@ -16,3 +16,15 @@ export async function runResumableWorkspaceArchiveAction<T>(options: {
   }
   throw new Error(`Archive action stopped after ${maxSteps.toLocaleString()} steps to prevent an unbounded loop.`);
 }
+
+export function runWorkspaceRestoreToCompletion<T extends { status: string }>(options: {
+  step: () => Promise<T>;
+  shouldStop: () => boolean;
+  onStep?: (result: T, stepCount: number) => void | Promise<void>;
+}) {
+  return runResumableWorkspaceArchiveAction({
+    ...options,
+    isComplete: (result) => result.status === 'restored',
+    maxSteps: 10_000,
+  });
+}

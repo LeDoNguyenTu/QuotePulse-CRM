@@ -8,8 +8,10 @@ export function resolveLegacyDataMode(input: {
   liveCount: number;
   liveCountResolved: boolean;
   archiveStatus?: WorkspaceArchive['status'];
+  restoreStatus?: WorkspaceArchive['restore_status'];
 }): LegacyDataMode {
   if (input.userSelected || !input.archiveStatus) return input.current;
+  if (input.restoreStatus === 'verified' && input.liveCountResolved && input.liveCount > 0) return 'live';
   if (input.archiveStatus === 'deleted') return 'archived';
   if (input.liveCountResolved && input.liveCount === 0) return 'archived';
   return input.current;

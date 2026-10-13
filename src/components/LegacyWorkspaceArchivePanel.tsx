@@ -19,8 +19,8 @@ export function LegacyWorkspaceArchivePanel() {
   const retainedRows = progress.reduce((sum, table) => sum + Number(table.deletion_retained_count ?? 0), 0);
   const archiveComplete = !!archive && ['verified', 'deletion_eligible', 'deleting', 'deleted'].includes(archive.status);
   const expectedConfirmation = `DELETE ${finalRows}`;
-  const pending = api.archive.isPending || api.archiveAll.isPending || api.restore.isPending || api.dryRunDelete.isPending || api.verifyAllForDeletion.isPending || api.deleteAll.isPending;
-  const error = api.latest.error || api.progress.error || api.deletionVerification.error || api.archive.error || api.archiveAll.error || api.restore.error || api.dryRunDelete.error || api.verifyAllForDeletion.error || api.deleteAll.error;
+  const pending = api.archive.isPending || api.archiveAll.isPending || api.restore.isPending || api.restoreAll.isPending || api.dryRunDelete.isPending || api.verifyAllForDeletion.isPending || api.deleteAll.isPending;
+  const error = api.latest.error || api.progress.error || api.deletionVerification.error || api.archive.error || api.archiveAll.error || api.restore.error || api.restoreAll.error || api.dryRunDelete.error || api.verifyAllForDeletion.error || api.deleteAll.error;
 
   return (
     <section className="card space-y-3 p-5">
@@ -41,11 +41,13 @@ export function LegacyWorkspaceArchivePanel() {
         <button className="btn-primary" disabled={pending || archiveComplete} onClick={() => api.archiveAll.mutate()}>{archiveComplete ? 'Archive complete' : archive?.status === 'building' ? 'Archive all remaining data' : 'Start and archive all'}</button>
         {api.archiveAll.isPending && <button className="btn-secondary" onClick={api.stopArchiveAll}>Stop after current step</button>}
         <button className="btn-secondary" disabled={pending} onClick={() => api.archive.mutate()}>{archive?.status === 'building' ? 'Resume one bounded step' : archive ? 'Start new archive' : 'Start archive'}</button>
-        <button className="btn-secondary" disabled={pending || !archive || !['verified', 'deletion_eligible', 'deleted'].includes(archive.status) || archive.restore_status === 'verified'} onClick={() => api.restore.mutate()}>Restore next verified object</button>
+        <button className="btn-primary" disabled={pending || !archive || !['verified', 'deletion_eligible', 'deleted'].includes(archive.status) || archive.restore_status === 'verified'} onClick={() => api.restoreAll.mutate()}>{archive?.restore_status === 'verified' ? 'Legacy workspace restored' : api.restoreAll.isPending ? 'Restoring Legacy workspace…' : 'Restore entire Legacy workspace'}</button>
+        {api.restoreAll.isPending && <button className="btn-secondary" onClick={api.stopRestoreAll}>Stop after current restore step</button>}
         <button className="btn-secondary" disabled={pending || !archive || archive.status !== 'verified'} onClick={() => api.dryRunDelete.mutate()}>Dry-run deletion check</button>
         <button className="btn-secondary" disabled={pending || !archive || archive.status !== 'verified'} onClick={() => api.verifyAllForDeletion.mutate()}>Verify all archive objects</button>
         {(api.verifyAllForDeletion.isPending || api.deleteAll.isPending) && <button className="btn-secondary" onClick={api.stopDeletionWork}>Stop after current step</button>}
       </div>
+      {archive && ['verified', 'deletion_eligible', 'deleted'].includes(archive.status) && archive.restore_status !== 'verified' && <p className="text-sm text-slate-600">Restore the verified backup to return companies, contacts, and deals to the normal searchable CRM. The R2 backup remains available.</p>}
       {archive && ['deletion_eligible', 'deleting', 'deleted'].includes(archive.status) && <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3">
         <p className="text-sm font-semibold text-red-800">Delete archived legacy rows</p>
         <p className="text-xs text-red-700">This permanently removes safely deletable live Supabase rows to release database space. Referenced security or Sales CRM rows are retained so no excluded records or relationships are lost. Restore remains available from the verified R2 archive. Type <code>{expectedConfirmation}</code> to unlock deletion.</p>

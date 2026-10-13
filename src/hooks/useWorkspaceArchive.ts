@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { functions } from '../lib/functions';
 import { supabase } from '../lib/supabase';
 import { runWorkspaceArchiveToCompletion } from '../lib/workspaceArchiveRunner';
-import { runResumableWorkspaceArchiveAction } from '../lib/workspaceArchiveActionRunner';
+import { runResumableWorkspaceArchiveAction, runWorkspaceRestoreToCompletion } from '../lib/workspaceArchiveActionRunner';
 
 export type WorkspaceArchive = {
   id: string;
@@ -31,6 +31,7 @@ export type WorkspaceArchiveProgress = {
 export function useWorkspaceArchive(workspaceId: string) {
   const client = useQueryClient();
   const stopArchiveAllRef = useRef(false);
+  const stopRestoreAllRef = useRef(false);
   const stopDeletionWorkRef = useRef(false);
   const key = ['workspace-archive', workspaceId];
   const latest = useQuery({
@@ -94,6 +95,7 @@ export function useWorkspaceArchive(workspaceId: string) {
       client.invalidateQueries({ queryKey: ['workspace-archive-browsable', workspaceId] }),
       client.invalidateQueries({ queryKey: ['workspace-archive-progress', workspaceId] }),
       client.invalidateQueries({ queryKey: ['workspace-archive-deletion-verification', workspaceId] }),
+      client.invalidateQueries({ queryKey: ['account'] }),
     ]);
   };
   const archive = useMutation({
@@ -118,6 +120,18 @@ export function useWorkspaceArchive(workspaceId: string) {
     mutationFn: () => functions.workspaceArchive({ action: 'restore', workspace_id: workspaceId, archive_id: latest.data?.id }),
     onSuccess: refresh,
   });
+  const restoreAll = useMutation({
+    mutationFn: async () => {
+      stopRestoreAllRef.current = false;
+      return runWorkspaceRestoreToCompletion({
+        step: () => functions.workspaceArchive({ action: 'restore', workspace_id: workspaceId, archive_id: latest.data?.id }),
+        shouldStop: () => stopRestoreAllRef.current,
+        onStep: refresh,
+      });
+    },
+    onSuccess: refresh,
+  });
+  const stopRestoreAll = () => { stopRestoreAllRef.current = true; };
   const dryRunDelete = useMutation({
     mutationFn: () => functions.workspaceArchive({ action: 'dry_run_delete', workspace_id: workspaceId, archive_id: latest.data?.id }),
     onSuccess: refresh,
@@ -147,5 +161,5 @@ export function useWorkspaceArchive(workspaceId: string) {
     onSuccess: refresh,
   });
   const stopDeletionWork = () => { stopDeletionWorkRef.current = true; };
-  return { latest, browsable, progress, deletionVerification, archive, archiveAll, stopArchiveAll, restore, dryRunDelete, verifyAllForDeletion, deleteAll, stopDeletionWork };
+  return { latest, browsable, progress, deletionVerification, archive, archiveAll, stopArchiveAll, restore, restoreAll, stopRestoreAll, dryRunDelete, verifyAllForDeletion, deleteAll, stopDeletionWork };
 }

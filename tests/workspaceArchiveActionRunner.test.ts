@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runResumableWorkspaceArchiveAction } from '../src/lib/workspaceArchiveActionRunner';
+import { runResumableWorkspaceArchiveAction, runWorkspaceRestoreToCompletion } from '../src/lib/workspaceArchiveActionRunner';
 
 describe('runResumableWorkspaceArchiveAction', () => {
   it('repeats bounded steps until the server reports completion', async () => {
@@ -22,5 +22,15 @@ describe('runResumableWorkspaceArchiveAction', () => {
       onStep: () => { stop = true; },
     });
     expect(result).toEqual({ status: 'stopped', steps: 1 });
+  });
+
+  it('restores archives larger than the generic 1,000-step safety limit', async () => {
+    let steps = 0;
+    const result = await runWorkspaceRestoreToCompletion({
+      step: async () => ({ status: ++steps === 1_002 ? 'restored' : 'restoring' }),
+      shouldStop: () => false,
+    });
+
+    expect(result).toMatchObject({ status: 'complete', steps: 1_002 });
   });
 });

@@ -42,6 +42,17 @@ describe('resolveLegacyDataMode', () => {
     })).toBe('live');
   });
 
+  it('returns to the normal live CRM after the archive restore is verified', () => {
+    expect(resolveLegacyDataMode({
+      current: 'archived',
+      userSelected: false,
+      liveCount: 12,
+      liveCountResolved: true,
+      archiveStatus: 'deleted',
+      restoreStatus: 'verified',
+    })).toBe('live');
+  });
+
   it('clears table-specific search and paging when archive tabs change', () => {
     expect(resetArchivedTableView('contacts')).toEqual({
       table: 'contacts',

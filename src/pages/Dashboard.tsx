@@ -43,6 +43,7 @@ import { useStorageStatus } from '../hooks/useStorageStatus';
 import { importRecoveryLock, shouldStopImportForRecovery } from '../lib/storageStatus';
 import { ArchivedCompanyLedger } from '../components/crm/ArchivedCompanyLedger';
 import { ArchivedEditWarning } from '../components/crm/ArchivedEditWarning';
+import { LegacyWorkspaceRestoreControl } from '../components/LegacyWorkspaceRestoreControl';
 import { useArchivedCrmRecords } from '../hooks/useArchivedCrmRecords';
 import { useRestoreArchivedRecord } from '../hooks/useArchivedCompanyBundle';
 import { useWorkspaceArchive } from '../hooks/useWorkspaceArchive';
@@ -109,8 +110,9 @@ export function Dashboard() {
       liveCount: liveCompanyCount.data ?? 0,
       liveCountResolved: liveCompanyCount.isSuccess,
       archiveStatus: archive.browsable.data?.status,
+      restoreStatus: archive.browsable.data?.restore_status,
     }));
-  }, [archive.browsable.data?.status, dataModeChosen, liveCompanyCount.data, liveCompanyCount.isSuccess]);
+  }, [archive.browsable.data?.restore_status, archive.browsable.data?.status, dataModeChosen, liveCompanyCount.data, liveCompanyCount.isSuccess]);
 
   useEffect(() => {
     if (shouldStopImportForRecovery(importing, !!importState?.stopRequested, importLock.locked)) {
@@ -576,7 +578,7 @@ function ArchivedDashboard({ workspaceId, archive }: { workspaceId: string; arch
   const allowedColumns = new Set(columnOptions.map((column) => column.id));
   const visibleColumns = configuredColumns.filter((column) => allowedColumns.has(column));
   return <div className="space-y-4">
-    <div className="crm-archive-notice" role="status"><div><strong>Verified archive served directly from Cloudflare R2</strong><span>Companies, their contacts, and their deals are kept together in one read-only ledger. Expand a company to see every linked record.</span></div><span>Read-only</span></div>
+    <div className="crm-archive-notice" role="status"><div><strong>Verified archive served directly from Cloudflare R2</strong><span>Restore the complete backup once to return to the normal searchable CRM. The R2 backup remains available.</span></div><LegacyWorkspaceRestoreControl restoreStatus={archive.browsable.data?.restore_status ?? 'not_started'} pending={archive.restoreAll.isPending} onRestore={() => archive.restoreAll.mutate()} onStop={archive.stopRestoreAll} /></div>
     <div className="flex flex-wrap items-center gap-3">
       <SearchBar value={searchDraft} onChange={(value) => { setSearchDraft(value); setSearch(value.trim()); resetPaging(); }} placeholder="Search archived companies" />
       <ColumnSelector
